@@ -362,7 +362,7 @@ export class SocketImpl implements sinwanSocket {
   publish(
     topic: string,
     message: string | ArrayBuffer | Uint8Array,
-    compress?: boolean
+    compress?: boolean,
   ): number {
     try {
       return this._ws.publish(topic, message, compress ?? false);
@@ -549,12 +549,12 @@ export class SocketImpl implements sinwanSocket {
   private _executeHandler(
     handler: EventHandler,
     data?: any,
-    ack?: AckCallback
+    ack?: AckCallback,
   ): void {
     try {
       const fn = handler as any;
       const result =
-        fn.length >= 2 ? fn(this, data, ack) : fn.call(this, data, ack);
+        fn.length >= 3 ? fn(this, data, ack) : fn.call(this, data, ack);
 
       // Handle async handlers
       if (result instanceof Promise) {
