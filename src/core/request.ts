@@ -97,7 +97,17 @@ export class RequestImpl implements Request {
       }
     }
 
-    // Fallback to empty (Bun doesn't expose socket directly)
+    // Use Bun's server.requestIP() to get the actual client IP
+    const server = this.app?.server;
+    if (server?.requestIP) {
+      const addr = server.requestIP(this._nativeRequest);
+      if (addr?.address) {
+        this._ip = addr.address;
+        return this._ip!;
+      }
+    }
+
+    // Final fallback
     this._ip = "";
     return this._ip;
   }
