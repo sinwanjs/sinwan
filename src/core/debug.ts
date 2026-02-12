@@ -126,7 +126,8 @@ export class Debug {
   private structured: boolean;
   private performance: boolean;
   private history: LogEntry[] = [];
-  private maxHistorySize: number = 1000;
+  private _historyIndex: number = 0;
+  private maxHistorySize: number = 500;
 
   constructor(options: DebugOptions = {}) {
     this.enabled = options.enabled ?? process.env.NODE_ENV !== "production";
@@ -212,7 +213,7 @@ export class Debug {
     duration?: number,
     userAgent?: string,
     ip?: string,
-    memory?: string
+    memory?: string,
   ): void {
     if (!this.enabled) return;
 
@@ -222,10 +223,10 @@ export class Debug {
       (statusCode >= 500
         ? COLORS.brightRed + COLORS.bgRed
         : statusCode >= 400
-        ? COLORS.brightRed
-        : statusCode >= 300
-        ? COLORS.brightYellow
-        : COLORS.brightGreen);
+          ? COLORS.brightRed
+          : statusCode >= 300
+            ? COLORS.brightYellow
+            : COLORS.brightGreen);
 
     const timestamp = this.timestamp ? this._formatTimestamp() : "";
 
@@ -280,7 +281,7 @@ export class Debug {
       parts.push(
         `${COLORS.dim}${userAgent.slice(0, 50)}${
           userAgent.length > 50 ? "..." : ""
-        }${COLORS.reset}`
+        }${COLORS.reset}`,
       );
     }
 
@@ -372,7 +373,7 @@ export class Debug {
     if (!this.enabled) return;
 
     console.groupCollapsed(
-      `${COLORS.cyan}${this.prefix} ${label}${COLORS.reset}`
+      `${COLORS.cyan}${this.prefix} ${label}${COLORS.reset}`,
     );
     try {
       fn();
@@ -435,10 +436,17 @@ export class Debug {
   }
 
   /**
-   * Get log history
+   * Get log history (returns ordered copy)
    */
   getHistory(): LogEntry[] {
-    return [...this.history];
+    if (this.history.length < this.maxHistorySize) {
+      return [...this.history];
+    }
+    // Ring buffer: reorder to chronological
+    return [
+      ...this.history.slice(this._historyIndex),
+      ...this.history.slice(0, this._historyIndex),
+    ];
   }
 
   /**
@@ -446,6 +454,7 @@ export class Debug {
    */
   clearHistory(): void {
     this.history = [];
+    this._historyIndex = 0;
   }
 
   /**
@@ -554,23 +563,25 @@ export class Debug {
   }
 
   private _addToHistory(entry: LogEntry): void {
-    this.history.push(entry);
-    if (this.history.length > this.maxHistorySize) {
-      this.history.shift();
+    if (this.history.length < this.maxHistorySize) {
+      this.history.push(entry);
+    } else {
+      this.history[this._historyIndex] = entry;
+      this._historyIndex = (this._historyIndex + 1) % this.maxHistorySize;
     }
   }
 
   private _formatTimestamp(): string {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    const hours = String(now.getHours()).padStart(2, "0");
-    const minutes = String(now.getMinutes()).padStart(2, "0");
-    const seconds = String(now.getSeconds()).padStart(2, "0");
-    const milliseconds = String(now.getMilliseconds()).padStart(3, "0");
+    const y = now.getFullYear();
+    const mo = now.getMonth() + 1;
+    const d = now.getDate();
+    const h = now.getHours();
+    const mi = now.getMinutes();
+    const s = now.getSeconds();
+    const ms = now.getMilliseconds();
 
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+    return `${y}-${mo < 10 ? "0" : ""}${mo}-${d < 10 ? "0" : ""}${d} ${h < 10 ? "0" : ""}${h}:${mi < 10 ? "0" : ""}${mi}:${s < 10 ? "0" : ""}${s}.${ms < 10 ? "00" : ms < 100 ? "0" : ""}${ms}`;
   }
 
   private _getMemoryInfo(): string {
@@ -624,18 +635,9 @@ export function debugMiddleware(options?: {
   let baselineMemory = 0;
   let isInitialized = false;
 
-  // Initialize baseline after first request stabilizes
-  const initializeBaseline = async () => {
+  // Initialize baseline synchronously on first request - no blocking delays
+  const initializeBaseline = () => {
     if (isInitialized) return;
-
-    // Wait for system to stabilize
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    if (typeof Bun !== "undefined" && typeof Bun.gc === "function") {
-      Bun.gc(true); // Force blocking GC for accurate baseline
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 50));
     baselineMemory = getMemoryUsage().heapUsed;
     isInitialized = true;
   };
@@ -647,7 +649,7 @@ export function debugMiddleware(options?: {
       config.performance &&
       config.memoryMode !== "disabled"
     ) {
-      await initializeBaseline();
+      initializeBaseline();
     }
 
     // Capture start time immediately
@@ -725,7 +727,7 @@ export function debugMiddleware(options?: {
         durationValue,
         userAgentValue,
         ipValue,
-        memoryValue
+        memoryValue,
       );
     };
 
@@ -847,7 +849,7 @@ export const logger = {
         timestamp: new Date().toISOString().replace("T", " ").replace("Z", ""),
         runtime: isBun ? `Bun ${Bun.version}` : `Node ${process.version}`,
         environment: process.env.NODE_ENV || "development",
-      }
+      },
     );
   },
 };

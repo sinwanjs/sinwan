@@ -1,4 +1,3 @@
-
 import path from "node:path";
 import { MiddlewareStack } from "../modules/middleware/middleware-stack";
 import { Router } from "../modules/router/router";
@@ -11,12 +10,13 @@ import type {
   Request,
   Response,
 } from "../types";
-import { RequestImpl, ResponseImpl } from "./context";
 import { debug } from "./debug";
+import { RequestImpl } from "./request";
+import { ResponseImpl } from "./response";
 import { View } from "./view";
 
 /**
- * Options de l'application
+ * Application options
  */
 export interface ApplicationOptions {
   strict?: boolean;
@@ -28,7 +28,7 @@ export interface ApplicationOptions {
 }
 
 /**
- * Metadata de plugin
+ * Plugin metadata
  */
 interface PluginMetadata {
   plugin: Plugin;
@@ -38,7 +38,7 @@ interface PluginMetadata {
 }
 
 /**
- * Application avec architecture séparée
+ * Application with separated architecture
  */
 export class Application {
   // Router principal (composition, pas héritage)
@@ -87,14 +87,14 @@ export class Application {
       mergeParams: options.mergeParams ?? false,
     };
 
-    // Créer le router avec les mêmes options
+    // Create router with the same options
     this._router = new Router({
       useRadixTree: true,
       mergeParams: this._options.mergeParams,
       monitoring: this._options.monitoring,
     });
 
-    // Créer la stack de middleware au niveau app
+    // Create app-level middleware stack
     this._middlewareStack = new MiddlewareStack({
       mergeParams: this._options.mergeParams,
       timeout: this._options.requestTimeout,
@@ -155,8 +155,8 @@ export class Application {
   // ============================================================================
 
   /**
-   * Enregistrer middleware ou router
-   * Cette méthode gère tout : middleware normaux, error middleware, routers
+   * Register middleware or router
+   * Handles all cases: normal middleware, error middleware, routers
    */
   use(
     path: string | Middleware | ErrorMiddleware | Router | Application,
@@ -164,7 +164,7 @@ export class Application {
   ): this {
     this._ensureNotDestroyed();
 
-    // Cas 1: Monter un Router
+    // Case 1: Mount a Router
     if (path instanceof Router) {
       this._router.mount("/", path);
       return this;
@@ -175,7 +175,7 @@ export class Application {
       return this;
     }
 
-    // Cas 2: path est une string
+    // Case 2: path is a string
     if (typeof path === "string") {
       for (const handler of handlers) {
         if (handler instanceof Router) {
@@ -183,12 +183,12 @@ export class Application {
         } else if (handler instanceof Application) {
           this._router.mount(path, handler._router);
         } else if (typeof handler === "function") {
-          // Middleware normal ou error middleware
+          // Middleware normal or error middleware
           if (handler.length === 4) {
-            // Error middleware - ajouter à la stack app
+            // Error middleware - add to app stack
             this._middlewareStack.push(handler as ErrorMiddleware, path);
           } else {
-            // Middleware normal - ajouter au router
+            // Normal middleware - add to router
             this._router.use(path, handler as Middleware);
           }
         }
@@ -196,16 +196,16 @@ export class Application {
       return this;
     }
 
-    // Cas 3: path est un middleware/router
+    // Case 3: path is a middleware/router
     if (typeof path === "function") {
-      // Déterminer si c'est un error middleware
+      // Determine if it's an error middleware
       if (path.length === 4) {
         this._middlewareStack.push(path as ErrorMiddleware, "/");
       } else {
         this._router.use(path as Middleware);
       }
 
-      // Traiter les autres handlers
+      // Process remaining handlers
       for (const handler of handlers) {
         if (handler instanceof Router) {
           this._router.mount("/", handler);
@@ -225,7 +225,7 @@ export class Application {
   }
 
   /**
-   * Enregistrer explicitement un error middleware
+   * Explicitly register an error middleware
    */
   useError(handler: ErrorMiddleware): this {
     this._ensureNotDestroyed();
@@ -247,31 +247,38 @@ export class Application {
   // ============================================================================
 
   post(path: string, ...handlers: Middleware[]): this {
-    return this._router.post(path, ...handlers), this;
+    this._router.post(path, ...handlers);
+    return this;
   }
 
   put(path: string, ...handlers: Middleware[]): this {
-    return this._router.put(path, ...handlers), this;
+    this._router.put(path, ...handlers);
+    return this;
   }
 
   delete(path: string, ...handlers: Middleware[]): this {
-    return this._router.delete(path, ...handlers), this;
+    this._router.delete(path, ...handlers);
+    return this;
   }
 
   patch(path: string, ...handlers: Middleware[]): this {
-    return this._router.patch(path, ...handlers), this;
+    this._router.patch(path, ...handlers);
+    return this;
   }
 
   head(path: string, ...handlers: Middleware[]): this {
-    return this._router.head(path, ...handlers), this;
+    this._router.head(path, ...handlers);
+    return this;
   }
 
   options(path: string, ...handlers: Middleware[]): this {
-    return this._router.options(path, ...handlers), this;
+    this._router.options(path, ...handlers);
+    return this;
   }
 
   all(path: string, ...handlers: Middleware[]): this {
-    return this._router.all(path, ...handlers), this;
+    this._router.all(path, ...handlers);
+    return this;
   }
 
   // ============================================================================
@@ -333,7 +340,7 @@ export class Application {
   extend(
     type: "request" | "response" | "application",
     name: string,
-    fn: Function
+    fn: Function,
   ): this {
     this._ensureNotDestroyed();
 
@@ -379,7 +386,7 @@ export class Application {
 
     if (hooks.length >= this._options.maxHooksPerEvent) {
       throw new Error(
-        `Maximum hooks limit (${this._options.maxHooksPerEvent}) reached for "${hook}"`
+        `Maximum hooks limit (${this._options.maxHooksPerEvent}) reached for "${hook}"`,
       );
     }
 
@@ -404,10 +411,10 @@ export class Application {
             setTimeout(
               () =>
                 reject(
-                  new Error(`Hook "${hook}" timeout after ${activeTimeout}ms`)
+                  new Error(`Hook "${hook}" timeout after ${activeTimeout}ms`),
                 ),
-              activeTimeout
-            )
+              activeTimeout,
+            ),
           ),
         ]);
       } catch (error: any) {
@@ -450,42 +457,42 @@ export class Application {
 
   beforeRequest(
     fn: (req: Request) => void | Promise<void>,
-    timeout?: number
+    timeout?: number,
   ): this {
     return this.on("beforeRequest", fn, timeout);
   }
 
   afterRequest(
     fn: (req: Request, res: Response) => void | Promise<void>,
-    timeout?: number
+    timeout?: number,
   ): this {
     return this.on("afterRequest", fn, timeout);
   }
 
   beforeResponse(
     fn: (req: Request, res: Response) => void | Promise<void>,
-    timeout?: number
+    timeout?: number,
   ): this {
     return this.on("beforeResponse", fn, timeout);
   }
 
   afterResponse(
     fn: (req: Request, res: Response) => void | Promise<void>,
-    timeout?: number
+    timeout?: number,
   ): this {
     return this.on("afterResponse", fn, timeout);
   }
 
   onError(
     fn: (err: any, req: Request, res: Response) => void | Promise<void>,
-    timeout?: number
+    timeout?: number,
   ): this {
     return this.on("onError", fn, timeout);
   }
 
   onSuccess(
     fn: (req: Request, res: Response) => void | Promise<void>,
-    timeout?: number
+    timeout?: number,
   ): this {
     return this.on("onSuccess", fn, timeout);
   }
@@ -541,18 +548,18 @@ export class Application {
   // ============================================================================
 
   /**
-   * Handler principal de requête
-   * Architecture: App Middleware -> Router (avec ses middleware) -> Error Middleware
+   * Main request handler
+   * Architecture: App Middleware -> Router (with its middleware) -> Error Middleware
    */
   async fetch(nativeRequest: globalThis.Request): Promise<globalThis.Response> {
     this._ensureNotDestroyed();
 
-    const startTime = Date.now();
+    const startTime = performance.now();
     let req: Request | undefined;
     let res: Response | undefined;
 
     try {
-      // Créer request/response
+      // Create request/response
       req = new RequestImpl(nativeRequest, this);
 
       let responseResolver: (r: globalThis.Response) => void;
@@ -563,11 +570,13 @@ export class Application {
       res = new ResponseImpl(responseResolver!, this, req);
       (res as any).req = req;
 
-      // Timeout
+      // Timeout using a single timer instead of creating a Promise per request
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error("Request timeout"));
-        }, this._options.requestTimeout);
+        timeoutId = setTimeout(
+          () => reject(new Error("Request timeout")),
+          this._options.requestTimeout,
+        );
       });
 
       // Lifecycle
@@ -575,37 +584,25 @@ export class Application {
         try {
           await this.runBeforeRequestHooks(req!);
 
-          // Handler final qui gère les erreurs et 404
+          // Final handler for errors and 404
           const finalHandler: NextFunction = async (err?: any) => {
             if (err) {
-              // Passer aux error middleware
               await this._handleError(err, req!, res!);
             } else if (!res!.sent) {
-              // 404
               await res!.status(404).send("Not Found");
             }
           };
 
-          // Créer le handler qui exécute le router après les middleware app
+          // Router handler executed after app-level middleware
           const routerHandler: NextFunction = async (err?: any) => {
             if (err) {
               return finalHandler(err);
             }
-
-            // Exécuter le router (qui a ses propres middleware)
             await this._router.handle(req!, res!, finalHandler);
           };
 
-          // Exécuter middleware app -> router -> error middleware
+          // Execute: app middleware -> router -> error middleware
           await this._middlewareStack.execute(req!, res!, routerHandler);
-
-          // Attendre la réponse
-          if (!res!.sent) {
-            await Promise.race([
-              responsePromise,
-              new Promise((r) => setTimeout(r, 100)),
-            ]);
-          }
         } catch (err) {
           await this._handleError(err, req!, res!);
         } finally {
@@ -616,12 +613,16 @@ export class Application {
 
           if (this._options.monitoring) {
             this._stats.requests++;
-            this._stats.totalResponseTime += Date.now() - startTime;
+            this._stats.totalResponseTime += performance.now() - startTime;
           }
         }
       })();
 
-      await Promise.race([lifecyclePromise, timeoutPromise]);
+      try {
+        await Promise.race([lifecyclePromise, timeoutPromise]);
+      } finally {
+        clearTimeout(timeoutId);
+      }
       return await responsePromise;
     } catch (error) {
       if (req && res) {
@@ -642,18 +643,18 @@ export class Application {
         {
           status: 500,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
   }
 
   /**
-   * Gérer les erreurs
+   * Handle errors
    */
   private async _handleError(
     err: any,
     req: Request,
-    res: Response
+    res: Response,
   ): Promise<void> {
     if (this._options.monitoring) {
       this._stats.errors++;
@@ -685,7 +686,7 @@ export class Application {
           res,
           finalHandler,
           firstErrorIndex,
-          err
+          err,
         );
       } catch (executeErr) {
         // If error occurs while executing error middleware, fallback to default response
@@ -714,7 +715,7 @@ export class Application {
 
   engine(
     ext: string,
-    fn: (path: string, options: any) => Promise<string> | string
+    fn: (path: string, options: any) => Promise<string> | string,
   ): this {
     this._ensureNotDestroyed();
 
@@ -730,7 +731,7 @@ export class Application {
   async render(
     name: string,
     options: any = {},
-    callback?: (err: Error | null, html?: string) => void
+    callback?: (err: Error | null, html?: string) => void,
   ): Promise<string> {
     try {
       const opts = { ...this.locals, ...options };
@@ -766,7 +767,7 @@ export class Application {
 
   async listen(
     optionsOrPort: number | ServeOptions,
-    callback?: () => void
+    callback?: () => void,
   ): Promise<any> {
     this._ensureNotDestroyed();
 

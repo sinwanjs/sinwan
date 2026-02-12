@@ -5,7 +5,7 @@
  * Optimized for Bun runtime with HMAC signing
  */
 
-import signature from "cookie-signature";
+import * as signature from "../../utils/cookie-signature";
 
 // ============================================================================
 // Constants
@@ -118,7 +118,7 @@ export function signSessionId(sid: string, secret: string): string {
  */
 export function unsignSessionId(
   signed: string,
-  secrets: string[]
+  secrets: string[],
 ): string | false {
   // Type check
   if (typeof signed !== "string") {
@@ -161,7 +161,7 @@ export function unsignSessionId(
  */
 export function unsignSessionIds(
   signedIds: string[],
-  secrets: string[]
+  secrets: string[],
 ): Map<string, string | false> {
   const results = new Map<string, string | false>();
 
@@ -189,7 +189,7 @@ export function unsignSessionIds(
 export function rotateSessionId(
   signed: string,
   oldSecrets: string[],
-  newSecret: string
+  newSecret: string,
 ): string | null {
   const sid = unsignSessionId(signed, oldSecrets);
 
@@ -244,7 +244,7 @@ export function timingSafeEqual(a: string, b: string): boolean {
  */
 export function extractSessionId(
   cookieValue: string,
-  secrets: string[]
+  secrets: string[],
 ): string | null {
   if (!cookieValue) {
     return null;

@@ -1,5 +1,6 @@
 import type { Application } from "../core/application";
 import { createIOServer } from "../modules/websocket";
+import { debug } from "../core/debug";
 import type {
   sinwanIOServer,
   WebSocketOptions,
@@ -158,7 +159,7 @@ export function websocketPlugin(options: WebSocketOptions = {}): Plugin {
         if (io) {
           try {
             await io.close();
-            console.log("WebSocket server closed gracefully");
+            debug.info("WebSocket server closed gracefully");
           } catch (error) {
             console.error("Error closing WebSocket server:", error);
           } finally {
@@ -169,7 +170,7 @@ export function websocketPlugin(options: WebSocketOptions = {}): Plugin {
 
       // Log initialization
       if (process.env.NODE_ENV !== "production") {
-        console.log(`[sinwan] WebSocket server initialized at ${wsPath}`);
+        debug.success(`[sinwan] WebSocket server initialized at ${wsPath}`);
       }
     },
   };
@@ -192,7 +193,7 @@ export function getWebSocketInstance(app: Application): sinwanIOServer {
   const instance = (app as Application)._wsInstance;
 
   if (!instance) {
-    throw new Error("WebSocket not initialized. Use app.use(sinwan.ws())");
+    throw new Error("WebSocket not initialized. Use app.plugin(sinwan.ws())");
   }
 
   return instance;

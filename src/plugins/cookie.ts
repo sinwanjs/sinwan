@@ -1,7 +1,7 @@
-import cookie from "cookie";
-import signature from "cookie-signature";
 import type { Application } from "../core/application";
 import type { Middleware, NextFunction, Request, Response } from "../types";
+import * as cookie from "../utils/cookie";
+import * as signature from "../utils/cookie-signature";
 
 // ============================================================================
 // Types & Interfaces
@@ -58,7 +58,7 @@ export function parseJSONCookie(str: string): any | undefined {
  * @returns Modified object with parsed JSON cookies
  */
 export function parseJSONCookies(
-  obj: Record<string, any>
+  obj: Record<string, any>,
 ): Record<string, any> {
   for (const key of Object.keys(obj)) {
     const val = parseJSONCookie(obj[key]);
@@ -96,7 +96,7 @@ export const JSONCookies = parseJSONCookies;
  */
 export function parseSignedCookie(
   str: string,
-  secrets: string[]
+  secrets: string[],
 ): string | false {
   if (typeof str !== "string") {
     return false;
@@ -129,7 +129,7 @@ export function parseSignedCookie(
  */
 export function parseSignedCookies(
   obj: Record<string, any>,
-  secrets: string[]
+  secrets: string[],
 ): {
   signedCookies: Record<string, any>;
   unsignedCookies: Record<string, any>;
@@ -165,7 +165,7 @@ export function signCookie(value: string, secret: string): string {
 // Legacy aliases for compatibility
 export function signedCookie(
   str: string,
-  secret: string | string[]
+  secret: string | string[],
 ): string | undefined | boolean {
   const secrets = Array.isArray(secret) ? secret : [secret];
   const result = parseSignedCookie(str, secrets);
@@ -174,7 +174,7 @@ export function signedCookie(
 
 export function signedCookies(
   obj: Record<string, any>,
-  secret: string | string[]
+  secret: string | string[],
 ): Record<string, any> {
   const secrets = Array.isArray(secret) ? secret : [secret];
   return parseSignedCookies(obj, secrets).signedCookies;
@@ -306,7 +306,7 @@ export function createCookie(name: string, value: any): CookieBuilder {
  * @returns Middleware function
  */
 export function cookieParser(
-  optionsOrSecret: CookieParserOptions | string | string[] = {}
+  optionsOrSecret: CookieParserOptions | string | string[] = {},
 ): Middleware {
   let options: CookieParserOptions;
 
@@ -323,7 +323,7 @@ export function cookieParser(
   return async (
     req: Request,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ): Promise<void> => {
     // Skip if already parsed
     if (req.cookies && Object.keys(req.cookies).length > 0) {
@@ -353,7 +353,7 @@ export function cookieParser(
       if (secrets.length > 0) {
         const { signedCookies, unsignedCookies } = parseSignedCookies(
           parsed,
-          secrets
+          secrets,
         );
 
         // Parse JSON in signed cookies

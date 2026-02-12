@@ -84,7 +84,7 @@ export interface Response {
   download(
     filePath: string,
     filename?: string,
-    options?: SendFileOptions
+    options?: SendFileOptions,
   ): Promise<void>;
   sendFile(filePath: string, options?: SendFileOptions): Promise<void>;
   vary(field: string): this;
@@ -95,16 +95,86 @@ export interface Response {
   render(
     view: string,
     options?: any,
-    callback?: (err: Error | null, html?: string) => void
+    callback?: (err: Error | null, html?: string) => void,
   ): Promise<void>;
   respond(response: globalThis.Response): void;
   stream(readable: ReadableStream): Promise<void>;
   defer(fn: () => void | Promise<void>): this;
+
+  // ── Server-Sent Events (SSE) ──────────────────────────────────────────
+  /**
+   * Initialise the response as an SSE stream.
+   * Sets `Content-Type: text/event-stream`, disables caching and opens a
+   * long-lived writable stream.
+   *
+   * @param options - Optional SSE configuration
+   * @returns A controller to write events & close the stream.
+   */
+  sse(options?: SseOptions): SseController;
+
+  /**
+   * Low-level write into an already-opened streaming response.
+   * Useful for chunked transfer / SSE when you manage the stream yourself.
+   */
+  write(chunk: string | Uint8Array): void;
+
+  // ── Event Emitter ─────────────────────────────────────────────────────
+  /**
+   * Register a listener for a response-level event.
+   *
+   * Supported events:
+   * - `"close"` – client disconnected / stream closed
+   * - `"error"` – an error occurred on the stream
+   * - `"finish"` – response fully sent
+   */
+  on(event: string, listener: (...args: any[]) => void): this;
+
+  /** Remove a previously registered listener. */
+  off(event: string, listener: (...args: any[]) => void): this;
+
+  /** Emit an event to all registered listeners. */
+  emit(event: string, ...args: any[]): boolean;
+
   statusCode: number;
   sent: boolean;
   headersSent: boolean;
   finished: boolean;
   [key: string]: any;
+}
+
+/**
+ * Options for `res.sse()`
+ */
+export interface SseOptions {
+  /** Custom headers merged into the SSE response. */
+  headers?: Record<string, string>;
+  /** Interval (ms) between keep-alive comments. 0 = disabled. Default 30 000. */
+  keepAlive?: number;
+  /** Retry delay (ms) sent to the client in the `retry:` field. */
+  retry?: number;
+}
+
+/**
+ * Controller returned by `res.sse()`.
+ * Use it to push events and close the stream.
+ */
+export interface SseController {
+  /**
+   * Send an SSE event.
+   * @param data  - Payload (objects are JSON-stringified automatically).
+   * @param event - Optional event name (`event:` field).
+   * @param id    - Optional event id (`id:` field).
+   */
+  send(data: any, event?: string, id?: string): void;
+
+  /** Send a comment line (`:` prefix). Useful as keep-alive. */
+  comment(text: string): void;
+
+  /** Close the SSE stream gracefully. */
+  close(): void;
+
+  /** `true` after `close()` has been called or the client disconnected. */
+  readonly closed: boolean;
 }
 
 export interface Context {
@@ -116,13 +186,13 @@ export interface Context {
 export type Middleware = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => void | Promise<void>;
 export type ErrorMiddleware = (
   err: any,
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => void | Promise<void>;
 
 export interface Plugin {

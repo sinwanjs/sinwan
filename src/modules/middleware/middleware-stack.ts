@@ -7,7 +7,7 @@ import type {
 } from "../../types";
 
 /**
- * Entry dans la stack de middleware
+ * Entry in the middleware stack
  */
 interface MiddlewareEntry {
   handler: Middleware | ErrorMiddleware;
@@ -17,24 +17,25 @@ interface MiddlewareEntry {
 }
 
 /**
- * Options pour l'exécution de middleware
+ * Options for middleware execution
  */
 export interface ExecutionOptions {
-  /** Fusionner les paramètres au lieu de les remplacer */
+  /** Merge params instead of replacing them */
   mergeParams?: boolean;
-  /** Timeout pour chaque middleware */
+  /** Timeout for each middleware (ms) */
   timeout?: number;
-  /** Callback appelé après chaque middleware */
+  /** Callback called after each middleware */
   onMiddleware?: (entry: MiddlewareEntry, duration: number) => void;
 }
 
 /**
- * Gestionnaire de stack de middleware
- * Implémente le pattern Chain of Responsibility
+ * Middleware stack manager
+ * Implements the Chain of Responsibility pattern
  */
 export class MiddlewareStack {
   private _stack: MiddlewareEntry[] = [];
-  private _options: Required<ExecutionOptions>;
+  private readonly _options: Required<ExecutionOptions>;
+  private readonly _hasOnMiddleware: boolean;
 
   constructor(options: ExecutionOptions = {}) {
     this._options = {
@@ -42,6 +43,9 @@ export class MiddlewareStack {
       timeout: options.timeout ?? 30000,
       onMiddleware: options.onMiddleware ?? (() => {}),
     };
+    // Cache whether onMiddleware is a real callback to skip no-op calls
+    this._hasOnMiddleware =
+      options.onMiddleware !== undefined && options.onMiddleware !== null;
   }
 
   // ============================================================================
@@ -49,57 +53,54 @@ export class MiddlewareStack {
   // ============================================================================
 
   /**
-   * Ajouter un middleware à la stack
+   * Add a middleware to the stack
    */
   push(
     handler: Middleware | ErrorMiddleware,
     path: string = "/",
-    name?: string
+    name?: string,
   ): void {
     if (typeof handler !== "function") {
       throw new TypeError("Middleware must be a function");
     }
 
-    const entry: MiddlewareEntry = {
+    this._stack.push({
       handler,
       path,
       isErrorHandler: handler.length === 4,
       name: name || handler.name || "anonymous",
-    };
-
-    this._stack.push(entry);
-  }
-
-  /**
-   * Ajouter plusieurs middlewares
-   */
-  pushMany(
-    handlers: Array<Middleware | ErrorMiddleware>,
-    path: string = "/",
-    names?: string[]
-  ): void {
-    handlers.forEach((handler, index) => {
-      const name = names?.[index];
-      this.push(handler, path, name);
     });
   }
 
   /**
-   * Obtenir la taille de la stack
+   * Add multiple middlewares
+   */
+  pushMany(
+    handlers: Array<Middleware | ErrorMiddleware>,
+    path: string = "/",
+    names?: string[],
+  ): void {
+    for (let i = 0; i < handlers.length; i++) {
+      this.push(handlers[i], path, names?.[i]);
+    }
+  }
+
+  /**
+   * Get the stack size
    */
   get length(): number {
     return this._stack.length;
   }
 
   /**
-   * Obtenir tous les entries
+   * Get all entries (read-only view)
    */
   get entries(): ReadonlyArray<MiddlewareEntry> {
-    return [...this._stack];
+    return this._stack;
   }
 
   /**
-   * Vider la stack
+   * Clear the stack
    */
   clear(): void {
     this._stack = [];
@@ -110,100 +111,107 @@ export class MiddlewareStack {
   // ============================================================================
 
   /**
-   * Exécuter la chaîne de middleware
-   * Implémente le pattern Chain of Responsibility
+   * Execute the middleware chain
+   * Implements the Chain of Responsibility pattern
    */
   async execute(
     req: Request,
     res: Response,
     finalHandler: NextFunction,
     startIndex: number = 0,
-    initialError?: any
+    initialError?: any,
   ): Promise<void> {
+    const stack = this._stack;
+    const stackLength = stack.length;
+    const timeout = this._options.timeout;
+    const hasTimeout = timeout > 0;
+    const hasOnMiddleware = this._hasOnMiddleware;
     let currentIndex = startIndex;
     let currentError: any = initialError;
 
     /**
-     * Fonction next() qui avance dans la chaîne
+     * next() function that advances through the chain
      */
     const next: NextFunction = async (err?: any): Promise<void> => {
-      // Capturer l'erreur si présente
+      // Capture error if present
       if (err !== undefined) {
         currentError = err;
       }
 
-      // Fin de la chaîne
-      if (currentIndex >= this._stack.length) {
+      // End of chain
+      if (currentIndex >= stackLength) {
         return finalHandler(currentError);
       }
 
-      const entry = this._stack[currentIndex++];
-      const startTime = Date.now();
+      const entry = stack[currentIndex++];
 
       try {
-        // Créer un timeout pour ce middleware
-        const timeoutPromise =
-          this._options.timeout > 0
-            ? new Promise<never>((_, reject) => {
-                setTimeout(() => {
-                  reject(new Error(`Middleware "${entry.name}" timeout`));
-                }, this._options.timeout);
-              })
-            : null;
+        if (hasTimeout) {
+          // Execute with timeout — clear timer on completion to prevent leaks
+          let timeoutId: ReturnType<typeof setTimeout> | undefined;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(
+              () => reject(new Error(`Middleware "${entry.name}" timeout`)),
+              timeout,
+            );
+          });
 
-        // Exécuter le middleware avec timeout
-        const executionPromise = this._executeMiddleware(
-          entry,
-          req,
-          res,
-          next,
-          currentError
-        );
+          const startTime = hasOnMiddleware ? performance.now() : 0;
 
-        if (timeoutPromise) {
-          await Promise.race([executionPromise, timeoutPromise]);
+          try {
+            await Promise.race([
+              this._executeMiddleware(entry, req, res, next, currentError),
+              timeoutPromise,
+            ]);
+          } finally {
+            clearTimeout(timeoutId);
+          }
+
+          if (hasOnMiddleware) {
+            this._options.onMiddleware(entry, performance.now() - startTime);
+          }
         } else {
-          await executionPromise;
-        }
+          // Execute without timeout (fast path)
+          const startTime = hasOnMiddleware ? performance.now() : 0;
 
-        // Callback après exécution
-        const duration = Date.now() - startTime;
-        this._options.onMiddleware(entry, duration);
+          await this._executeMiddleware(entry, req, res, next, currentError);
+
+          if (hasOnMiddleware) {
+            this._options.onMiddleware(entry, performance.now() - startTime);
+          }
+        }
       } catch (error) {
-        // Transmettre l'erreur au prochain middleware d'erreur
+        // Pass error to next error handler
         await next(error);
       }
     };
 
-    // Démarrer la chaîne
+    // Start the chain
     await next(currentError);
   }
 
   /**
-   * Exécuter un middleware individuel
+   * Execute an individual middleware
    */
   private async _executeMiddleware(
     entry: MiddlewareEntry,
     req: Request,
     res: Response,
     next: NextFunction,
-    error?: any
+    error?: any,
   ): Promise<void> {
     const { handler, isErrorHandler } = entry;
 
-    // Si on a une erreur
     if (error !== undefined) {
-      // Seuls les error handlers peuvent traiter les erreurs
+      // Only error handlers can process errors
       if (isErrorHandler) {
         await (handler as ErrorMiddleware)(error, req, res, next);
       } else {
-        // Passer au suivant avec l'erreur
+        // Skip to next with the error
         await next(error);
       }
-    }
-    // Pas d'erreur
-    else {
-      // Les error handlers sont ignorés s'il n'y a pas d'erreur
+    } else {
+      // Error handlers are skipped when there is no error
       if (isErrorHandler) {
         await next();
       } else {
@@ -217,7 +225,7 @@ export class MiddlewareStack {
   // ============================================================================
 
   /**
-   * Filtrer les middleware par path
+   * Filter middleware by path
    */
   filterByPath(path: string): MiddlewareEntry[] {
     return this._stack.filter((entry) => {
@@ -229,19 +237,32 @@ export class MiddlewareStack {
   }
 
   /**
-   * Obtenir les stats de la stack
+   * Get stack statistics
    */
   getStats() {
+    let normal = 0;
+    let error = 0;
+    const paths = new Set<string>();
+
+    for (const entry of this._stack) {
+      if (entry.isErrorHandler) {
+        error++;
+      } else {
+        normal++;
+      }
+      paths.add(entry.path);
+    }
+
     return {
       total: this._stack.length,
-      normal: this._stack.filter((e) => !e.isErrorHandler).length,
-      error: this._stack.filter((e) => e.isErrorHandler).length,
-      paths: [...new Set(this._stack.map((e) => e.path))],
+      normal,
+      error,
+      paths: [...paths],
     };
   }
 
   /**
-   * Obtenir une représentation string pour debug
+   * Get a string representation for debugging
    */
   toString(): string {
     return this._stack
@@ -257,7 +278,7 @@ export class MiddlewareStack {
   // ============================================================================
 
   /**
-   * Créer une copie de cette stack
+   * Create a copy of this stack
    */
   clone(): MiddlewareStack {
     const newStack = new MiddlewareStack(this._options);
@@ -266,7 +287,7 @@ export class MiddlewareStack {
   }
 
   /**
-   * Fusionner avec une autre stack
+   * Merge with another stack
    */
   merge(other: MiddlewareStack, prefix: string = ""): void {
     for (const entry of other._stack) {
@@ -276,7 +297,7 @@ export class MiddlewareStack {
   }
 
   /**
-   * Joindre deux paths
+   * Join two paths
    */
   private _joinPaths(base: string, path: string): string {
     if (base === "/" || base === "") return path;
@@ -290,10 +311,10 @@ export class MiddlewareStack {
 }
 
 /**
- * Factory function pour créer une stack
+ * Factory function to create a stack
  */
 export function createMiddlewareStack(
-  options?: ExecutionOptions
+  options?: ExecutionOptions,
 ): MiddlewareStack {
   return new MiddlewareStack(options);
 }

@@ -1,15 +1,15 @@
 import type { Application } from "../core/application";
 
-import { lookup } from "mime-types";
-import { stat } from "fs-extra";
+import { stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { Middleware, NextFunction, Request, Response } from "../types";
-import etag from "etag";
+import { etag } from "../utils/etag";
+import { lookup } from "../utils/mime";
 
 export interface ServeStaticOptions {
   acceptRanges?: boolean;
   cacheControl?: boolean;
-  dotfiles?: 'allow' | 'deny' | 'ignore';
+  dotfiles?: "allow" | "deny" | "ignore";
   etag?: boolean;
   extensions?: string[] | false;
   fallthrough?: boolean;
@@ -23,26 +23,30 @@ export interface ServeStaticOptions {
 
 export const serveStatic = (
   root: string,
-  options?: ServeStaticOptions
+  options?: ServeStaticOptions,
 ): Middleware => {
   const {
     acceptRanges = true,
     cacheControl = true,
-    dotfiles = 'ignore',
+    dotfiles = "ignore",
     etag: etagEnabled = true,
     extensions = false,
     fallthrough = true,
     immutable = false,
-    index = ['index.html'],
+    index = ["index.html"],
     lastModified = true,
     maxAge = 0,
     redirect = true,
-    setHeaders
+    setHeaders,
   } = options || {};
 
   const rootPath = resolve(root);
 
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  return async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     if (req.method !== "GET" && req.method !== "HEAD") {
       if (fallthrough) {
         return next();
@@ -52,26 +56,29 @@ export const serveStatic = (
     }
 
     let path = req.path;
-    if (path.includes('%')) {
+    if (path.includes("%")) {
       try {
         path = decodeURIComponent(path);
       } catch (e) {
-        await res.status(400).send('Failed to decode URI');
+        await res.status(400).send("Failed to decode URI");
         return;
       }
     }
 
     let filePath = resolve(join(rootPath, path));
 
-    if (dotfiles !== 'allow' && path.split('/').some(part => part.startsWith('.'))) {
-      if (dotfiles === 'deny') {
-        await res.status(403).send('Forbidden');
+    if (
+      dotfiles !== "allow" &&
+      path.split("/").some((part) => part.startsWith("."))
+    ) {
+      if (dotfiles === "deny") {
+        await res.status(403).send("Forbidden");
         return;
       }
       if (fallthrough) {
         return next();
       }
-      await res.status(404).send('Not Found');
+      await res.status(404).send("Not Found");
       return;
     }
 
@@ -80,8 +87,8 @@ export const serveStatic = (
         const stats = await stat(filePath);
 
         if (stats.isDirectory()) {
-          if (redirect && !req.path.endsWith('/')) {
-            await res.redirect(req.path + '/');
+          if (redirect && !req.path.endsWith("/")) {
+            await res.redirect(req.path + "/");
             return true;
           }
           if (index) {
@@ -95,7 +102,7 @@ export const serveStatic = (
                     return true;
                   }
                 }
-              } catch (e) { }
+              } catch (e) {}
             }
           }
           return false;
@@ -112,28 +119,28 @@ export const serveStatic = (
         if (cacheControl) {
           let cacheControlHeader = `public, max-age=${maxAge}`;
           if (immutable) {
-            cacheControlHeader += ', immutable';
+            cacheControlHeader += ", immutable";
           }
-          res.set('Cache-Control', cacheControlHeader);
+          res.set("Cache-Control", cacheControlHeader);
         }
 
         if (lastModified) {
-          res.set('Last-Modified', stats.mtime.toUTCString());
+          res.set("Last-Modified", stats.mtime.toUTCString());
         }
 
         if (etagEnabled) {
-          res.set('ETag', etag(stats));
+          res.set("ETag", etag(stats));
         }
 
         if (acceptRanges) {
-          res.set('Accept-Ranges', 'bytes');
+          res.set("Accept-Ranges", "bytes");
         }
 
-        const contentType = lookup(filePath) || 'application/octet-stream';
-        res.set('Content-Type', contentType);
-        res.set('Content-Length', stats.size.toString());
+        const contentType = lookup(filePath) || "application/octet-stream";
+        res.set("Content-Type", contentType);
+        res.set("Content-Length", stats.size.toString());
 
-        if (req.method === 'HEAD') {
+        if (req.method === "HEAD") {
           await res.end();
           return true;
         }
@@ -161,18 +168,17 @@ export const serveStatic = (
       if (fallthrough) {
         return next();
       }
-      await res.status(404).send('Not Found');
+      await res.status(404).send("Not Found");
     } catch (e) {
       next(e);
     }
   };
 };
 
-
 export const staticPlugin = (root: string, options?: ServeStaticOptions) => ({
   name: "static",
   version: "1.0.0",
-  
+
   install(app: Application) {
     app.use(serveStatic(root, options));
   },

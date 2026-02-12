@@ -1,6 +1,17 @@
-import accepts from "accepts";
 import type { Application } from "../core/application";
 import type { Request } from "../types";
+import { accepts } from "../utils/accepts";
+
+/** Static content-type shorthand map (module-level, allocated once) */
+const CONTENT_TYPE_MAP: Readonly<Record<string, string>> = Object.freeze({
+  html: "text/html",
+  text: "text/plain",
+  json: "application/json",
+  xml: "application/xml",
+  urlencoded: "application/x-www-form-urlencoded",
+  form: "multipart/form-data",
+  multipart: "multipart/*",
+});
 
 /**
  * Request implementation with lazy property loading
@@ -382,17 +393,7 @@ export class RequestImpl implements Request {
    * Normalize content type shorthand
    */
   private _normalizeType(type: string): string {
-    const types: Record<string, string> = {
-      html: "text/html",
-      text: "text/plain",
-      json: "application/json",
-      xml: "application/xml",
-      urlencoded: "application/x-www-form-urlencoded",
-      form: "multipart/form-data",
-      multipart: "multipart/*",
-    };
-
-    return types[type] || type;
+    return CONTENT_TYPE_MAP[type] || type;
   }
 
   /**

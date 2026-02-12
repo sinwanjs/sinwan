@@ -14,14 +14,14 @@ import { Layer } from "./layer";
 import { RadixTree, type ParamConstraint } from "./radix-tree";
 
 /**
- * Contraintes de route
+ * Route constraints
  */
 export interface RouteConstraints {
   [param: string]: RegExp | ((value: string) => boolean);
 }
 
 /**
- * Options du router
+ * Router options
  */
 export interface RouterOptions extends ExecutionOptions {
   useRadixTree?: boolean;
@@ -32,7 +32,7 @@ export interface RouterOptions extends ExecutionOptions {
 }
 
 /**
- * Metadata de route
+ * Route metadata
  */
 export interface RouteMetadata {
   name?: string;
@@ -43,31 +43,31 @@ export interface RouteMetadata {
 }
 
 /**
- * Callback pour groupe de routes
+ * Route group callback
  */
 export type RouteGroupCallback = (router: Router) => void;
 
 /**
- * Router avec séparation claire des responsabilités
+ * Router with clear separation of concerns
  */
 export class Router {
-  // Middleware stack indépendante
+  // Independent middleware stack
   private _middlewareStack: MiddlewareStack;
 
-  // Mounted child routers
+  // Mounted child routers (sorted by path length, longest first)
   private _mounts: Array<{ path: string; router: Router }> = [];
 
-  // Route layers pour le matching
+  // Route layers for matching
   private _routeLayers: Layer[] = [];
 
-  // Radix tree pour performance
+  // Radix tree for performance
   private _radixTree?: RadixTree;
 
   // Configuration
   private _prefix: string;
   private readonly _options: Required<RouterOptions>;
 
-  // Métadonnées
+  // Metadata
   private _routeMetadata = new Map<string, RouteMetadata>();
 
   // Monitoring
@@ -91,14 +91,14 @@ export class Router {
 
     this._prefix = this._options.prefix;
 
-    // Créer la stack de middleware
+    // Create the middleware stack
     this._middlewareStack = new MiddlewareStack({
       mergeParams: this._options.mergeParams,
       timeout: this._options.timeout,
       onMiddleware: this._options.onMiddleware,
     });
 
-    // Créer le radix tree si activé
+    // Create the radix tree if enabled
     if (this._options.useRadixTree) {
       this._radixTree = new RadixTree();
     }
@@ -109,8 +109,8 @@ export class Router {
   // ============================================================================
 
   /**
-   * Enregistrer un middleware ou un error middleware
-   * Gère automatiquement les deux types
+   * Register a middleware or error middleware
+   * Automatically handles both types
    */
   use(
     path: string | Middleware | ErrorMiddleware,
@@ -119,7 +119,7 @@ export class Router {
     let targetPath = "/";
     let middlewares: Array<Middleware | ErrorMiddleware> = [];
 
-    // Déterminer le path et les handlers
+    // Determine path and handlers
     if (typeof path === "string") {
       targetPath = this._resolvePath(path);
       middlewares = handlers;
@@ -128,14 +128,14 @@ export class Router {
       middlewares = [path, ...handlers];
     }
 
-    // Valider les handlers
+    // Validate handlers
     for (const handler of middlewares) {
       if (typeof handler !== "function") {
         throw new TypeError("Middleware must be a function");
       }
     }
 
-    // Ajouter à la stack
+    // Add to the stack
     const names = middlewares.map((h) => h.name || "anonymous");
     this._middlewareStack.pushMany(middlewares, targetPath, names);
 
@@ -143,7 +143,7 @@ export class Router {
   }
 
   /**
-   * Enregistrer un error middleware explicitement
+   * Register an error middleware explicitly
    */
   useError(handler: ErrorMiddleware): this {
     if (typeof handler !== "function") {
@@ -152,7 +152,7 @@ export class Router {
 
     if (handler.length !== 4) {
       throw new TypeError(
-        "Error middleware must accept 4 parameters (err, req, res, next)"
+        "Error middleware must accept 4 parameters (err, req, res, next)",
       );
     }
 
@@ -165,7 +165,7 @@ export class Router {
   // ============================================================================
 
   /**
-   * Enregistrer une route avec méthode HTTP
+   * Register a route with HTTP method
    */
   route(
     method: HttpMethod,
@@ -177,18 +177,18 @@ export class Router {
     let constraints: RouteConstraints | undefined;
     let metadata: RouteMetadata | undefined;
 
-    // Parser les arguments
+    // Parse arguments
     for (const arg of args) {
       if (typeof arg === "function") {
         handlers.push(arg as Middleware);
       } else if (Array.isArray(arg)) {
         handlers.push(
-          ...(arg.filter((h) => typeof h === "function") as Middleware[])
+          ...(arg.filter((h) => typeof h === "function") as Middleware[]),
         );
       } else if (typeof arg === "object") {
         const keys = Object.keys(arg);
         const isConstraints = keys.some(
-          (key) => arg[key] instanceof RegExp || typeof arg[key] === "function"
+          (key) => arg[key] instanceof RegExp || typeof arg[key] === "function",
         );
 
         if (isConstraints) {
@@ -204,7 +204,7 @@ export class Router {
       throw new Error(`Route ${method} ${path} must have at least one handler`);
     }
 
-    // Ajouter au radix tree
+    // Add to radix tree
     if (this._radixTree) {
       const parsedConstraints = constraints
         ? this._parseConstraints(constraints)
@@ -214,11 +214,11 @@ export class Router {
         resolvedPath,
         handlers,
         parsedConstraints,
-        metadata
+        metadata,
       );
     }
 
-    // Créer les layers
+    // Create layers
     handlers.forEach((handler) => {
       const layer = new Layer({
         path: resolvedPath,
@@ -230,7 +230,7 @@ export class Router {
       this._routeLayers.push(layer);
     });
 
-    // Sauvegarder metadata
+    // Save metadata
     if (metadata) {
       const routeKey = `${method}:${resolvedPath}`;
       this._routeMetadata.set(routeKey, metadata);
@@ -290,16 +290,16 @@ export class Router {
   // ============================================================================
 
   /**
-   * Créer un groupe de routes avec prefix
+   * Create a route group with prefix
    */
   group(prefix: string, callback: RouteGroupCallback): this;
   group(
     options: { prefix: string; middleware?: Middleware[] },
-    callback: RouteGroupCallback
+    callback: RouteGroupCallback,
   ): this;
   group(
     prefixOrOptions: string | { prefix: string; middleware?: Middleware[] },
-    callback: RouteGroupCallback
+    callback: RouteGroupCallback,
   ): this {
     const prefix =
       typeof prefixOrOptions === "string"
@@ -311,30 +311,30 @@ export class Router {
         ? prefixOrOptions.middleware
         : undefined;
 
-    // Créer un sous-router
+    // Create a sub-router
     const subRouter = new Router({
       ...this._options,
       prefix: this._resolvePath(prefix),
-      useRadixTree: false, // Utilisera le radix tree du parent
+      useRadixTree: false, // Will use the parent's radix tree
     });
 
-    // Exécuter le callback
+    // Execute the callback
     callback(subRouter);
 
-    // Ajouter le middleware de groupe si fourni
+    // Add group middleware if provided
     if (middleware && middleware.length > 0) {
       const groupPath = this._resolvePath(prefix);
       this._middlewareStack.pushMany(middleware, groupPath);
     }
 
-    // Fusionner le sous-router
+    // Merge the sub-router
     this._mergeRouter(subRouter);
 
     return this;
   }
 
   /**
-   * Monter un router à un path
+   * Mount a router at a path
    */
   mount(path: string, router: Router): this {
     if (!(router instanceof Router)) {
@@ -343,8 +343,9 @@ export class Router {
 
     const mountPath = this._resolvePath(path);
 
-    // Store mount instead of merging to preserve router-local middleware and error handlers
+    // Store mount and keep sorted by path length (longest first) for O(1) best-match
     this._mounts.push({ path: mountPath, router });
+    this._mounts.sort((a, b) => b.path.length - a.path.length);
 
     return this;
   }
@@ -354,15 +355,15 @@ export class Router {
   // ============================================================================
 
   /**
-   * Gérer une requête entrante
-   * Séparation claire : middleware -> routing -> handlers
+   * Handle an incoming request
+   * Clear separation: middleware -> routing -> handlers
    */
   async handle(
     req: Request,
     res: Response,
-    finalHandler: NextFunction
+    finalHandler: NextFunction,
   ): Promise<void> {
-    const startTime = this._options.monitoring ? Date.now() : 0;
+    const startTime = this._options.monitoring ? performance.now() : 0;
 
     try {
       if (this._options.monitoring) {
@@ -379,7 +380,7 @@ export class Router {
         if (this._radixTree) {
           const match = this._radixTree.find(
             req.method as HttpMethod,
-            req.path
+            req.path,
           );
 
           if (match) {
@@ -395,56 +396,48 @@ export class Router {
               match.route.handlers,
               req,
               res,
-              finalHandler
+              finalHandler,
             );
 
             if (this._options.monitoring) {
-              this._stats.totalTime += Date.now() - startTime;
+              this._stats.totalTime += performance.now() - startTime;
             }
 
             return;
           }
         }
 
-        // Second, check mounted child routers (choose longest matching mount)
-        if (this._mounts && this._mounts.length > 0) {
-          let bestMount: { path: string; router: Router } | null = null;
+        // Check mounted child routers (already sorted by path length, longest first)
+        if (this._mounts.length > 0) {
           for (const m of this._mounts) {
-            // Handle root mount specially
             const matches =
               m.path === "/" ||
               req.path === m.path ||
               req.path.startsWith(m.path + "/");
-            if (matches) {
-              if (!bestMount || m.path.length > bestMount.path.length) {
-                bestMount = m;
-              }
-            }
-          }
+            if (!matches) continue;
 
-          if (bestMount) {
             // Delegate to child router with path adjusted (strip mount prefix)
             const originalPath = req.path;
             const originalBase = req.baseUrl || "";
 
             // Compute new path: strip mount path prefix
             let newPath: string;
-            if (bestMount.path === "/") {
+            if (m.path === "/") {
               newPath = originalPath;
             } else {
-              newPath = originalPath.slice(bestMount.path.length);
+              newPath = originalPath.slice(m.path.length);
               if (!newPath) newPath = "/";
             }
 
             // Adjust request
             req.path = newPath;
             req.baseUrl =
-              bestMount.path === "/"
+              m.path === "/"
                 ? originalBase
-                : (originalBase === "/" ? "" : originalBase) + bestMount.path;
+                : (originalBase === "/" ? "" : originalBase) + m.path;
 
             try {
-              await bestMount.router.handle(req, res, finalHandler);
+              await m.router.handle(req, res, finalHandler);
             } finally {
               // Restore original path/baseUrl
               req.path = originalPath;
@@ -459,7 +452,7 @@ export class Router {
         await this._executeLayerMatching(req, res, finalHandler);
 
         if (this._options.monitoring) {
-          this._stats.totalTime += Date.now() - startTime;
+          this._stats.totalTime += performance.now() - startTime;
         }
       };
 
@@ -474,13 +467,13 @@ export class Router {
   }
 
   /**
-   * Exécuter les handlers d'une route
+   * Execute route handlers
    */
   private async _executeRouteHandlers(
     handlers: Middleware[],
     req: Request,
     res: Response,
-    finalHandler: NextFunction
+    finalHandler: NextFunction,
   ): Promise<void> {
     let index = 0;
 
@@ -491,7 +484,7 @@ export class Router {
           err,
           req,
           res,
-          finalHandler
+          finalHandler,
         );
         if (handled) return;
         return finalHandler(err);
@@ -509,7 +502,7 @@ export class Router {
           error,
           req,
           res,
-          finalHandler
+          finalHandler,
         );
         if (handled) return;
         finalHandler(error);
@@ -528,14 +521,14 @@ export class Router {
     err: any,
     req: Request,
     res: Response,
-    finalHandler: NextFunction
+    finalHandler: NextFunction,
   ): Promise<boolean> {
     try {
       const entries: any[] = (this._middlewareStack as any).entries || [];
       const firstErrorIndex = entries.findIndex(
         (e) =>
           e.isErrorHandler &&
-          (e.path === "*" || e.path === "/" || req.path.startsWith(e.path))
+          (e.path === "*" || e.path === "/" || req.path.startsWith(e.path)),
       );
 
       if (firstErrorIndex >= 0) {
@@ -549,7 +542,7 @@ export class Router {
           res,
           routerFinal,
           firstErrorIndex,
-          err
+          err,
         );
         return true;
       }
@@ -562,12 +555,12 @@ export class Router {
   }
 
   /**
-   * Matching par layers (fallback)
+   * Layer-based matching (fallback)
    */
   private async _executeLayerMatching(
     req: Request,
     res: Response,
-    finalHandler: NextFunction
+    finalHandler: NextFunction,
   ): Promise<void> {
     let index = 0;
 
@@ -577,17 +570,17 @@ export class Router {
 
       const layer = this._routeLayers[index++];
 
-      // Vérifier le matching
+      // Check path match
       if (!layer.match(req.path)) {
         return next();
       }
 
-      // Vérifier la méthode
+      // Check method match
       if (layer.method !== req.method) {
         return next();
       }
 
-      // Valider les contraintes
+      // Validate constraints
       if (layer.constraints) {
         const extraction = layer.extractParams(req.path);
         if (!extraction.valid || !layer.validateParams(extraction.params)) {
@@ -595,7 +588,7 @@ export class Router {
         }
       }
 
-      // Extraire les params
+      // Extract params
       const params = layer.params(req.path);
       if (this._options.mergeParams) {
         req.params = { ...req.params, ...params };
@@ -603,7 +596,7 @@ export class Router {
         req.params = params;
       }
 
-      // Exécuter le handler
+      // Execute handler
       try {
         await (layer.handler as Middleware)(req, res, next);
       } catch (error) {
@@ -619,7 +612,7 @@ export class Router {
   // ============================================================================
 
   /**
-   * Obtenir toutes les routes enregistrées
+   * Get all registered routes
    */
   getRoutes(): Array<{
     method: HttpMethod;
@@ -649,7 +642,7 @@ export class Router {
   }
 
   /**
-   * Obtenir les statistiques
+   * Get statistics
    */
   getStats() {
     return {
@@ -683,7 +676,7 @@ export class Router {
   }
 
   private _parseConstraints(
-    constraints: RouteConstraints
+    constraints: RouteConstraints,
   ): Record<string, ParamConstraint> {
     const result: Record<string, ParamConstraint> = {};
 
@@ -699,10 +692,10 @@ export class Router {
   }
 
   private _mergeRouter(router: Router): void {
-    // Fusionner middleware
+    // Merge middleware
     this._middlewareStack.merge(router._middlewareStack, "");
 
-    // Fusionner layers
+    // Merge layers
     for (const layer of router._routeLayers) {
       this._routeLayers.push(layer);
 
@@ -715,12 +708,12 @@ export class Router {
           layer.path,
           [layer.handler as Middleware],
           constraints,
-          layer.metadata
+          layer.metadata,
         );
       }
     }
 
-    // Fusionner metadata
+    // Merge metadata
     router._routeMetadata.forEach((value, key) => {
       this._routeMetadata.set(key, value);
     });

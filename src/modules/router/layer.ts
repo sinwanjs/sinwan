@@ -60,13 +60,13 @@ export class Layer {
     path: string,
     method: HttpMethod,
     handler: Middleware | ErrorMiddleware,
-    constraints?: RouteConstraints
+    constraints?: RouteConstraints,
   );
   constructor(
     pathOrOptions: string | LayerOptions,
     method?: HttpMethod,
     handler?: Middleware | ErrorMiddleware,
-    constraints?: RouteConstraints
+    constraints?: RouteConstraints,
   ) {
     // Handle both constructor signatures
     if (typeof pathOrOptions === "object") {
@@ -97,9 +97,6 @@ export class Layer {
 
     // Build regex pattern
     this._regexp = this._buildPattern();
-
-    // Store creation timestamp
-    this.metadata.createdAt = Date.now();
   }
 
   /**
@@ -119,7 +116,7 @@ export class Layer {
           name: string,
           constraintMatch: string,
           constraint: string,
-          optional: string
+          optional: string,
         ) => {
           this._keys.push(name);
 
@@ -133,7 +130,7 @@ export class Layer {
           return optional
             ? `(?:(?<${name}>${regex}))?`
             : `(?<${name}>${regex})`;
-        }
+        },
       )
       .replace(/\*\*/g, "(?<catchAll>.*)")
       .replace(/(?<!\*)\*(?!\*)/g, "(?<wildcard>[^\\/]+)");
@@ -149,7 +146,7 @@ export class Layer {
 
     return new RegExp(
       `^${pattern}${this._fastPath || this.path === "*" ? "" : "$"}`,
-      "i"
+      "i",
     );
   }
 
@@ -158,43 +155,35 @@ export class Layer {
    */
   match(path: string): boolean {
     // Check cache first
-    if (this._matchCache?.has(path)) {
-      this._hitCount++;
-      return this._matchCache.get(path)!;
+    if (this._matchCache) {
+      const cached = this._matchCache.get(path);
+      if (cached !== undefined) {
+        this._hitCount++;
+        return cached;
+      }
     }
 
     let matches: boolean;
 
-    // Fast path checks
     if (this._fastPath) {
-      if (this.path === "*") {
-        matches = true;
-      } else if (this.path === "/" || this.path === "") {
-        matches = path === "/";
-      } else {
-        matches = this._regexp.test(path);
-      }
-    }
-    // USE middleware can match prefixes
-    else if (this.method === "USE") {
-      matches = path.startsWith(this.path) || this._regexp.test(path);
-    }
-    // Regular route matching
-    else {
+      matches = this.path === "*" || path === "/";
+    } else if (this.method === "USE") {
+      // USE middleware can match prefixes
+      matches =
+        path === this.path ||
+        path.startsWith(this.path) ||
+        this._regexp.test(path);
+    } else {
       matches = this._regexp.test(path);
     }
 
     // Update cache
     if (this._matchCache) {
-      this._matchCache.set(path, matches);
-
-      // Prevent cache from growing too large
-      if (this._matchCache.size > 1000) {
-        const firstKey = this._matchCache.keys().next().value;
-        if (firstKey !== undefined) {
-          this._matchCache.delete(firstKey);
-        }
+      if (this._matchCache.size >= 500) {
+        // Clear entire cache instead of expensive per-item eviction
+        this._matchCache.clear();
       }
+      this._matchCache.set(path, matches);
     }
 
     if (matches) {
@@ -250,15 +239,10 @@ export class Layer {
 
     // Update cache
     if (this._paramsCache) {
-      this._paramsCache.set(path, params);
-
-      // Prevent cache from growing too large
-      if (this._paramsCache.size > 1000) {
-        const firstKey = this._paramsCache.keys().next().value;
-        if (firstKey !== undefined) {
-          this._paramsCache.delete(firstKey);
-        }
+      if (this._paramsCache.size >= 500) {
+        this._paramsCache.clear();
       }
+      this._paramsCache.set(path, params);
     }
 
     return params;

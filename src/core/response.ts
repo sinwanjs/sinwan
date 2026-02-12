@@ -1,8 +1,44 @@
-import cookie from "cookie";
-import signature from "cookie-signature";
-import { lookup } from "mime-types";
 import type { Application } from "../core/application";
-import type { Request, Response } from "../types";
+import type { Request, Response, SseController, SseOptions } from "../types";
+import * as cookie from "../utils/cookie";
+import * as signature from "../utils/cookie-signature";
+import { lookup } from "../utils/mime";
+
+/** Reuse a single TextEncoder instance across all responses */
+const TEXT_ENCODER = new TextEncoder();
+
+/** Static content-type shorthand map */
+const CONTENT_TYPE_MAP: Readonly<Record<string, string>> = Object.freeze({
+  html: "text/html; charset=utf-8",
+  text: "text/plain; charset=utf-8",
+  json: "application/json; charset=utf-8",
+  xml: "application/xml; charset=utf-8",
+  bin: "application/octet-stream",
+  form: "application/x-www-form-urlencoded",
+});
+
+/** Static status messages */
+const STATUS_MESSAGES: Readonly<Record<number, string>> = Object.freeze({
+  200: "OK",
+  201: "Created",
+  204: "No Content",
+  301: "Moved Permanently",
+  302: "Found",
+  304: "Not Modified",
+  400: "Bad Request",
+  401: "Unauthorized",
+  403: "Forbidden",
+  404: "Not Found",
+  405: "Method Not Allowed",
+  409: "Conflict",
+  413: "Payload Too Large",
+  422: "Unprocessable Entity",
+  429: "Too Many Requests",
+  500: "Internal Server Error",
+  502: "Bad Gateway",
+  503: "Service Unavailable",
+  504: "Gateway Timeout",
+});
 
 /**
  * Cookie options for response
@@ -31,6 +67,14 @@ export class ResponseImpl implements Response {
   private _app: Application;
   private _deferredFunctions: (() => void | Promise<void>)[] = [];
 
+  /** Event listeners (close, error, finish) */
+  private _listeners: Map<string, Set<(...args: any[]) => void>> = new Map();
+
+  /** Active SSE stream controller (if any) */
+  private _sseStreamController: ReadableStreamDefaultController<Uint8Array> | null =
+    null;
+  private _sseKeepAliveTimer: ReturnType<typeof setInterval> | null = null;
+
   public req!: Request;
 
   [key: string]: any;
@@ -38,7 +82,7 @@ export class ResponseImpl implements Response {
   constructor(
     resolve: (res: globalThis.Response) => void,
     app: Application,
-    req: Request
+    req: Request,
   ) {
     this._resolve = resolve;
     this._app = app;
@@ -130,16 +174,7 @@ export class ResponseImpl implements Response {
    * Set Content-Type header with shorthand support
    */
   type(contentType: string): this {
-    const types: Record<string, string> = {
-      html: "text/html; charset=utf-8",
-      text: "text/plain; charset=utf-8",
-      json: "application/json; charset=utf-8",
-      xml: "application/xml; charset=utf-8",
-      bin: "application/octet-stream",
-      form: "application/x-www-form-urlencoded",
-    };
-
-    const type = types[contentType] || contentType;
+    const type = CONTENT_TYPE_MAP[contentType] || contentType;
     return this.set("Content-Type", type);
   }
 
@@ -295,7 +330,7 @@ export class ResponseImpl implements Response {
       if (!this._headers.has("Content-Length")) {
         const length =
           typeof data === "string"
-            ? new TextEncoder().encode(data).length
+            ? TEXT_ENCODER.encode(data).length
             : data.length;
         this._headers.set("Content-Length", String(length));
       }
@@ -309,13 +344,16 @@ export class ResponseImpl implements Response {
         new globalThis.Response(data, {
           status: this._status,
           headers: this._headers,
-        })
+        }),
       );
 
       // Run afterResponse hooks
       if (this._app) {
         await this._app.runAfterResponseHooks(this.req, this);
       }
+
+      // Emit finish event
+      this.emit("finish");
 
       return this;
     } catch (error) {
@@ -328,23 +366,8 @@ export class ResponseImpl implements Response {
    * Send status with message
    */
   async sendStatus(code: number): Promise<this> {
-    const messages: Record<number, string> = {
-      200: "OK",
-      201: "Created",
-      204: "No Content",
-      301: "Moved Permanently",
-      302: "Found",
-      304: "Not Modified",
-      400: "Bad Request",
-      401: "Unauthorized",
-      403: "Forbidden",
-      404: "Not Found",
-      500: "Internal Server Error",
-    };
-
     this._status = code;
-    const message = messages[code] || String(code);
-
+    const message = STATUS_MESSAGES[code] || String(code);
     return await this.send(message);
   }
 
@@ -386,7 +409,7 @@ export class ResponseImpl implements Response {
       new globalThis.Response(readable, {
         status: this._status,
         headers: this._headers,
-      })
+      }),
     );
   }
 
@@ -416,7 +439,7 @@ export class ResponseImpl implements Response {
       this.type(mimeType);
       this.set(
         "Content-Disposition",
-        `attachment; filename="${encodeURIComponent(filename)}"`
+        `attachment; filename="${encodeURIComponent(filename)}"`,
       );
     } else {
       this.set("Content-Disposition", "attachment");
@@ -471,6 +494,201 @@ export class ResponseImpl implements Response {
     } catch (error) {
       throw new Error(`Failed to render view: ${error}`);
     }
+  }
+
+  // ============================================================================
+  // Server-Sent Events (SSE)
+  // ============================================================================
+
+  /**
+   * Initialise the response as an SSE stream.
+   *
+   * ```ts
+   * app.get('/events', (req, res) => {
+   *   const sse = res.sse();
+   *   sse.send({ message: 'hello' }, 'greeting');
+   *   req.on?.('close', () => sse.close());
+   * });
+   * ```
+   */
+  sse(options: SseOptions = {}): SseController {
+    if (this._sent) {
+      throw new Error("Cannot start SSE after response has been sent");
+    }
+
+    const keepAliveInterval = options.keepAlive ?? 30_000;
+    let closed = false;
+
+    // Set SSE headers
+    this.set("Content-Type", "text/event-stream");
+    this.set("Cache-Control", "no-cache");
+    this.set("Connection", "keep-alive");
+
+    if (options.headers) {
+      for (const [k, v] of Object.entries(options.headers)) {
+        this.set(k, v);
+      }
+    }
+
+    // Build a ReadableStream that we control
+    const stream = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        this._sseStreamController = controller;
+
+        // Send retry field if configured
+        if (options.retry !== undefined) {
+          const chunk = TEXT_ENCODER.encode(`retry: ${options.retry}\n\n`);
+          controller.enqueue(chunk);
+        }
+
+        // Keep-alive timer
+        if (keepAliveInterval > 0) {
+          this._sseKeepAliveTimer = setInterval(() => {
+            if (!closed) {
+              try {
+                controller.enqueue(TEXT_ENCODER.encode(": keep-alive\n\n"));
+              } catch {
+                // stream already closed
+              }
+            }
+          }, keepAliveInterval);
+        }
+      },
+      cancel: () => {
+        closed = true;
+        this._cleanupSse();
+        this.emit("close");
+      },
+    });
+
+    // Send the streaming response
+    this._sent = true;
+    this._headersSent = true;
+    this._resolve(
+      new globalThis.Response(stream, {
+        status: this._status,
+        headers: this._headers,
+      }),
+    );
+
+    // Return the controller object
+    const controller: SseController = {
+      send: (data: any, event?: string, id?: string) => {
+        if (closed) return;
+        let frame = "";
+        if (id) frame += `id: ${id}\n`;
+        if (event) frame += `event: ${event}\n`;
+        const payload =
+          typeof data === "object" ? JSON.stringify(data) : String(data);
+        // Handle multi-line data
+        for (const line of payload.split("\n")) {
+          frame += `data: ${line}\n`;
+        }
+        frame += "\n";
+        try {
+          this._sseStreamController?.enqueue(TEXT_ENCODER.encode(frame));
+        } catch {
+          closed = true;
+          this._cleanupSse();
+        }
+      },
+      comment: (text: string) => {
+        if (closed) return;
+        try {
+          this._sseStreamController?.enqueue(
+            TEXT_ENCODER.encode(`: ${text}\n\n`),
+          );
+        } catch {
+          closed = true;
+          this._cleanupSse();
+        }
+      },
+      close: () => {
+        if (closed) return;
+        closed = true;
+        try {
+          this._sseStreamController?.close();
+        } catch {
+          // already closed
+        }
+        this._cleanupSse();
+        this.emit("close");
+      },
+      get closed() {
+        return closed;
+      },
+    };
+
+    return controller;
+  }
+
+  /**
+   * Low-level write into an already-opened SSE / streaming response.
+   */
+  write(chunk: string | Uint8Array): void {
+    if (!this._sseStreamController) {
+      throw new Error(
+        "Cannot write: no active stream. Call res.sse() or res.stream() first.",
+      );
+    }
+    const data = typeof chunk === "string" ? TEXT_ENCODER.encode(chunk) : chunk;
+    try {
+      this._sseStreamController.enqueue(data);
+    } catch {
+      this._cleanupSse();
+    }
+  }
+
+  /**
+   * Clean up SSE resources
+   */
+  private _cleanupSse(): void {
+    if (this._sseKeepAliveTimer) {
+      clearInterval(this._sseKeepAliveTimer);
+      this._sseKeepAliveTimer = null;
+    }
+    this._sseStreamController = null;
+  }
+
+  // ============================================================================
+  // Event Emitter
+  // ============================================================================
+
+  /**
+   * Register a listener for a response-level event.
+   */
+  on(event: string, listener: (...args: any[]) => void): this {
+    let set = this._listeners.get(event);
+    if (!set) {
+      set = new Set();
+      this._listeners.set(event, set);
+    }
+    set.add(listener);
+    return this;
+  }
+
+  /**
+   * Remove a previously registered listener.
+   */
+  off(event: string, listener: (...args: any[]) => void): this {
+    this._listeners.get(event)?.delete(listener);
+    return this;
+  }
+
+  /**
+   * Emit an event to all registered listeners.
+   */
+  emit(event: string, ...args: any[]): boolean {
+    const set = this._listeners.get(event);
+    if (!set || set.size === 0) return false;
+    for (const fn of set) {
+      try {
+        fn(...args);
+      } catch (err) {
+        console.error(`Error in "${event}" listener:`, err);
+      }
+    }
+    return true;
   }
 
   // ============================================================================

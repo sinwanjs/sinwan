@@ -131,7 +131,7 @@ export class RadixTree {
     path: string,
     handlers: Middleware[],
     constraints?: Record<string, RegExp> | Record<string, ParamConstraint>,
-    metadata?: Record<string, any>
+    metadata?: Record<string, any>,
   ): void {
     if (!path || typeof path !== "string") {
       throw new Error("Route path must be a non-empty string");
@@ -426,7 +426,7 @@ export class RadixTree {
    */
   private _parsePath(
     path: string,
-    paramNames: string[]
+    paramNames: string[],
   ): Array<{ path: string; type: NodeType; paramName?: string }> {
     const segments = path.split("/").filter(Boolean);
 
@@ -467,7 +467,7 @@ export class RadixTree {
   private _insert(
     parent: RadixNode,
     segment: { path: string; type: NodeType; paramName?: string },
-    depth: number
+    depth: number,
   ): RadixNode {
     // Parameter node
     if (segment.type === NodeType.PARAM) {
@@ -486,7 +486,7 @@ export class RadixTree {
         parent.wildcardChild = createNode(
           segment.path,
           NodeType.CATCH_ALL,
-          depth
+          depth,
         );
         parent.wildcardChild.paramName = segment.paramName;
         parent.wildcardChild.parent = parent;
@@ -515,7 +515,7 @@ export class RadixTree {
       const splitChild = createNode(
         child.path.slice(commonLen),
         child.type,
-        depth + 1
+        depth + 1,
       );
       splitChild.children = child.children;
       splitChild.routes = child.routes;
@@ -567,12 +567,12 @@ export class RadixTree {
     segments: string[],
     index: number,
     params: Record<string, string>,
-    fullPath: string
+    fullPath: string,
   ): { node: RadixNode; params: Record<string, string> } | null {
     // Reached end of path
     if (index === segments.length) {
       if (node.routes.has(method) || node.routes.has("USE" as HttpMethod)) {
-        return { node, params };
+        return { node, params: { ...params } };
       }
       return null;
     }
@@ -589,7 +589,7 @@ export class RadixTree {
           segments,
           newIndex,
           params,
-          fullPath
+          fullPath,
         );
         if (result) return result;
       }
@@ -598,25 +598,35 @@ export class RadixTree {
     // 2. Try parametric routes
     if (node.paramChild) {
       const paramName = node.paramChild.paramName!;
-      const newParams = { ...params, [paramName]: segment };
+      const hadParam = paramName in params;
+      const prevValue = params[paramName];
+      params[paramName] = segment;
+
       const result = this._search(
         node.paramChild,
         method,
         segments,
         newIndex,
-        newParams,
-        fullPath
+        params,
+        fullPath,
       );
       if (result) return result;
+
+      // Restore params on backtrack
+      if (hadParam) {
+        params[paramName] = prevValue;
+      } else {
+        delete params[paramName];
+      }
     }
 
     // 3. Try wildcard routes (lowest priority)
     if (node.wildcardChild) {
       const remainingPath = segments.slice(index).join("/");
-      const wildcardParams = {
-        ...params,
-        [node.wildcardChild.paramName!]: remainingPath,
-      };
+      const wildcardName = node.wildcardChild.paramName!;
+      const hadParam = wildcardName in params;
+      const prevValue = params[wildcardName];
+      params[wildcardName] = remainingPath;
 
       if (
         node.wildcardChild.routes.has(method) ||
@@ -624,8 +634,15 @@ export class RadixTree {
       ) {
         return {
           node: node.wildcardChild,
-          params: wildcardParams,
+          params: { ...params }, // Only copy here at leaf level
         };
+      }
+
+      // Restore params on backtrack
+      if (hadParam) {
+        params[wildcardName] = prevValue;
+      } else {
+        delete params[wildcardName];
       }
     }
 
@@ -637,7 +654,7 @@ export class RadixTree {
    */
   private _validateConstraints(
     params: Record<string, string>,
-    constraints: Record<string, ParamConstraint>
+    constraints: Record<string, ParamConstraint>,
   ): boolean {
     for (const [paramName, constraint] of Object.entries(constraints)) {
       const value = params[paramName];

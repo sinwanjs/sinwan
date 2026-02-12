@@ -5,7 +5,7 @@
  * and security features optimized for Bun
  */
 
-import cookie from "cookie";
+import * as cookie from "../../utils/cookie";
 import type {
   SessionCookie,
   SessionCookieData,

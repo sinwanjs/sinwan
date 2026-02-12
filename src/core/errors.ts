@@ -7,7 +7,7 @@ export class HttpError extends Error {
     statusCode: number,
     message: string,
     code?: string,
-    expose = true
+    expose = true,
   ) {
     super(message);
     this.name = "HttpError";
@@ -196,31 +196,34 @@ export function isHttpError(error: unknown): error is HttpError {
 }
 
 /**
+ * Default HTTP error messages
+ */
+const DEFAULT_HTTP_MESSAGES: Readonly<Record<number, string>> = Object.freeze({
+  400: "Bad Request",
+  401: "Unauthorized",
+  403: "Forbidden",
+  404: "Not Found",
+  405: "Method Not Allowed",
+  409: "Conflict",
+  413: "Payload Too Large",
+  422: "Unprocessable Entity",
+  429: "Too Many Requests",
+  500: "Internal Server Error",
+  501: "Not Implemented",
+  502: "Bad Gateway",
+  503: "Service Unavailable",
+  504: "Gateway Timeout",
+});
+
+/**
  * Create an HttpError from a status code
  */
 export function createHttpError(
   statusCode: number,
-  message?: string
+  message?: string,
 ): HttpError {
-  const defaultMessages: Record<number, string> = {
-    400: "Bad Request",
-    401: "Unauthorized",
-    403: "Forbidden",
-    404: "Not Found",
-    405: "Method Not Allowed",
-    409: "Conflict",
-    413: "Payload Too Large",
-    422: "Unprocessable Entity",
-    429: "Too Many Requests",
-    500: "Internal Server Error",
-    501: "Not Implemented",
-    502: "Bad Gateway",
-    503: "Service Unavailable",
-    504: "Gateway Timeout",
-  };
-
   return new HttpError(
     statusCode,
-    message || defaultMessages[statusCode] || "Unknown Error"
+    message || DEFAULT_HTTP_MESSAGES[statusCode] || "Unknown Error",
   );
 }
