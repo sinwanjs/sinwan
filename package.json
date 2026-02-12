@@ -2,14 +2,14 @@
   "name": "sinwan",
   "version": "0.0.0",
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/types/index.d.ts",
+  "main": "./dist/sinwan.js",
+  "module": "./dist/sinwan.js",
+  "types": "./dist/types/sinwan.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./dist/sinwan.d.ts",
+      "import": "./dist/sinwan.js",
+      "default": "./dist/sinwan.js"
     }
   },
   "scripts": {
