@@ -27,6 +27,8 @@ export interface WebSocketData {
   connected: boolean;
   /** Disconnect reason */
   disconnectReason?: string;
+  /** Session data (attached by session middleware) */
+  session?: any;
 }
 
 /**
@@ -79,7 +81,7 @@ export interface WebSocketMiddleware {
 export type EventHandlerWithSocket<T = any> = (
   socket: sinwanSocket,
   data?: T,
-  ack?: AckCallback
+  ack?: AckCallback,
 ) => void | Promise<void>;
 
 /**
@@ -87,7 +89,7 @@ export type EventHandlerWithSocket<T = any> = (
  */
 export type EventHandlerDataOnly<T = any> = (
   data?: T,
-  ack?: AckCallback
+  ack?: AckCallback,
 ) => void | Promise<void>;
 
 /**
@@ -252,7 +254,7 @@ export interface sinwanSocket {
   publish(
     topic: string,
     data: string | ArrayBuffer | Uint8Array,
-    compress?: boolean
+    compress?: boolean,
   ): number;
   /** Subscribe to topic */
   subscribe(topic: string): void;
@@ -342,12 +344,12 @@ export interface sinwanIOServer {
   removeSocket(socketId: string): void;
   handleMessage(
     socket: sinwanSocket,
-    message: string | ArrayBuffer | Uint8Array
+    message: string | ArrayBuffer | Uint8Array,
   ): void;
   publish(
     topic: string,
     message: string | ArrayBuffer | Uint8Array,
-    compress?: boolean
+    compress?: boolean,
   ): number;
 }
 

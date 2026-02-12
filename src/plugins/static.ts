@@ -146,7 +146,7 @@ export const serveStatic = (
         }
 
         const file = Bun.file(filePath);
-        res.respond(new globalThis.Response(file));
+        await res.respond(new globalThis.Response(file));
         return true;
       } catch (error) {
         return false;

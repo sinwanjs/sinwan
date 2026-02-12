@@ -7,8 +7,7 @@ A hyper-lightweight, modern web framework built from the ground up for [**Bun**]
 - **Fast**: Optimized for Bun's native performance.
 - **Type-Safe**: First-class TypeScript support with clean, intuitive types.
 - **Extensible**: Simple plugin and extension system.
-- **Pro Lifecycle Hooks**: Built-in support for `onStart`, `beforeStart`, `afterStart`, `onStop`,
-  `beforeStop`, `afterStop`, `beforeRequest`, `afterRequest`, `beforeResponse`, `afterResponse`, `onSuccess`, and `onError`.
+- **Pro Lifecycle Hooks**: Built-in support for `onStart`, `beforeStart`, `afterStart`, `onStop`, `beforeStop`, `afterStop`, `beforeRequest`, `afterRequest`, `beforeResponse`, `afterResponse`, `onSuccess`, and `onError`.
 - **Minimalist**: Core library focused on speed and developer experience.
 
 ## Quick Start

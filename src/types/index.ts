@@ -97,7 +97,7 @@ export interface Response {
     options?: any,
     callback?: (err: Error | null, html?: string) => void,
   ): Promise<void>;
-  respond(response: globalThis.Response): void;
+  respond(response: globalThis.Response): Promise<void>;
   stream(readable: ReadableStream): Promise<void>;
   defer(fn: () => void | Promise<void>): this;
 

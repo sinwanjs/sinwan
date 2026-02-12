@@ -1,5 +1,6 @@
 import type { Application } from "../core/application";
 import { session } from "../modules/session/middleware";
+import { MemoryStore } from "../modules/session/stores";
 import type {
   SessionCookieOptions,
   SessionStore,
@@ -47,6 +48,11 @@ export const sessionPlugin = (options: SessionOptions) => ({
       throw new Error("session options.secret is required");
     }
 
+    // Ensure a shared store instance exists so WS upgrade can use the same one
+    if (!options.store) {
+      options.store = new MemoryStore();
+    }
+
     // Auto-install cookie parser FIRST (required for session to work)
     // Cookie parser needs the secret to parse signed session cookies
     if (!options.skipCookieParser) {
@@ -55,5 +61,9 @@ export const sessionPlugin = (options: SessionOptions) => ({
 
     // Install session middleware AFTER cookie parser
     app.use(session(options));
+
+    // Store session config on app so WebSocket upgrade can load sessions
+    // The store reference is the SAME instance used by the middleware
+    (app as any)._sessionConfig = options;
   },
 });

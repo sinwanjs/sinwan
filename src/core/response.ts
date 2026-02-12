@@ -416,13 +416,23 @@ export class ResponseImpl implements Response {
   /**
    * Respond with native Response
    */
-  respond(response: globalThis.Response): void {
+  async respond(response: globalThis.Response): Promise<void> {
     if (this._sent) {
       throw new Error("Response already sent");
     }
 
+    await this._executeDeferredFunctions();
     this._sent = true;
     this._headersSent = true;
+
+    // Merge existing headers into the response
+    for (const [key, value] of this._headers) {
+      // Append if not exists or if it's set-cookie (which can have multiple)
+      if (!response.headers.has(key) || key.toLowerCase() === "set-cookie") {
+        response.headers.append(key, value);
+      }
+    }
+
     this._resolve(response);
   }
 

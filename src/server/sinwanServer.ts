@@ -1,6 +1,7 @@
 import type { ServerWebSocket } from "bun";
 import type { Application } from "../core/application";
 import { debug } from "../core/debug";
+import { unsignSessionId } from "../modules/session/session-id";
 import type { WebSocketData } from "../modules/websocket/types";
 
 /**
@@ -53,12 +54,12 @@ export interface ServeOptions {
  * app.listen(3000,()=>{
  *   console.log('Server running on http://localhost:3000');
  * });
- * 
+ *
  * ```
  */
 export async function serve(
   app: Application,
-  options: ServeOptions = {}
+  options: ServeOptions = {},
 ): Promise<any> {
   const {
     port = 3000,
@@ -85,7 +86,7 @@ export async function serve(
     /**
      * Handle incoming HTTP requests and WebSocket upgrades
      */
-    fetch(req, server) {
+    async fetch(req, server) {
       // Store server reference in app
       app.server = server;
 
@@ -124,6 +125,49 @@ export async function serve(
           connected: false,
         };
 
+        // Load session from cookie if session middleware is configured
+        const sessionConfig = (app as any)._sessionConfig;
+        if (sessionConfig) {
+          try {
+            const cookieName = sessionConfig.name || "sinwan.sid";
+            const secrets = Array.isArray(sessionConfig.secret)
+              ? sessionConfig.secret
+              : [sessionConfig.secret];
+            const store = sessionConfig.store;
+
+            // Parse session cookie from request headers
+            const cookieHeader = req.headers.get("cookie") || "";
+            // console.log("WS Cookie Header:", cookieHeader);
+
+            const cookies: Record<string, string> = {};
+            for (const pair of cookieHeader.split(";")) {
+              const [key, ...rest] = pair.trim().split("=");
+              if (key) cookies[key.trim()] = decodeURIComponent(rest.join("="));
+            }
+
+            const signedSid = cookies[cookieName];
+            // console.log("WS Signed SID:", signedSid);
+
+            if (signedSid) {
+              const sid = unsignSessionId(signedSid, secrets);
+              // console.log("WS Unsigned SID:", sid);
+
+              if (sid !== false) {
+                const data = await store.get(sid);
+                // console.log("WS Session Data Found:", !!data);
+
+                if (data) {
+                  socketData.session = data;
+                }
+              }
+            } else {
+              debug.warn("WS No session cookie found for name:", cookieName);
+            }
+          } catch (e) {
+            debug.warn("Failed to load session for WebSocket:", e);
+          }
+        }
+
         // Attempt WebSocket upgrade
         const upgraded = server.upgrade(req, {
           data: socketData,
@@ -156,7 +200,7 @@ export async function serve(
           {
             status: 500,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
     },
@@ -198,7 +242,7 @@ export async function serve(
        */
       message(
         ws: ServerWebSocket<WebSocketData>,
-        message: string | ArrayBuffer | Uint8Array
+        message: string | ArrayBuffer | Uint8Array,
       ) {
         if (!wsModule) {
           return;
@@ -281,7 +325,7 @@ export async function serve(
         {
           status: 500,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     },
   });
@@ -313,19 +357,19 @@ export async function serve(
   const wsProtocol = tls ? "wss" : "ws";
 
   debug.success(
-    `sinwan server started on ${protocol}://${server.hostname}:${server.port}`
+    `sinwan server started on ${protocol}://${server.hostname}:${server.port}`,
   );
   if (wsModule) {
     debug.info(
       `WebSocket: ${wsProtocol}://${server.hostname}:${server.port}${
         wsModule.options?.path || ""
-      }`
+      }`,
     );
   }
   debug.info(
     `Environment: ${development ? "development" : "production"} (PID: ${
       process.pid
-    })`
+    })`,
   );
 
   return server;
