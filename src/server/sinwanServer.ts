@@ -1,8 +1,8 @@
 import type { ServerWebSocket } from "bun";
 import type { Application } from "../core/application";
-import { debug } from "../core/debug";
 import { unsignSessionId } from "../modules/session/session-id";
 import type { WebSocketData } from "../modules/websocket/types";
+import { debug } from "../utils/debug";
 
 /**
  * Server configuration options

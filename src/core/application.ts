@@ -10,7 +10,7 @@ import type {
   Request,
   Response,
 } from "../types";
-import { debug } from "./debug";
+import { debug } from "../utils/debug";
 import { RequestImpl } from "./request";
 import { ResponseImpl } from "./response";
 import { View } from "./view";

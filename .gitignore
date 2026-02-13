@@ -3,6 +3,7 @@ node_modules
 
 # output
 examples
+docs
 out
 dist
 *.tgz

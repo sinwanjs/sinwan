@@ -1,11 +1,11 @@
 import type { Application } from "../core/application";
 import { createIOServer } from "../modules/websocket";
-import { debug } from "../core/debug";
 import type {
   sinwanIOServer,
   WebSocketOptions,
 } from "../modules/websocket/types";
 import type { Plugin } from "../types";
+import { debug } from "../utils/debug";
 
 /**
  * Extend Application interface to include WebSocket methods
@@ -222,7 +222,7 @@ export function getWebSocketInstance(app: Application): sinwanIOServer {
  * ```
  */
 export function createWebSocketMiddleware(
-  fn: (socket: any, next: (err?: any) => void) => void | Promise<void>
+  fn: (socket: any, next: (err?: any) => void) => void | Promise<void>,
 ) {
   return fn;
 }

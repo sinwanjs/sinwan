@@ -71,6 +71,7 @@ export type {
   FaviconMetrics,
   FaviconOptions,
   JsonOptions,
+  RouterOptions,
   ServeStaticOptions,
   SessionOptions,
   WebSocketOptions,
@@ -92,9 +93,15 @@ export * from "./modules/security";
 // Session module
 export * from "./modules/session";
 
+// WebSocket module
+export * from "./modules/websocket";
+
 // ============================================================================
 // TYPE EXPORTS
 // ============================================================================
 
 // Global type exports
 export * from "./types";
+
+// Debug
+export * from "./utils/debug";
