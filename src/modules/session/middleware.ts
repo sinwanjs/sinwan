@@ -35,11 +35,11 @@ export function session(options: SessionOptions): Middleware {
   // Warning for development
   if (
     config.store instanceof MemoryStore &&
-    process.env.NODE_ENV === "production"
+    Bun.env.NODE_ENV === "production"
   ) {
     console.warn(
       "⚠️  WARNING: Using MemoryStore in production. " +
-        "Sessions will be lost on restart. Use FileStore or RedisStore instead."
+        "Sessions will be lost on restart. Use FileStore or RedisStore instead.",
     );
   }
 
@@ -50,7 +50,7 @@ export function session(options: SessionOptions): Middleware {
  * Normalize session options
  */
 function normalizeOptions(
-  options: SessionOptions
+  options: SessionOptions,
 ): Required<SessionOptions> & { secrets: string[] } {
   const secrets = Array.isArray(options.secret)
     ? options.secret
@@ -82,12 +82,12 @@ function normalizeOptions(
  * Create the actual middleware function
  */
 function createSessionMiddleware(
-  config: ReturnType<typeof normalizeOptions>
+  config: ReturnType<typeof normalizeOptions>,
 ): Middleware {
   return async (
     req: Request,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ): Promise<void> => {
     // Skip if session already initialized
     if (req.session) {
@@ -119,7 +119,7 @@ function createSessionMiddleware(
         const shouldSave = shouldSaveSession(
           sessionInstance,
           isNewSession,
-          config
+          config,
         );
 
         if (shouldSave) {
@@ -152,7 +152,7 @@ function createSessionMiddleware(
  */
 async function initializeSession(
   req: Request,
-  config: ReturnType<typeof normalizeOptions>
+  config: ReturnType<typeof normalizeOptions>,
 ): Promise<SessionImpl> {
   // Check if cookie parser is installed
   if (req.cookies === undefined) {
@@ -160,7 +160,7 @@ async function initializeSession(
       "⚠️  SESSION WARNING: req.cookies is undefined. " +
         "Make sure cookie parser middleware is installed BEFORE session middleware. " +
         "If using sessionPlugin, cookie parser is auto-installed. " +
-        "If using session() directly, add cookieParser() first."
+        "If using session() directly, add cookieParser() first.",
     );
   }
 
@@ -187,7 +187,7 @@ async function initializeSession(
           unsignedFromParser,
           config.store,
           cookie,
-          data
+          data,
         );
 
         if (config.rolling) {
@@ -235,7 +235,7 @@ async function initializeSession(
  */
 async function createNewSession(
   req: Request,
-  config: ReturnType<typeof normalizeOptions>
+  config: ReturnType<typeof normalizeOptions>,
 ): Promise<SessionImpl> {
   const sid = config.genid(req);
   const cookie = new SessionCookieImpl(config.cookie);
@@ -285,7 +285,7 @@ function attachSessionToRequest(req: Request, session: SessionImpl): void {
 function setupRegenerateFunction(
   session: SessionImpl,
   req: Request,
-  config: ReturnType<typeof normalizeOptions>
+  config: ReturnType<typeof normalizeOptions>,
 ): void {
   session.regenerate = async function (): Promise<void> {
     if (session.isDestroyed) {
@@ -328,7 +328,7 @@ function setupRegenerateFunction(
 function shouldSaveSession(
   session: SessionImpl,
   isNew: boolean,
-  config: ReturnType<typeof normalizeOptions>
+  config: ReturnType<typeof normalizeOptions>,
 ): boolean {
   if (session.isDestroyed) {
     return false;
@@ -360,7 +360,7 @@ function shouldSaveSession(
 async function saveSession(
   session: SessionImpl,
   res: Response,
-  config: ReturnType<typeof normalizeOptions>
+  config: ReturnType<typeof normalizeOptions>,
 ): Promise<void> {
   try {
     // Save to store
@@ -378,8 +378,8 @@ async function saveSession(
         session.cookie.sameSite === true
           ? "strict"
           : session.cookie.sameSite === false
-          ? undefined
-          : session.cookie.sameSite,
+            ? undefined
+            : session.cookie.sameSite,
       path: session.cookie.path,
       domain: session.cookie.domain,
       maxAge: session.cookie.maxAge || undefined,

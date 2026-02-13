@@ -77,7 +77,7 @@ function combineMiddlewares(
  * - Permissions policy denying all
  */
 export function strictSecurity(
-  options: SecurityPresetOptions = {}
+  options: SecurityPresetOptions = {},
 ): Middleware {
   const middlewares: Middleware[] = [];
 
@@ -108,7 +108,7 @@ export function strictSecurity(
         frameguard: { action: "deny" },
         referrerPolicy: { policy: "no-referrer" },
         ...options.helmet,
-      })
+      }),
     );
   }
 
@@ -126,7 +126,7 @@ export function strictSecurity(
         standardHeaders: true,
         legacyHeaders: false,
         ...options.rateLimit,
-      })
+      }),
     );
   }
 
@@ -153,7 +153,7 @@ export function strictSecurity(
         noCacheSecure: true,
         disableClientHints: true,
         ...options.securityHeaders,
-      })
+      }),
     );
   }
 
@@ -173,7 +173,7 @@ export function strictSecurity(
  * - Reasonable body limits
  */
 export function standardSecurity(
-  options: SecurityPresetOptions = {}
+  options: SecurityPresetOptions = {},
 ): Middleware {
   const middlewares: Middleware[] = [];
 
@@ -186,7 +186,7 @@ export function standardSecurity(
         frameguard: { action: "sameorigin" },
         referrerPolicy: { policy: "strict-origin-when-cross-origin" },
         ...options.helmet,
-      })
+      }),
     );
   }
 
@@ -194,12 +194,12 @@ export function standardSecurity(
   if (options.cors !== false) {
     middlewares.push(
       cors({
-        origin: (process.env.ALLOWED_ORIGINS?.split(",") ||
+        origin: (Bun.env.ALLOWED_ORIGINS?.split(",") ||
           undefined) as CorsOptions["origin"],
         credentials: true,
         methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
         ...options.cors,
-      })
+      }),
     );
   }
 
@@ -211,7 +211,7 @@ export function standardSecurity(
         max: 100, // 100 requests per minute
         standardHeaders: true,
         ...options.rateLimit,
-      })
+      }),
     );
   }
 
@@ -230,7 +230,7 @@ export function standardSecurity(
           "interest-cohort": "none", // Block FLoC
         },
         ...options.securityHeaders,
-      })
+      }),
     );
   }
 
@@ -263,7 +263,7 @@ export function apiSecurity(options: SecurityPresetOptions = {}): Middleware {
         noSniff: true,
         referrerPolicy: { policy: "no-referrer" },
         ...options.helmet,
-      })
+      }),
     );
   }
 
@@ -282,7 +282,7 @@ export function apiSecurity(options: SecurityPresetOptions = {}): Middleware {
         credentials: false,
         maxAge: 86400, // 24 hours
         ...options.cors,
-      })
+      }),
     );
   }
 
@@ -295,7 +295,7 @@ export function apiSecurity(options: SecurityPresetOptions = {}): Middleware {
         standardHeaders: true,
         legacyHeaders: true,
         ...options.rateLimit,
-      })
+      }),
     );
   }
 
@@ -321,11 +321,11 @@ export function apiSecurity(options: SecurityPresetOptions = {}): Middleware {
  * - Large body limits
  */
 export function relaxedSecurity(
-  options: SecurityPresetOptions = {}
+  options: SecurityPresetOptions = {},
 ): Middleware {
-  if (process.env.NODE_ENV === "production") {
+  if (Bun.env.NODE_ENV === "production") {
     console.warn(
-      "[Security] Using relaxedSecurity in production is NOT recommended!"
+      "[Security] Using relaxedSecurity in production is NOT recommended!",
     );
   }
 
@@ -341,7 +341,7 @@ export function relaxedSecurity(
         crossOriginResourcePolicy: false,
         hsts: false,
         ...options.helmet,
-      })
+      }),
     );
   }
 
@@ -352,7 +352,7 @@ export function relaxedSecurity(
         origin: "*",
         credentials: false,
         ...options.cors,
-      })
+      }),
     );
   }
 
@@ -385,7 +385,7 @@ export function graphqlSecurity(
   options: SecurityPresetOptions & {
     /** Enable query depth limiting (external implementation needed) */
     maxQueryDepth?: number;
-  } = {}
+  } = {},
 ): Middleware {
   const middlewares: Middleware[] = [];
 
@@ -396,7 +396,7 @@ export function graphqlSecurity(
         contentSecurityPolicy: false,
         hsts: { maxAge: 15552000 },
         ...options.helmet,
-      })
+      }),
     );
   }
 
@@ -409,7 +409,7 @@ export function graphqlSecurity(
         allowedHeaders: ["Content-Type", "Authorization"],
         credentials: true,
         ...options.cors,
-      })
+      }),
     );
   }
 
@@ -420,7 +420,7 @@ export function graphqlSecurity(
         windowMs: 60000,
         max: 500,
         ...options.rateLimit,
-      })
+      }),
     );
   }
 
@@ -440,7 +440,7 @@ export function graphqlSecurity(
  * Security for WebSocket-enabled applications.
  */
 export function websocketSecurity(
-  options: SecurityPresetOptions = {}
+  options: SecurityPresetOptions = {},
 ): Middleware {
   const middlewares: Middleware[] = [];
 
@@ -455,7 +455,7 @@ export function websocketSecurity(
           },
         },
         ...options.helmet,
-      })
+      }),
     );
   }
 
@@ -466,7 +466,7 @@ export function websocketSecurity(
         origin: (options.cors?.origin ?? "*") as CorsOptions["origin"],
         credentials: true,
         ...options.cors,
-      })
+      }),
     );
   }
 
@@ -494,9 +494,9 @@ export function autoSecurity(
     production?: SecurityPresetOptions;
     development?: SecurityPresetOptions;
     test?: SecurityPresetOptions;
-  } = {}
+  } = {},
 ): Middleware {
-  const env = process.env.NODE_ENV || "development";
+  const env = Bun.env.NODE_ENV || "development";
 
   switch (env) {
     case "production":

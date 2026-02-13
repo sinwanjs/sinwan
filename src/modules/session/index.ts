@@ -9,7 +9,7 @@
  * import { session, FileStore } from "@sinwan/server/session";
  *
  * app.use(session({
- *   secret: process.env.SESSION_SECRET!,
+ *   secret: Bun.env.SESSION_SECRET!,
  *   store: new FileStore({ path: "./.sessions" }),
  *   cookie: {
  *     httpOnly: true,
@@ -99,7 +99,7 @@ export function createSession(secret: string, store?: SessionStore) {
 export function createDevSession(secret: string) {
   console.warn(
     "⚠️  Using MemoryStore for development. " +
-      "Sessions will be lost on restart."
+      "Sessions will be lost on restart.",
   );
 
   return createSession(secret, new MemoryStore());

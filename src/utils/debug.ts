@@ -130,7 +130,7 @@ export class Debug {
   private maxHistorySize: number = 500;
 
   constructor(options: DebugOptions = {}) {
-    this.enabled = options.enabled ?? process.env.NODE_ENV !== "production";
+    this.enabled = options.enabled ?? Bun.env.NODE_ENV !== "production";
     this.prefix = options.prefix ?? "[sinwan]";
     this.colors = options.colors ?? true;
     this.timestamp = options.timestamp ?? true;
@@ -848,7 +848,7 @@ export const logger = {
       {
         timestamp: new Date().toISOString().replace("T", " ").replace("Z", ""),
         runtime: isBun ? `Bun ${Bun.version}` : `Node ${process.version}`,
-        environment: process.env.NODE_ENV || "development",
+        environment: Bun.env.NODE_ENV || "development",
       },
     );
   },

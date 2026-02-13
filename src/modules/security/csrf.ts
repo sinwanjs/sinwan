@@ -33,7 +33,7 @@ export interface CSRFOptions {
   onError?: (
     req: Request,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => void | Promise<void>;
 
   /** Skip CSRF check for certain requests */
@@ -96,7 +96,7 @@ function generateSalt(): string {
 async function hashToken(
   token: string,
   salt: string,
-  secret?: string
+  secret?: string,
 ): Promise<string> {
   const data = `${salt}${token}${secret || ""}`;
   const encoder = new TextEncoder();
@@ -144,7 +144,7 @@ const DEFAULT_OPTIONS: Required<
 async function defaultOnError(
   _req: Request,
   res: Response,
-  _next: NextFunction
+  _next: NextFunction,
 ): Promise<void> {
   res.status(403);
   await res.json({
@@ -158,9 +158,9 @@ async function defaultOnError(
  * Get cookie options from config
  */
 function getCookieOptions(
-  options: CSRFOptions
+  options: CSRFOptions,
 ): Required<CSRFCookieOptions> & { name: string } {
-  const isProduction = process.env.NODE_ENV === "production";
+  const isProduction = Bun.env.NODE_ENV === "production";
 
   if (typeof options.cookie === "object") {
     return {
@@ -190,7 +190,7 @@ function getCookieOptions(
  */
 async function extractToken(
   req: Request,
-  options: CSRFOptions
+  options: CSRFOptions,
 ): Promise<string | undefined> {
   const headerName = options.headerName || DEFAULT_OPTIONS.headerName;
   const fieldName = options.fieldName || DEFAULT_OPTIONS.fieldName;
@@ -251,8 +251,8 @@ async function extractToken(
 export function csrf(options: CSRFOptions = {}): Middleware {
   const ignoreMethods = new Set(
     (options.ignoreMethods || DEFAULT_OPTIONS.ignoreMethods).map((m) =>
-      m.toUpperCase()
-    )
+      m.toUpperCase(),
+    ),
   );
   const tokenLength = options.tokenLength || DEFAULT_OPTIONS.tokenLength;
   const onError = options.onError || defaultOnError;
@@ -279,7 +279,7 @@ export function csrf(options: CSRFOptions = {}): Middleware {
       try {
         // Parse the stored token data
         const parsed = JSON.parse(
-          Buffer.from(existingToken, "base64").toString("utf-8")
+          Buffer.from(existingToken, "base64").toString("utf-8"),
         ) as CSRFTokenData;
         tokenData = parsed;
         tokenStore.set(req, parsed);
@@ -301,7 +301,7 @@ export function csrf(options: CSRFOptions = {}): Middleware {
 
       // Set the token cookie
       const cookieValue = Buffer.from(JSON.stringify(tokenData)).toString(
-        "base64"
+        "base64",
       );
       res.cookie(cookieOptions.name, cookieValue, {
         path: cookieOptions.path,
@@ -339,12 +339,12 @@ export function csrf(options: CSRFOptions = {}): Middleware {
         const expectedHash = await hashToken(
           tokenData.token,
           tokenData.salt,
-          options.secret
+          options.secret,
         );
         const submittedHash = await hashToken(
           submittedToken,
           tokenData.salt,
-          options.secret
+          options.secret,
         );
 
         if (!timingSafeEqual(expectedHash, submittedHash)) {
@@ -371,7 +371,7 @@ export function generateCSRFToken(length: number = 32): string {
  */
 export async function createSignedToken(
   secret: string,
-  length: number = 32
+  length: number = 32,
 ): Promise<{ token: string; signature: string }> {
   const token = generateRandomBytes(length);
   const salt = generateSalt();
@@ -389,7 +389,7 @@ export async function createSignedToken(
 export async function verifySignedToken(
   signedToken: string,
   signature: string,
-  secret: string
+  secret: string,
 ): Promise<boolean> {
   const [salt, token] = signedToken.split(".");
   if (!salt || !token) return false;
@@ -407,11 +407,11 @@ export function doubleSubmitCSRF(
     cookieName?: string;
     headerName?: string;
     secure?: boolean;
-  } = {}
+  } = {},
 ): Middleware {
   const cookieName = options.cookieName || "_csrf_double";
   const headerName = options.headerName || "x-csrf-token";
-  const secure = options.secure ?? process.env.NODE_ENV === "production";
+  const secure = options.secure ?? Bun.env.NODE_ENV === "production";
 
   return async (req: Request, res: Response, next: NextFunction) => {
     // Generate token for new sessions

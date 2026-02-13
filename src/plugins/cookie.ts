@@ -389,7 +389,7 @@ export const cookiePlugin = (options?: {
   version: "1.0.0",
 
   install(app: Application) {
-    const secret = options?.secret || process.env.COOKIE_SECRET;
+    const secret = options?.secret || Bun.env.COOKIE_SECRET;
     app.use(cookieParser(secret));
 
     if (options?.defaults) {

@@ -169,7 +169,7 @@ export function websocketPlugin(options: WebSocketOptions = {}): Plugin {
       });
 
       // Log initialization
-      if (process.env.NODE_ENV !== "production") {
+      if (Bun.env.NODE_ENV !== "production") {
         debug.success(`[sinwan] WebSocket server initialized at ${wsPath}`);
       }
     },

@@ -109,7 +109,7 @@ export class Application {
   // ============================================================================
 
   private _initializeDefaults(): void {
-    this.set("env", process.env.NODE_ENV || "development");
+    this.set("env", Bun.env.NODE_ENV || "development");
     this.set("x-powered-by", true);
     this.set("views", path.resolve("views"));
     this.set("view", View);
