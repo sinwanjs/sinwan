@@ -1,5 +1,5 @@
 <div align="left">
-  <table border="0" width="100%">
+  <table border="0" width="100%" align="center">
     <tr>
       <td width="150" align="left">
         <img src="https://avatars.githubusercontent.com/u/252437356?s=400&v=4" alt="Sinwan Logo" width="150" />
