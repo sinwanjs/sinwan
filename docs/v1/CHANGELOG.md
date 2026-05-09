@@ -92,4 +92,4 @@ Sinwan 1.0.0 is the first stable public release. It includes the original v1 run
 
 - Added 1.0.0 regression coverage for control flow, refs, namespaces, pluggable `domOps`, `onUpdated`, hydratable streaming, and release metadata.
 - Build pipeline: `tsc` for declarations and Bun.build for ESM/CJS development and production bundles.
-- Total tests: **99 / 99** pass.
+- Total tests: **114 / 114** pass.
