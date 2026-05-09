@@ -1,7 +1,7 @@
 <div align="left">
-  <table border="0">
+  <table border="0" width="100%">
     <tr>
-      <td>
+      <td width="150" align="left">
         <img src="https://avatars.githubusercontent.com/u/252437356?s=400&v=4" alt="Sinwan Logo" width="150" />
       </td>
       <td align="left">
