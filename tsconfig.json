@@ -1,0 +1,45 @@
+// tsconfig.json — base config (typecheck only, no emit)
+{
+  "compilerOptions": {
+    // ─── Environment ───────────────────────────────────────
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["bun"],
+
+    // ─── Module ────────────────────────────────────────────
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // ─── Strictness ────────────────────────────────────────
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "noFallthroughCasesInSwitch": true,
+
+    // ─── JSX ───────────────────────────────────────────────
+    "jsx": "react-jsx",
+    "jsxImportSource": "sinwan", // custom JSX runtime
+
+    // ─── No Emit (typecheck only) ──────────────────────────
+    "noEmit": true,
+
+    // ─── Paths ─────────────────────────────────────────────
+    "paths": {
+      "sinwan": ["./src/index.ts"],
+      "sinwan/jsx-runtime": ["./src/jsx/jsx-runtime.ts"],
+      "sinwan/jsx-dev-runtime": ["./src/jsx/jsx-dev-runtime.ts"]
+    },
+
+    // ─── Decorators (for DI / metadata) ───────────────────
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": false // handled by @sinwan/reflector
+  },
+  "include": ["src/**/*", "__tests__/**/*", "build.ts"],
+  "exclude": ["dist", "node_modules"]
+}

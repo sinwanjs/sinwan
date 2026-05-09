@@ -1,0 +1,127 @@
+{
+  "name": "sinwan",
+  "version": "1.1.1",
+  "description": "Sinwan — Reactive UI library with SSR, hydration, and fine-grained reactivity",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": {
+        "development": "./dist/esm/index.development.js",
+        "production": "./dist/esm/index.production.min.js",
+        "default": "./dist/esm/index.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/index.development.js",
+        "production": "./dist/cjs/index.production.min.js",
+        "default": "./dist/index.js"
+      },
+      "default": "./dist/index.js"
+    },
+    "./jsx-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "import": {
+        "development": "./dist/esm/jsx/jsx-runtime.development.js",
+        "production": "./dist/esm/jsx/jsx-runtime.production.min.js",
+        "default": "./dist/esm/jsx/jsx-runtime.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/jsx/jsx-runtime.development.js",
+        "production": "./dist/cjs/jsx/jsx-runtime.production.min.js",
+        "default": "./dist/jsx-runtime.js"
+      },
+      "default": "./dist/jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./dist/jsx-dev-runtime.d.ts",
+      "import": {
+        "development": "./dist/esm/jsx/jsx-dev-runtime.development.js",
+        "production": "./dist/esm/jsx/jsx-dev-runtime.production.min.js",
+        "default": "./dist/esm/jsx/jsx-dev-runtime.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/jsx/jsx-dev-runtime.development.js",
+        "production": "./dist/cjs/jsx/jsx-dev-runtime.production.min.js",
+        "default": "./dist/jsx-dev-runtime.js"
+      },
+      "default": "./dist/jsx-dev-runtime.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": {
+        "development": "./dist/esm/server/index.development.js",
+        "production": "./dist/esm/server/index.production.min.js",
+        "default": "./dist/esm/server/index.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/server/index.development.js",
+        "production": "./dist/cjs/server/index.production.min.js",
+        "default": "./dist/server.js"
+      },
+      "default": "./dist/server.js"
+    },
+    "./renderer": {
+      "types": "./dist/renderer.d.ts",
+      "import": {
+        "development": "./dist/esm/renderer/index.development.js",
+        "production": "./dist/esm/renderer/index.production.min.js",
+        "default": "./dist/esm/renderer/index.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/renderer/index.development.js",
+        "production": "./dist/cjs/renderer/index.production.min.js",
+        "default": "./dist/renderer.js"
+      },
+      "default": "./dist/renderer.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "bun run build.ts",
+    "build:types": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "bun run typecheck && bun run build && bun run test",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts,.tsx",
+    "app": "cd test-app && bun run dev",
+    "app:i": "cd test-app && bun i"
+  },
+  "keywords": [
+    "sinwan",
+    "reactive",
+    "ui",
+    "ssr",
+    "hydration",
+    "jsx",
+    "signals",
+    "components",
+    "framework",
+    "bun"
+  ],
+  "author": "Mohammed Ben Cheikh",
+  "license": "MIT",
+  "bugs": "https://github.com/sinwanjs/sinwan-ui/issues",
+  "homepage": "https://sinwanjs.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sinwanjs/sinwan-ui",
+    "directory": "sinwan-ui"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "happy-dom": "^20.9.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

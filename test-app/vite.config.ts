@@ -1,0 +1,12 @@
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  esbuild: {
+    jsx: "automatic",
+    jsxImportSource: "sinwan",
+  },
+  server: {
+    port: 5173,
+    open: true,
+  },
+});
