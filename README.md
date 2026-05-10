@@ -8,9 +8,9 @@
         <h1>Sinwan</h1>
         <p>A fast reactive UI library for JSX, fine-grained reactivity, SSR, and hydration.</p>
         <p>
-          <a href="https://github.com/sinwanjs/sinwan-ui/stargazers"><img src="https://img.shields.io/github/stars/sinwanjs/sinwan-ui?style=flat-square&color=ffce3b" alt="GitHub stars" /></a>
-          <a href="https://www.npmjs.com/package/sinwan"><img src="https://img.shields.io/npm/dt/sinwan?style=flat-square&color=42b883" alt="NPM Downloads" /></a>
-          <a href="./LICENSE"><img src="https://img.shields.io/npm/l/sinwan?style=flat-square&color=35495e" alt="License" /></a>
+          <a href="https://github.com/sinwanjs/sinwan-ui/stargazers"><img src="https://img.shields.io/github/stars/sinwanjs/sinwan-ui.svg?color=ffce3b&label=stars&logo=github" alt="GitHub stars" /></a>
+          <a href="https://www.npmjs.com/package/sinwan"><img src="https://img.shields.io/npm/dm/sinwan?color=42b883&label=downloads&logo=npm" alt="NPM Downloads" /></a>
+          <a href="./LICENSE"><img src="https://img.shields.io/npm/l/sinwan?color=35495e&label=license" alt="License" /></a>
         </p>
       </td>
     </tr>
@@ -86,20 +86,6 @@ import { hydrate } from "sinwan";
 
 hydrate(App, document.getElementById("app")!, { initial: 5 });
 ```
-
-<div align="center">
-  <h2>Sinwan Pro</h2>
-
-  <p>Take your Sinwan applications to the next level with <b>Sinwan Pro</b>. Designed for enterprise-grade performance and developer productivity.</p>
-
-  <p>
-    🚀 <b>Premium Components</b> • 🛠️ <b>Enterprise Support</b> • ⚡ <b>Advanced SSR Patterns</b> • 🎨 <b>Custom Theming</b>
-  </p>
-
-  <a href="https://sinwanjs.com/pro">
-    <img src="https://img.shields.io/badge/Learn%20more%20about%20Sinwan%20Pro-000000?style=for-the-badge&logo=pro&logoColor=white" alt="Learn more about Sinwan Pro" />
-  </a>
-</div>
 
 ## Documentation
 
