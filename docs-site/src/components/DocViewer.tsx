@@ -1,5 +1,5 @@
 /** @jsxImportSource sinwan */
-import { createComponent, inject, signal, effect } from "sinwan";
+import { createComponent, inject, signal, effect, onUnmounted } from "sinwan";
 import { CurrentPageKey } from "../App";
 import { marked } from "marked";
 import Prism from "prismjs";
@@ -20,7 +20,14 @@ const docs = import.meta.glob("../../../docs/v1/*.md", {
 export const DocViewer = createComponent(() => {
   const currentPage = inject(CurrentPageKey)!;
   const content = signal("");
+  const rawContent = signal("");
   const isLoading = signal(false);
+  const copyLabel = signal("Copy page");
+  let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
+
+  onUnmounted(() => {
+    if (copyResetTimer) clearTimeout(copyResetTimer);
+  });
 
   // Load content when currentPage changes
   effect(() => {
@@ -31,6 +38,7 @@ export const DocViewer = createComponent(() => {
       const mod = docs[path] as { default: string } | undefined;
 
       if (mod) {
+        rawContent.value = mod.default;
         content.value = marked.parse(mod.default) as string;
       } else {
         console.error(
@@ -48,8 +56,53 @@ export const DocViewer = createComponent(() => {
     loadDoc();
   });
 
+  const copyPageContent = async () => {
+    const text = rawContent.value.trim();
+    if (!text) return;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+
+      copyLabel.value = "Copied";
+      if (copyResetTimer) clearTimeout(copyResetTimer);
+      copyResetTimer = setTimeout(() => {
+        copyLabel.value = "Copy page";
+      }, 1500);
+    } catch (error) {
+      console.error("[DocViewer] Copy failed:", error);
+      copyLabel.value = "Copy failed";
+      if (copyResetTimer) clearTimeout(copyResetTimer);
+      copyResetTimer = setTimeout(() => {
+        copyLabel.value = "Copy page";
+      }, 1500);
+    }
+  };
+
   return (
     <div class="content-viewer">
+      <div class="doc-toolbar">
+        <button
+          class="copy-button"
+          type="button"
+          onClick={copyPageContent}
+          disabled={() => !rawContent.value}
+          aria-label="Copy the current page content"
+        >
+          {() => copyLabel.value}
+        </button>
+      </div>
       {() => isLoading.value && <div class="loading-indicator">Loading...</div>}
       <div class="doc-body">
         {() => {

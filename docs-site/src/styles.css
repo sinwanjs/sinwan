@@ -300,9 +300,46 @@ a:hover {
 
 .content-viewer {
   display: flex;
+  flex-direction: column;
+  gap: 1rem;
   justify-content: center;
   animation: fadeIn 0.4s ease-out;
   position: relative;
+}
+
+.doc-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  width: 100%;
+}
+
+.copy-button {
+  min-width: 7.5rem;
+  height: 2.75rem;
+  padding: 0 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(125, 211, 252, 0.16), rgba(196, 181, 253, 0.12));
+  color: var(--text);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: transform 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
+}
+
+.copy-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+
+.copy-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .loading-indicator {
