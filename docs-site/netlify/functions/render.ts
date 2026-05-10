@@ -44,47 +44,22 @@ export default async (req: Request, context: Context) => {
       return new Response("Document not found", { status: 404 });
     }
 
-    // Extract title from markdown
-    const titleMatch = content.match(/^#\s+(.+)$/m);
-    const docTitle = titleMatch ? titleMatch[1] : doc;
-
-    // Escape content for HTML attribute
-    const escapedContent = content
-      .replace(/&/g, "&amp;")
-      .replace(/"/g, "&quot;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-
-    // Return SSR HTML with hydration data
-    const html = `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${docTitle} - Sinwan Documentation</title>
-    <meta name="description" content="${docTitle} - Sinwan reactive UI library documentation" />
-    <meta property="og:title" content="${docTitle} - Sinwan" />
-    <meta property="og:type" content="website" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="/assets/index-BHBhxa4d.js"><\\/script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Bl-z6hkM.css">
-  </head>
-  <body>
-    <div id="app" data-initial-page="${doc}" data-initial-content="${escapedContent}"></div>
-  </body>
-</html>`;
-
-    return new Response(html, {
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "public, max-age=3600",
+    // Return SSR data as JSON for client-side rendering
+    return new Response(
+      JSON.stringify({
+        success: true,
+        doc,
+        content,
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "public, max-age=3600",
+        },
       },
-    });
+    );
   } catch (error) {
     console.error("[ssr] Error:", error);
     return new Response("Server error", { status: 500 });
   }
 };
-

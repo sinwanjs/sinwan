@@ -96,13 +96,13 @@ export const DocViewer = createComponent(() => {
       <div class="doc-body">
         {() => {
           if (!content.value) return null;
-          
+
           return (
             <div
               ref={(el) => {
                 if (el) {
                   el.innerHTML = content.value;
-                  rewriteInternalDocLinks(el);
+                  rewriteInternalDocLinks(el as HTMLElement);
                   Prism.highlightAllUnder(el);
                 }
               }}
