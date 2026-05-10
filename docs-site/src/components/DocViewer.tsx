@@ -3,7 +3,6 @@ import { createComponent, inject, signal, effect } from "sinwan";
 import { CurrentPageKey } from "../App";
 import { marked } from "marked";
 import Prism from "prismjs";
-// @ts-expect-error - CSS import for syntax highlighting
 import "prismjs/themes/prism-tomorrow.css";
 // Add some common languages
 import "prismjs/components/prism-typescript";

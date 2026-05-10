@@ -52,7 +52,11 @@ export default async (req: Request, context: Context) => {
     if (!content) {
       console.error("[render] All paths failed for doc:", doc);
       return new Response(
-        JSON.stringify({ error: "Document not found", doc, attempts: possiblePaths }),
+        JSON.stringify({
+          error: "Document not found",
+          doc,
+          attempts: possiblePaths,
+        }),
         {
           status: 404,
           headers: { "Content-Type": "application/json" },
