@@ -1,0 +1,25 @@
+{
+  "name": "docs-site",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/marked": "^6.0.0",
+    "@types/prismjs": "^1.26.6"
+  },
+  "peerDependencies": {
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "marked": "^18.0.3",
+    "prismjs": "^1.30.0",
+    "sinwan": "1.1.2",
+    "vite": "^8.0.11"
+  }
+}

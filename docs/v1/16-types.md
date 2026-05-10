@@ -69,7 +69,7 @@ What component / page setup functions are allowed to return.
 
 ```ts
 type PropsWithChildren<P = {}> = P & { children?: SinwanNode };
-type PropsWithSlots<P = {}>    = P & { children?: SinwanSlots };
+type PropsWithSlots<P = {}> = P & { children?: SinwanSlots };
 ```
 
 Helpers when you don’t want to type `children` yourself.
@@ -82,9 +82,9 @@ Helpers when you don’t want to type `children` yourself.
 
 ```ts
 interface SinwanComponent<P extends object = {}> {
-  (props: P & { children?: SinwanNode | SinwanSlots }):
-    | SinwanElement
-    | Promise<SinwanElement>;
+  (
+    props: P & { children?: SinwanNode | SinwanSlots },
+  ): SinwanElement | Promise<SinwanElement>;
   _SinwanComponent?: true;
   _displayName?: string;
 }
@@ -107,8 +107,9 @@ Returned by `createPage`. Differs from `SinwanComponent` only in that pages take
 ### `SinwanLayout<P>`
 
 ```ts
-type SinwanLayout<P extends object = {}> =
-  SinwanComponent<P & { children: SinwanNode }>;
+type SinwanLayout<P extends object = {}> = SinwanComponent<
+  P & { children: SinwanNode }
+>;
 ```
 
 A `SinwanComponent` whose `children` prop is always required.
@@ -161,9 +162,9 @@ Props for the built-in reactive control-flow helpers.
 
 ```ts
 interface Signal<T> {
-  value: T;                                       // get/set, tracks/triggers
-  peek(): T;                                      // read without tracking
-  subscribe(fn: (value: T) => void): () => void;  // manual subscription
+  value: T; // get/set, tracks/triggers
+  peek(): T; // read without tracking
+  subscribe(fn: (value: T) => void): () => void; // manual subscription
 }
 ```
 
@@ -173,7 +174,7 @@ Returned by `signal(initial)`.
 
 ```ts
 interface Computed<T> {
-  readonly value: T;  // lazy & cached
+  readonly value: T; // lazy & cached
   peek(): T;
 }
 ```
@@ -184,7 +185,7 @@ Returned by `computed(getter)`.
 
 ```ts
 type CleanupFn = () => void;
-type EffectFn  = () => CleanupFn | void;
+type EffectFn = () => CleanupFn | void;
 ```
 
 `effect(fn)`: `fn` is `EffectFn`; it returns a `CleanupFn`. The user-supplied effect may itself return a `CleanupFn` or `void`.
@@ -205,10 +206,10 @@ interface ComponentInstance {
   children: ComponentInstance[];
   effects: CleanupFn[];
 
-  _mountedHooks  : (() => void)[];
+  _mountedHooks: (() => void)[];
   _unmountedHooks: (() => void)[];
-  _updatedHooks  : (() => void)[];
-  _errorHooks    : ((err: Error) => void)[];
+  _updatedHooks: (() => void)[];
+  _errorHooks: ((err: Error) => void)[];
 
   provides: Record<string | symbol, unknown>;
 
@@ -344,7 +345,7 @@ Used by the DOM walker during hydration. Mostly internal; exposed for advanced c
 class HtmlEscapedString extends String {
   readonly value: string;
   constructor(value: string);
-  toString(): string;  // returns this.value
+  toString(): string; // returns this.value
 }
 ```
 
@@ -387,22 +388,22 @@ declare module "sinwan/jsx-runtime" {
 
 ## All types at a glance
 
-| Type | Subpath | Purpose |
-|---|---|---|
-| `SinwanNode`, `SinwanElement`, `SinwanPrimitive` | `sinwan` | Element model |
-| `SinwanComponent<P>`, `SinwanPage<D>`, `SinwanLayout<P>` | `sinwan` | Component shapes |
-| `SinwanSlots`, `RenderResult` | `sinwan` | Composition helpers |
-| `PropsWithChildren<P>`, `PropsWithSlots<P>` | `sinwan` | Sugar |
-| `Reactive<T>` | `sinwan` | Plain-or-reactive values |
-| `ShowProps<T>`, `ForProps<T>`, `SwitchProps`, `MatchProps<T>`, `IndexProps<T>`, `KeyProps<T>`, `DynamicProps`, `VisibleProps`, `PortalProps` | `sinwan` | Control flow |
-| `Signal<T>`, `Computed<T>` | `sinwan` | Reactive primitives |
-| `CleanupFn`, `EffectFn` | `sinwan` | Effect contract |
-| `ComponentInstance` | `sinwan` | Runtime record |
-| `InjectionKey<T>` | `sinwan` | DI key |
-| `MountedNode` (+ variants) | `sinwan` | Renderer descriptors |
-| `AppInstance` | `sinwan` | Mount/hydrate handle |
-| `DOMOps` | `sinwan` | DOM abstraction |
-| `HydrationCursor` | `sinwan` | DOM walker state |
-| `HtmlEscapedString` | `sinwan` | Trust marker for HTML |
+| Type                                                                                                                                         | Subpath  | Purpose                  |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------ |
+| `SinwanNode`, `SinwanElement`, `SinwanPrimitive`                                                                                             | `sinwan` | Element model            |
+| `SinwanComponent<P>`, `SinwanPage<D>`, `SinwanLayout<P>`                                                                                     | `sinwan` | Component shapes         |
+| `SinwanSlots`, `RenderResult`                                                                                                                | `sinwan` | Composition helpers      |
+| `PropsWithChildren<P>`, `PropsWithSlots<P>`                                                                                                  | `sinwan` | Sugar                    |
+| `Reactive<T>`                                                                                                                                | `sinwan` | Plain-or-reactive values |
+| `ShowProps<T>`, `ForProps<T>`, `SwitchProps`, `MatchProps<T>`, `IndexProps<T>`, `KeyProps<T>`, `DynamicProps`, `VisibleProps`, `PortalProps` | `sinwan` | Control flow             |
+| `Signal<T>`, `Computed<T>`                                                                                                                   | `sinwan` | Reactive primitives      |
+| `CleanupFn`, `EffectFn`                                                                                                                      | `sinwan` | Effect contract          |
+| `ComponentInstance`                                                                                                                          | `sinwan` | Runtime record           |
+| `InjectionKey<T>`                                                                                                                            | `sinwan` | DI key                   |
+| `MountedNode` (+ variants)                                                                                                                   | `sinwan` | Renderer descriptors     |
+| `AppInstance`                                                                                                                                | `sinwan` | Mount/hydrate handle     |
+| `DOMOps`                                                                                                                                     | `sinwan` | DOM abstraction          |
+| `HydrationCursor`                                                                                                                            | `sinwan` | DOM walker state         |
+| `HtmlEscapedString`                                                                                                                          | `sinwan` | Trust marker for HTML    |
 
 Every type listed here is part of the public 1.x API. Anything not on this list is implementation detail and may change between minor versions.

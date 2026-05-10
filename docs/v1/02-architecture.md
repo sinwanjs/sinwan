@@ -80,7 +80,7 @@ JSX in Sinwan is **not** a virtual DOM. The runtime functions return a small, pl
 
 ```ts
 interface SinwanElement {
-  tag: string | SinwanComponent<any>;     // "div" or a function
+  tag: string | SinwanComponent<any>; // "div" or a function
   props: Record<string, unknown>;
   children: SinwanNode[];
 }
@@ -90,7 +90,11 @@ interface SinwanElement {
 
 ```ts
 type SinwanNode =
-  | string | number | boolean | null | undefined
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
   | SinwanElement
   | Promise<SinwanElement>
   | HtmlEscapedString
@@ -103,11 +107,11 @@ A renderer (client, server, hydrator) walks this tree and produces output. The o
 
 Most React-like libraries re-run the component function and diff a virtual tree. Sinwan instead binds reactivity directly to the DOM at construction time:
 
-| Where a `Signal` / `Computed` appears | What the renderer does |
-|---|---|
-| As a child node `{count}` | Creates a `Text` node + `effect(() => text.data = String(s.value))` |
-| As an attribute `class={c}` | Creates an `effect(() => el.setAttribute("class", c.value))` |
-| As a property `value={input}` | Same idea, mapped to DOM property when applicable |
+| Where a `Signal` / `Computed` appears | What the renderer does                                              |
+| ------------------------------------- | ------------------------------------------------------------------- |
+| As a child node `{count}`             | Creates a `Text` node + `effect(() => text.data = String(s.value))` |
+| As an attribute `class={c}`           | Creates an `effect(() => el.setAttribute("class", c.value))`        |
+| As a property `value={input}`         | Same idea, mapped to DOM property when applicable                   |
 
 The component function runs **once** per mount/hydrate. After that, only effects fire, each updating exactly one node or one attribute. No diffs, no scheduler walks of a virtual tree, no per-update re-execution of user code.
 
@@ -143,12 +147,12 @@ interface ComponentInstance {
   props: Record<string, any>;
   parent: ComponentInstance | null;
   children: ComponentInstance[];
-  effects: CleanupFn[];           // every effect created during setup
+  effects: CleanupFn[]; // every effect created during setup
   _mountedHooks: (() => void)[];
   _unmountedHooks: (() => void)[];
   _updatedHooks: (() => void)[];
   _errorHooks: ((err: Error) => void)[];
-  provides: Record<string | symbol, unknown>;  // prototype-chained
+  provides: Record<string | symbol, unknown>; // prototype-chained
   isMounted: boolean;
   isUnmounted: boolean;
   // ...
@@ -194,11 +198,11 @@ The server renderer is `async` because components and the JSX they return can be
 
 `renderToHydratableString` adds three kinds of markers:
 
-| Marker | Where | Purpose |
-|---|---|---|
-| `data-sinwan-id="cN"` | Component root element | Identify component boundaries |
-| `<!--sinwan-t:N-->value<!--/sinwan-t-->` | Reactive text slot | Locate reactive text on the client |
-| `data-sinwan-ev="click:N"` | Element with event handlers | Optional event-binding hints |
+| Marker                                   | Where                       | Purpose                            |
+| ---------------------------------------- | --------------------------- | ---------------------------------- |
+| `data-sinwan-id="cN"`                    | Component root element      | Identify component boundaries      |
+| `<!--sinwan-t:N-->value<!--/sinwan-t-->` | Reactive text slot          | Locate reactive text on the client |
+| `data-sinwan-ev="click:N"`               | Element with event handlers | Optional event-binding hints       |
 
 On the client, `hydrate(Component, container, props)`:
 

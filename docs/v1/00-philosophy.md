@@ -15,12 +15,12 @@ In many frameworks (like React), your component function is a "render function" 
 
 ### Comparison: React vs Sinwan
 
-| Concept | React | Sinwan |
-|---|---|---|
-| **Component Run** | Every state change | Once at birth |
-| **Logic Placement** | Top-level of function | Top-level (setup) |
-| **Updates** | Re-runs function, diffs VDOM | Direct DOM node updates |
-| **Reactivity** | Hook-based snapshots | Signal-based live streams |
+| Concept             | React                        | Sinwan                    |
+| ------------------- | ---------------------------- | ------------------------- |
+| **Component Run**   | Every state change           | Once at birth             |
+| **Logic Placement** | Top-level of function        | Top-level (setup)         |
+| **Updates**         | Re-runs function, diffs VDOM | Direct DOM node updates   |
+| **Reactivity**      | Hook-based snapshots         | Signal-based live streams |
 
 ---
 
@@ -32,7 +32,9 @@ In Sinwan, **Signals are the source of truth**.
 - **Do use Getters or Computeds**: Use `{() => count.value + 1}` or a `computed()` so the renderer can track the dependency and update the DOM automatically.
 
 ### The "Reactive Block" Rule
-Whenever you see `{ }` in your JSX, ask yourself: *"Is this a live value or a static snapshot?"*
+
+Whenever you see `{ }` in your JSX, ask yourself: _"Is this a live value or a static snapshot?"_
+
 - `{count}` — Live (Signal object).
 - `{() => count.value}` — Live (Function).
 - `{count.value}` — **Static** (Current primitive value).

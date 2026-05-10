@@ -39,16 +39,16 @@ const html = await renderToString(<App data={data} />);
 
 ### What it handles
 
-| Input | Output |
-|---|---|
-| `null`, `undefined`, `boolean` | `""` |
-| `string` | escaped string (`&`, `<`, `>`, `"`, `'`) |
-| `number` | raw stringified |
-| `HtmlEscapedString` | the underlying string (already trusted) |
-| Array | concatenation of children |
-| `Promise<SinwanElement>` | awaited, then rendered |
-| Functional component | called (possibly async), then rendered |
-| Intrinsic `<tag>` | `<tag …attrs>children</tag>` (no closing for void elements) |
+| Input                          | Output                                                      |
+| ------------------------------ | ----------------------------------------------------------- |
+| `null`, `undefined`, `boolean` | `""`                                                        |
+| `string`                       | escaped string (`&`, `<`, `>`, `"`, `'`)                    |
+| `number`                       | raw stringified                                             |
+| `HtmlEscapedString`            | the underlying string (already trusted)                     |
+| Array                          | concatenation of children                                   |
+| `Promise<SinwanElement>`       | awaited, then rendered                                      |
+| Functional component           | called (possibly async), then rendered                      |
+| Intrinsic `<tag>`              | `<tag …attrs>children</tag>` (no closing for void elements) |
 
 Void elements (`area`, `base`, `br`, `col`, `embed`, `hr`, `img`, `input`, `link`, `meta`, `param`, `source`, `track`, `wbr`) emit no closing tag and ignore children.
 
@@ -67,7 +67,13 @@ Void elements (`area`, `base`, `br`, `col`, `embed`, `hr`, `img`, `input`, `link
 ```tsx
 const Posts = createComponent(async () => {
   const items = await db.posts.findAll();
-  return <ul>{items.map(p => <li>{p.title}</li>)}</ul>;
+  return (
+    <ul>
+      {items.map((p) => (
+        <li>{p.title}</li>
+      ))}
+    </ul>
+  );
 });
 
 const html = await renderToString(<Posts />);
@@ -110,7 +116,10 @@ Throws `Error: Page "<name>" not found in registry` if the name was never regist
 ## Streaming SSR — `streamPage(page, data)`
 
 ```ts
-function streamPage<D>(page: SinwanPage<D>, data: D): ReadableStream<Uint8Array>;
+function streamPage<D>(
+  page: SinwanPage<D>,
+  data: D,
+): ReadableStream<Uint8Array>;
 ```
 
 Returns a Web `ReadableStream<Uint8Array>` that emits HTML chunks as they are produced — no buffering of the full output. The encoder is `TextEncoder` so chunks are UTF-8 bytes ready to send.
@@ -133,9 +142,11 @@ Bun.serve({
 // Node (with web fetch / Hono)
 import { Hono } from "hono";
 const app = new Hono();
-app.get("/", c => c.body(streamPage(HomePage, { title: "Home" }), 200, {
-  "Content-Type": "text/html; charset=utf-8",
-}));
+app.get("/", (c) =>
+  c.body(streamPage(HomePage, { title: "Home" }), 200, {
+    "Content-Type": "text/html; charset=utf-8",
+  }),
+);
 ```
 
 ```ts
@@ -212,7 +223,7 @@ const Layout = createComponent(({ children }) => {
       </div>
     );
   }
-  return <div>{children}</div>;  // single child or array
+  return <div>{children}</div>; // single child or array
 });
 ```
 

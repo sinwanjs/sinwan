@@ -18,9 +18,9 @@ In `tsconfig.json`:
 ```jsonc
 {
   "compilerOptions": {
-    "jsx": "react-jsx",          // production runtime
-    "jsxImportSource": "sinwan"   // → "sinwan/jsx-runtime"
-  }
+    "jsx": "react-jsx", // production runtime
+    "jsxImportSource": "sinwan", // → "sinwan/jsx-runtime"
+  },
 }
 ```
 
@@ -30,8 +30,8 @@ For the dev runtime (extra source positions on each call):
 {
   "compilerOptions": {
     "jsx": "react-jsxdev",
-    "jsxImportSource": "sinwan"   // → "sinwan/jsx-dev-runtime"
-  }
+    "jsxImportSource": "sinwan", // → "sinwan/jsx-dev-runtime"
+  },
 }
 ```
 
@@ -65,9 +65,16 @@ The runtime functions are just convenience constructors:
 
 ```ts
 // jsx-runtime.ts (excerpt)
-export function jsx (type, props, key?): SinwanElement;
+export function jsx(type, props, key?): SinwanElement;
 export function jsxs(type, props, key?): SinwanElement;
-export function jsxDEV(type, props, key, isStatic, source?, self?): SinwanElement;
+export function jsxDEV(
+  type,
+  props,
+  key,
+  isStatic,
+  source?,
+  self?,
+): SinwanElement;
 
 export const Fragment: unique symbol;
 ```
@@ -101,11 +108,14 @@ For SSR, fragments are also transparent. For hydration, the fragment children ar
 
 ```tsx
 <div>
-  Hello, {name}!                   {/* string + signal interpolation */}
-  {children}                        {/* nested array/element */}
-  {items.map(i => <Item {...i} />)} {/* array */}
-  {condition && <Foo />}            {/* boolean → empty */}
-  {raw("<b>trusted</b>")}           {/* HtmlEscapedString */}
+  Hello, {name}! {/* string + signal interpolation */}
+  {children} {/* nested array/element */}
+  {items.map((i) => (
+    <Item {...i} />
+  ))}{" "}
+  {/* array */}
+  {condition && <Foo />} {/* boolean → empty */}
+  {raw("<b>trusted</b>")} {/* HtmlEscapedString */}
 </div>
 ```
 
@@ -125,19 +135,19 @@ Children may be:
 
 Attribute names follow JSX/React conventions, with a few aliases handled automatically:
 
-| JSX prop | DOM result |
-|---|---|
-| `class` | `class` (passes through) |
-| `className` | `class` |
-| `htmlFor` | `for` |
-| `tabIndex` | `tabindex` |
-| `crossOrigin` | `crossorigin` |
-| `style={...}` (object) | `el.style.foo = "bar"` per key |
-| `class={["a", isActive && "b"]}` | `"a b"` (falsy filtered) |
-| `class={{a: true, b: false}}` | `"a"` |
-| Boolean `true` | attribute present, no value |
-| Boolean `false`, `null`, `undefined` | attribute removed |
-| Signal / Computed / Function | reactive attribute via effect |
+| JSX prop                             | DOM result                     |
+| ------------------------------------ | ------------------------------ |
+| `class`                              | `class` (passes through)       |
+| `className`                          | `class`                        |
+| `htmlFor`                            | `for`                          |
+| `tabIndex`                           | `tabindex`                     |
+| `crossOrigin`                        | `crossorigin`                  |
+| `style={...}` (object)               | `el.style.foo = "bar"` per key |
+| `class={["a", isActive && "b"]}`     | `"a b"` (falsy filtered)       |
+| `class={{a: true, b: false}}`        | `"a"`                          |
+| Boolean `true`                       | attribute present, no value    |
+| Boolean `false`, `null`, `undefined` | attribute removed              |
+| Signal / Computed / Function         | reactive attribute via effect  |
 
 DOM **properties** like `value`, `checked`, `selected`, `disabled`, `readOnly`, `multiple`, `indeterminate` are set as JS properties (not attributes), matching React.
 
@@ -185,7 +195,11 @@ const Card = createComponent(() => {
     el?.focus();
   });
 
-  return <div ref={node => (el = node as HTMLDivElement | null)} tabIndex={0}>Card</div>;
+  return (
+    <div ref={(node) => (el = node as HTMLDivElement | null)} tabIndex={0}>
+      Card
+    </div>
+  );
 });
 ```
 
@@ -220,7 +234,11 @@ jsxDEV(type, props, key, isStaticChildren, source?, self?)
 When `source` is provided, the runtime attaches it to the element as `__source`:
 
 ```ts
-{ fileName: string; lineNumber: number; columnNumber: number }
+{
+  fileName: string;
+  lineNumber: number;
+  columnNumber: number;
+}
 ```
 
 You can read this in dev tools or custom error reporters by checking `(element as any).__source`.

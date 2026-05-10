@@ -4,14 +4,14 @@ Sinwan is designed to run on every modern JS runtime. The core (reactivity, comp
 
 ## Compatibility matrix
 
-| Runtime | Core | Client renderer | SSR (string) | SSR (stream) | Hydration | Notes |
-|---|---|---|---|---|---|---|
-| **Bun** ≥ 1.0 | ✅ | ✅ | ✅ | ✅ | ✅ | Uses `Bun.escapeHTML` (native fast path) |
-| **Node.js** ≥ 18 | ✅ | n/a | ✅ | ✅ | n/a | `ReadableStream` and `TextEncoder` are global since 18 |
-| **Node.js** ≥ 22 | ✅ | n/a | ✅ | ✅ | n/a | Recommended for best perf |
-| **Deno** ≥ 1.30 | ✅ | n/a | ✅ | ✅ | n/a | Web APIs are first-class |
-| **Cloudflare Workers** | ✅ | n/a | ✅ | ✅ | n/a | Streaming responses work natively |
-| **Browsers** (Chrome/Firefox/Safari/Edge) | ✅ | ✅ | ✅* | ✅* | ✅ | *can render to a string client-side; not a typical use case |
+| Runtime                                   | Core | Client renderer | SSR (string) | SSR (stream) | Hydration | Notes                                                        |
+| ----------------------------------------- | ---- | --------------- | ------------ | ------------ | --------- | ------------------------------------------------------------ |
+| **Bun** ≥ 1.0                             | ✅   | ✅              | ✅           | ✅           | ✅        | Uses `Bun.escapeHTML` (native fast path)                     |
+| **Node.js** ≥ 18                          | ✅   | n/a             | ✅           | ✅           | n/a       | `ReadableStream` and `TextEncoder` are global since 18       |
+| **Node.js** ≥ 22                          | ✅   | n/a             | ✅           | ✅           | n/a       | Recommended for best perf                                    |
+| **Deno** ≥ 1.30                           | ✅   | n/a             | ✅           | ✅           | n/a       | Web APIs are first-class                                     |
+| **Cloudflare Workers**                    | ✅   | n/a             | ✅           | ✅           | n/a       | Streaming responses work natively                            |
+| **Browsers** (Chrome/Firefox/Safari/Edge) | ✅   | ✅              | ✅\*         | ✅\*         | ✅        | \*can render to a string client-side; not a typical use case |
 
 “n/a” means the feature requires a DOM — only the browser provides one.
 
@@ -38,10 +38,13 @@ For the **client** path:
 `escapeHtml` probes `globalThis.Bun?.escapeHTML` once at module load:
 
 ```ts
-const _bun = (globalThis as any).Bun as { escapeHTML?: (s: string) => string } | undefined;
-const _nativeEscape = typeof _bun?.escapeHTML === "function"
-  ? _bun.escapeHTML.bind(_bun)
-  : undefined;
+const _bun = (globalThis as any).Bun as
+  | { escapeHTML?: (s: string) => string }
+  | undefined;
+const _nativeEscape =
+  typeof _bun?.escapeHTML === "function"
+    ? _bun.escapeHTML.bind(_bun)
+    : undefined;
 ```
 
 - If `Bun.escapeHTML` is present → use it (fast C path).
@@ -79,8 +82,8 @@ These have no browser-specific dependencies but are usually unused in client bun
     "strict": true,
 
     "jsx": "react-jsx",
-    "jsxImportSource": "sinwan"
-  }
+    "jsxImportSource": "sinwan",
+  },
 }
 ```
 
@@ -88,14 +91,14 @@ If you target Node-only with TypeScript ≥ 5.5, replace `"DOM"` with the runtim
 
 ## Bundlers tested
 
-| Bundler | Status |
-|---|---|
-| **Bun bundler** | First-class (Sinwan builds itself with it) |
-| **Vite** | ✅ — picks ESM + the `development`/`production` condition automatically |
-| **Webpack** ≥ 5 | ✅ — uses CJS shim or ESM via conditions |
-| **esbuild** | ✅ |
-| **Rollup** ≥ 3 | ✅ |
-| **tsc-only emit** | ✅ — Sinwan already ships pre-bundled |
+| Bundler           | Status                                                                  |
+| ----------------- | ----------------------------------------------------------------------- |
+| **Bun bundler**   | First-class (Sinwan builds itself with it)                              |
+| **Vite**          | ✅ — picks ESM + the `development`/`production` condition automatically |
+| **Webpack** ≥ 5   | ✅ — uses CJS shim or ESM via conditions                                |
+| **esbuild**       | ✅                                                                      |
+| **Rollup** ≥ 3    | ✅                                                                      |
+| **tsc-only emit** | ✅ — Sinwan already ships pre-bundled                                   |
 
 `process.env.NODE_ENV` substitution is the standard way to pick the production bundle. Most bundlers do this for you (`vite build`, `webpack --mode=production`, etc.).
 
@@ -109,16 +112,16 @@ The package’s `exports` field uses nested conditions so each consumer gets the
     "types": "./dist/index.d.ts",
     "import": {
       "development": "./dist/esm/index.development.js",
-      "production":  "./dist/esm/index.production.min.js",
-      "default":     "./dist/esm/index.production.min.js"
+      "production": "./dist/esm/index.production.min.js",
+      "default": "./dist/esm/index.production.min.js",
     },
     "require": {
       "development": "./dist/cjs/index.development.js",
-      "production":  "./dist/cjs/index.production.min.js",
-      "default":     "./dist/index.js"
+      "production": "./dist/cjs/index.production.min.js",
+      "default": "./dist/index.js",
     },
-    "default": "./dist/index.js"
-  }
+    "default": "./dist/index.js",
+  },
 }
 ```
 

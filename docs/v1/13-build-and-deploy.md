@@ -62,12 +62,12 @@ Each public entry point gets three artefacts at the root of `dist/`:
 Identical pattern to React:
 
 ```js
-'use strict';
+"use strict";
 
-if (process.env.NODE_ENV === 'production') {
-  module.exports = require('./cjs/index.production.min.js');
+if (process.env.NODE_ENV === "production") {
+  module.exports = require("./cjs/index.production.min.js");
 } else {
-  module.exports = require('./cjs/index.development.js');
+  module.exports = require("./cjs/index.development.js");
 }
 ```
 
@@ -76,7 +76,7 @@ When a CJS consumer (`require('sinwan')`) bundles your app, the bundler inlines 
 ### ESM fallback (`dist/index.mjs`)
 
 ```js
-export * from './esm/index.production.min.js';
+export * from "./esm/index.production.min.js";
 ```
 
 Modern ESM consumers do **not** go through this file: their bundler resolves the package.json `exports` conditions and reaches `dist/esm/index.{development,production.min}.js` directly. The `.mjs` file is a safe fallback for tools that don’t look at conditional exports.
@@ -86,7 +86,7 @@ Modern ESM consumers do **not** go through this file: their bundler resolves the
 Emitted by `tsc -p tsconfig.build.json`. The build emits the full tree of `.d.ts` files preserving the `src/` layout. For entry points whose name doesn’t match the d.ts location (e.g. `sinwan/jsx-runtime` vs `dist/jsx/jsx-runtime.d.ts`), `make-shims.ts` writes a thin re-export at the dist root:
 
 ```ts
-export * from './jsx/jsx-runtime';
+export * from "./jsx/jsx-runtime";
 ```
 
 ---
@@ -96,42 +96,50 @@ export * from './jsx/jsx-runtime';
 ```jsonc
 {
   "type": "commonjs",
-  "main":   "./dist/index.js",
+  "main": "./dist/index.js",
   "module": "./dist/index.mjs",
-  "types":  "./dist/index.d.ts",
+  "types": "./dist/index.d.ts",
 
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": {
         "development": "./dist/esm/index.development.js",
-        "production":  "./dist/esm/index.production.min.js",
-        "default":     "./dist/esm/index.production.min.js"
+        "production": "./dist/esm/index.production.min.js",
+        "default": "./dist/esm/index.production.min.js",
       },
       "require": {
         "development": "./dist/cjs/index.development.js",
-        "production":  "./dist/cjs/index.production.min.js",
-        "default":     "./dist/index.js"
+        "production": "./dist/cjs/index.production.min.js",
+        "default": "./dist/index.js",
       },
-      "default": "./dist/index.js"
+      "default": "./dist/index.js",
     },
-    "./jsx-runtime":      { /* same shape */ },
-    "./jsx-dev-runtime":  { /* same shape */ },
-    "./server":           { /* same shape */ },
-    "./renderer":         { /* same shape */ },
-    "./package.json":     "./package.json"
-  }
+    "./jsx-runtime": {
+      /* same shape */
+    },
+    "./jsx-dev-runtime": {
+      /* same shape */
+    },
+    "./server": {
+      /* same shape */
+    },
+    "./renderer": {
+      /* same shape */
+    },
+    "./package.json": "./package.json",
+  },
 }
 ```
 
 Resolution order, top to bottom:
 
 1. **`types`**: TypeScript reads this for type checking.
-2. **`import` vs `require`**: chosen by the *consumer*’s module system.
-3. **`development` vs `production`**: chosen by the *bundler* (Vite, Webpack, etc.).
+2. **`import` vs `require`**: chosen by the _consumer_’s module system.
+3. **`development` vs `production`**: chosen by the _bundler_ (Vite, Webpack, etc.).
 4. **`default`**: fallback when no condition matched.
 
-This means a Vite app in production gets `dist/esm/index.production.min.js` *directly*; a Node `require('sinwan')` gets `dist/index.js` (the CJS shim that branches at runtime).
+This means a Vite app in production gets `dist/esm/index.production.min.js` _directly_; a Node `require('sinwan')` gets `dist/index.js` (the CJS shim that branches at runtime).
 
 ---
 
@@ -157,7 +165,7 @@ Bun’s bundler reads `sideEffects: false` from the package.json **once at proce
 2. Run the actual bundling in a **fresh** Bun process so it reads the modified file.
 3. Restore the original `package.json` afterwards.
 
-`sideEffects: false` is correct for *consumers* (Webpack/Vite tree-shake unused exports) — we just don’t want Bun’s bundler applying it to *our own* build.
+`sideEffects: false` is correct for _consumers_ (Webpack/Vite tree-shake unused exports) — we just don’t want Bun’s bundler applying it to _our own_ build.
 
 ### `scripts/bundle.ts`
 
@@ -165,15 +173,17 @@ A tiny script that runs `Bun.build` once with the right options for a given (for
 
 ```ts
 await Bun.build({
-  entrypoints: ENTRYPOINTS,    // src/index.ts, src/jsx/jsx-runtime.ts, ...
-  root: SRC,                    // src/
+  entrypoints: ENTRYPOINTS, // src/index.ts, src/jsx/jsx-runtime.ts, ...
+  root: SRC, // src/
   outdir: `${ROOT}/dist/${format}`,
   target: format === "cjs" ? "node" : "bun",
-  format,                       // "esm" or "cjs"
-  splitting: false,             // self-contained per-entry bundles
-  packages: "external",         // peer deps stay external
+  format, // "esm" or "cjs"
+  splitting: false, // self-contained per-entry bundles
+  packages: "external", // peer deps stay external
   sourcemap: isProd ? "external" : "linked",
-  minify: isProd ? { whitespace: true, syntax: true, identifiers: true } : false,
+  minify: isProd
+    ? { whitespace: true, syntax: true, identifiers: true }
+    : false,
   define: {
     "process.env.NODE_ENV": JSON.stringify(mode),
     __DEV__: JSON.stringify(!isProd),

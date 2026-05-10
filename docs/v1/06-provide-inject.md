@@ -40,7 +40,11 @@ import { ThemeKey } from "./keys";
 
 const App = createComponent(() => {
   provide(ThemeKey, "dark");
-  return <Layout><Page /></Layout>;
+  return (
+    <Layout>
+      <Page />
+    </Layout>
+  );
 });
 ```
 
@@ -50,7 +54,7 @@ import { inject } from "sinwan";
 import { ThemeKey } from "./keys";
 
 const Card = createComponent(() => {
-  const theme = inject(ThemeKey, "light");  // typed as "light" | "dark"
+  const theme = inject(ThemeKey, "light"); // typed as "light" | "dark"
   return <div class={`card card--${theme}`}>...</div>;
 });
 ```
@@ -82,9 +86,9 @@ This gives O(depth) lookup with **automatic shadowing** — a child that re-prov
 `inject(key, defaultValue)` returns `defaultValue` when no ancestor provided the key. The function checks `arguments.length`, so passing `undefined` explicitly is treated as a real default:
 
 ```ts
-const v1 = inject("k");                  // → undefined, warns in console
-const v2 = inject("k", "fallback");       // → "fallback"
-const v3 = inject("k", undefined);        // → undefined (no warning)
+const v1 = inject("k"); // → undefined, warns in console
+const v2 = inject("k", "fallback"); // → "fallback"
+const v3 = inject("k", undefined); // → undefined (no warning)
 ```
 
 When no default is provided **and** the key is missing, Sinwan emits:
@@ -121,7 +125,7 @@ const Root = createComponent(() => {
 });
 
 const Card = createComponent(() => {
-  const theme = inject(ThemeKey)!;          // Signal<"light" | "dark">
+  const theme = inject(ThemeKey)!; // Signal<"light" | "dark">
   const cardClass = computed(() => `card card--${theme.value}`);
   return <div class={cardClass}>...</div>;
 });
@@ -174,9 +178,9 @@ const Root = createComponent(() => {
   provide(ThemeKey, "dark");
   return (
     <>
-      <Card />              {/* inject → "dark" */}
+      <Card /> {/* inject → "dark" */}
       <SpecialZone>
-        <Card />            {/* inject → "high-contrast" */}
+        <Card /> {/* inject → "high-contrast" */}
       </SpecialZone>
     </>
   );
@@ -204,11 +208,11 @@ Use a **string** when you intentionally want a global, named key visible across 
 
 ## Errors
 
-| When | What happens |
-|---|---|
-| `provide()` called with no active instance | Throws `Error: provide() called outside of component setup.` |
-| `inject()` called with no active instance | Throws `Error: inject() called outside of component setup.` |
-| `inject(key)` with no provider and no default | Logs a warning, returns `undefined` |
+| When                                          | What happens                                                 |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| `provide()` called with no active instance    | Throws `Error: provide() called outside of component setup.` |
+| `inject()` called with no active instance     | Throws `Error: inject() called outside of component setup.`  |
+| `inject(key)` with no provider and no default | Logs a warning, returns `undefined`                          |
 
 The hooks read `getCurrentInstance()` — that’s why both must be called synchronously while a component instance is active. Prefer setup for `provide()` so descendants can see the value during their own setup.
 
@@ -248,11 +252,11 @@ When using `renderToHydratableString`, you can stash request-scoped data in `pro
 
 ## Comparison with other frameworks
 
-| Feature | Sinwan | Vue 3 | React (Context) |
-|---|---|---|---|
-| Lookup mechanism | Prototype chain | Prototype chain | Subscription-based |
-| Reactive on its own | No (provide a signal) | Yes via `ref`/`reactive` | No (provide reactive value) |
-| Setup-only | Yes | Yes | Hooks-only |
-| Default value | Yes | Yes | Yes (`createContext(default)`) |
+| Feature             | Sinwan                | Vue 3                    | React (Context)                |
+| ------------------- | --------------------- | ------------------------ | ------------------------------ |
+| Lookup mechanism    | Prototype chain       | Prototype chain          | Subscription-based             |
+| Reactive on its own | No (provide a signal) | Yes via `ref`/`reactive` | No (provide reactive value)    |
+| Setup-only          | Yes                   | Yes                      | Hooks-only                     |
+| Default value       | Yes                   | Yes                      | Yes (`createContext(default)`) |
 
 Sinwan’s model is intentionally similar to Vue’s for ergonomics, but the data plane is signals — provide what you need, mutate where it’s defined, observe where you read.

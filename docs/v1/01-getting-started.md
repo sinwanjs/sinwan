@@ -48,8 +48,8 @@ Add the JSX configuration to your `tsconfig.json` so the TypeScript compiler emi
     "jsxImportSource": "sinwan",
 
     "strict": true,
-    "skipLibCheck": true
-  }
+    "skipLibCheck": true,
+  },
 }
 ```
 

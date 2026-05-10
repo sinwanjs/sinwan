@@ -30,13 +30,15 @@ interface CardProps {
   subtitle?: string;
 }
 
-export const Card = createComponent<CardProps>(({ title, subtitle, children }) => (
-  <article class="card">
-    <h2>{title}</h2>
-    {subtitle && <h3>{subtitle}</h3>}
-    <div class="body">{children}</div>
-  </article>
-));
+export const Card = createComponent<CardProps>(
+  ({ title, subtitle, children }) => (
+    <article class="card">
+      <h2>{title}</h2>
+      {subtitle && <h3>{subtitle}</h3>}
+      <div class="body">{children}</div>
+    </article>
+  ),
+);
 ```
 
 Use it like any function-component-shaped value:
@@ -65,10 +67,12 @@ A component may return `Promise<SinwanElement>`:
 
 ```tsx
 const Posts = createComponent(async () => {
-  const posts = await fetch("/api/posts").then(r => r.json());
+  const posts = await fetch("/api/posts").then((r) => r.json());
   return (
     <ul>
-      {posts.map(p => <li key={p.id}>{p.title}</li>)}
+      {posts.map((p) => (
+        <li key={p.id}>{p.title}</li>
+      ))}
     </ul>
   );
 });
@@ -81,7 +85,7 @@ On the **client**, an async component briefly renders an empty placeholder; once
 `createComponent` reads `fn.name` and stores it on `component._displayName`. Useful for debugging and dev tools:
 
 ```ts
-console.log(Card._displayName);  // "Card" (or "AnonymousComponent")
+console.log(Card._displayName); // "Card" (or "AnonymousComponent")
 ```
 
 You can override it for anonymous components:
@@ -119,7 +123,9 @@ export const HomePage = createPage<HomeData>(({ title, posts }) => (
   <Layout title={title}>
     <h1>{title}</h1>
     <ul>
-      {posts.map(p => <li key={p.id}>{p.title}</li>)}
+      {posts.map((p) => (
+        <li key={p.id}>{p.title}</li>
+      ))}
     </ul>
   </Layout>
 ));
@@ -159,19 +165,17 @@ interface LayoutProps {
   lang?: string;
 }
 
-export const RootLayout = createLayout<LayoutProps>(({
-  title = "App",
-  lang = "en",
-  children,
-}) => (
-  <html lang={lang}>
-    <head>
-      <meta charset="utf-8" />
-      <title>{title}</title>
-    </head>
-    <body>{children}</body>
-  </html>
-));
+export const RootLayout = createLayout<LayoutProps>(
+  ({ title = "App", lang = "en", children }) => (
+    <html lang={lang}>
+      <head>
+        <meta charset="utf-8" />
+        <title>{title}</title>
+      </head>
+      <body>{children}</body>
+    </html>
+  ),
+);
 ```
 
 Internally, `createLayout` is just `createComponent` with the children type tightened. There is no runtime difference.
@@ -209,7 +213,7 @@ The injected `children` field is `SinwanNode | SinwanSlots | undefined`. Use the
 ```ts
 import type { PropsWithChildren, PropsWithSlots } from "sinwan";
 
-type Props = PropsWithChildren<{ title: string }>;  // children?: SinwanNode
+type Props = PropsWithChildren<{ title: string }>; // children?: SinwanNode
 type SlotProps = PropsWithSlots<{ title: string }>; // children?: SinwanSlots
 ```
 
@@ -226,7 +230,9 @@ const username = signal("Ada");
 Inside `Greeting`, treat `name` as a `Signal<string>` if you want reactivity. If your component types `name` as `string`, it will see the **string at construction time** (because reading `name.value` happens once during setup) and lose reactivity. Prefer typing reactive props explicitly:
 
 ```tsx
-interface Props { name: string | Signal<string> }
+interface Props {
+  name: string | Signal<string>;
+}
 ```
 
 …or wrap it in a `computed` if you need a single reactive value internally.
@@ -239,7 +245,11 @@ Children are typed as `SinwanNode | SinwanSlots`:
 
 ```ts
 type SinwanNode =
-  | string | number | boolean | null | undefined
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
   | SinwanElement
   | Promise<SinwanElement>
   | HtmlEscapedString
@@ -271,7 +281,7 @@ Both work. JSX flattens `children` into an array transparently.
 <Layout
   children={{
     header: <Header />,
-    main:   <Main />,
+    main: <Main />,
     footer: <Footer />,
   }}
 />
@@ -303,8 +313,12 @@ Use `isSlots(children)` from `sinwan/server` to discriminate at runtime.
 Plain JS expressions:
 
 ```tsx
-{isOpen && <Dialog />}
-{user ? <UserCard {...user} /> : <Login />}
+{
+  isOpen && <Dialog />;
+}
+{
+  user ? <UserCard {...user} /> : <Login />;
+}
 ```
 
 For **reactive** conditionals, use `<Show>`:
@@ -386,7 +400,7 @@ If a component’s setup function throws, Sinwan walks up the parent chain looki
 
 ```tsx
 const Boundary = createComponent(({ children }) => {
-  onError(err => console.error("caught in boundary:", err));
+  onError((err) => console.error("caught in boundary:", err));
   return <>{children}</>;
 });
 ```
@@ -399,9 +413,9 @@ If no handler is found, the error is logged via `console.error`. The faulty comp
 
 ```ts
 interface SinwanComponent<P extends object = {}> {
-  (props: P & { children?: SinwanNode | SinwanSlots }):
-    | SinwanElement
-    | Promise<SinwanElement>;
+  (
+    props: P & { children?: SinwanNode | SinwanSlots },
+  ): SinwanElement | Promise<SinwanElement>;
   _SinwanComponent?: true;
   _displayName?: string;
 }
@@ -412,7 +426,9 @@ interface SinwanPage<D extends object = {}> {
   _displayName?: string;
 }
 
-type SinwanLayout<P extends object = {}> = SinwanComponent<P & { children: SinwanNode }>;
+type SinwanLayout<P extends object = {}> = SinwanComponent<
+  P & { children: SinwanNode }
+>;
 ```
 
 For the full set of exported types, see [`16-types.md`](./16-types.md).

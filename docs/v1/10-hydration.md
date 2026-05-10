@@ -34,7 +34,8 @@ const html = await renderToHydratableString(App, { initialCount: 5 });
 // '<div data-sinwan-id="c0"><button>Count: <!--sinwan-t:0-->5<!--/sinwan-t--></button></div>'
 
 // Send to the browser inside an HTML document:
-return new Response(`<!doctype html>
+return new Response(
+  `<!doctype html>
 <html>
 <head><title>App</title></head>
 <body>
@@ -45,7 +46,9 @@ return new Response(`<!doctype html>
     hydrate(App, document.getElementById("root"), { initialCount: 5 });
   </script>
 </body>
-</html>`, { headers: { "Content-Type": "text/html" } });
+</html>`,
+  { headers: { "Content-Type": "text/html" } },
+);
 ```
 
 ### 2. Client: hydrate
@@ -90,11 +93,11 @@ After step 7 the page behaves exactly as if you had called `mount()` — `unmoun
 
 Three markers are inserted by `renderToHydratableString`:
 
-| Marker | Where | Purpose |
-|---|---|---|
-| `data-sinwan-id="cN"` | Each component’s root element | Component boundary id |
-| `<!--sinwan-t:N-->value<!--/sinwan-t-->` | Around reactive text nodes | Locate the slot at hydration time |
-| `data-sinwan-ev="click:N,input:M"` | Element with event handlers | Optional reference for event bindings |
+| Marker                                   | Where                         | Purpose                               |
+| ---------------------------------------- | ----------------------------- | ------------------------------------- |
+| `data-sinwan-id="cN"`                    | Each component’s root element | Component boundary id                 |
+| `<!--sinwan-t:N-->value<!--/sinwan-t-->` | Around reactive text nodes    | Locate the slot at hydration time     |
+| `data-sinwan-ev="click:N,input:M"`       | Element with event handlers   | Optional reference for event bindings |
 
 Constants are exported from `sinwan/hydration` (`COMP_ID_ATTR`, `TEXT_MARKER_OPEN`, `TEXT_MARKER_CLOSE`, `EVENT_ATTR`, …) along with helpers to **build** them on the server (`compId`, `textMarkerOpen`, `textMarkerCloseStr`, `eventAttrValue`) and **parse** them on the client (`parseCompId`, `parseTextOpenMarker`, `isTextCloseMarker`, `parseEventAttr`).
 
@@ -126,13 +129,13 @@ The cursor consumes the unexpected node, the rest of the tree continues to hydra
 
 Causes of mismatches and how to fix them:
 
-| Cause | Fix |
-|---|---|
-| Different props between server and client | Pass identical props to both `renderToHydratableString` and `hydrate`. |
-| Time/`Date.now()` rendered conditionally | Avoid time-dependent JSX during SSR; render placeholders and update in `onMounted`. |
-| Browser-only APIs read during setup | Guard with `typeof window !== "undefined"` and run inside `onMounted`. |
-| Non-deterministic data fetching | Pass the same fetched data through props on both sides. |
-| Whitespace differences | Treat them as data — let the renderer manage children. |
+| Cause                                     | Fix                                                                                 |
+| ----------------------------------------- | ----------------------------------------------------------------------------------- |
+| Different props between server and client | Pass identical props to both `renderToHydratableString` and `hydrate`.              |
+| Time/`Date.now()` rendered conditionally  | Avoid time-dependent JSX during SSR; render placeholders and update in `onMounted`. |
+| Browser-only APIs read during setup       | Guard with `typeof window !== "undefined"` and run inside `onMounted`.              |
+| Non-deterministic data fetching           | Pass the same fetched data through props on both sides.                             |
+| Whitespace differences                    | Treat them as data — let the renderer manage children.                              |
 
 A future debug build of `hydrate` will provide stricter mismatch errors and DOM diffs.
 
@@ -230,9 +233,7 @@ import { signal, createComponent } from "sinwan";
 export const App = createComponent<{ initial: number }>(({ initial }) => {
   const count = signal(initial);
   return (
-    <button onClick={() => (count.value += 1)}>
-      Clicked {count} times
-    </button>
+    <button onClick={() => (count.value += 1)}>Clicked {count} times</button>
   );
 });
 ```
@@ -256,7 +257,8 @@ Bun.serve({
     const initial = 5;
     const ssr = await renderToHydratableString(App, { initial });
 
-    return new Response(`<!doctype html>
+    return new Response(
+      `<!doctype html>
 <html>
 <head><meta charset="utf-8"><title>Counter</title></head>
 <body>
@@ -267,9 +269,11 @@ Bun.serve({
     hydrate(App, document.getElementById("root"), { initial: ${initial} });
   </script>
 </body>
-</html>`, {
-      headers: { "Content-Type": "text/html; charset=utf-8" },
-    });
+</html>`,
+      {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      },
+    );
   },
 });
 ```

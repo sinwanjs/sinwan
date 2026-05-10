@@ -3,7 +3,13 @@
 Sinwan **automatically escapes** every user-supplied value when rendering on the server. The only way to inject raw HTML is to opt in explicitly. This page documents every escape rule and every escape hatch.
 
 ```ts
-import { escapeHtml, safeHtml, raw, HtmlEscapedString, isSafeHtml } from "sinwan";
+import {
+  escapeHtml,
+  safeHtml,
+  raw,
+  HtmlEscapedString,
+  isSafeHtml,
+} from "sinwan";
 ```
 
 ---
@@ -12,24 +18,24 @@ import { escapeHtml, safeHtml, raw, HtmlEscapedString, isSafeHtml } from "sinwan
 
 When a value reaches the **server renderer** (`renderToString`, `streamPage`, `renderToHydratableString`):
 
-| Source | Escaped? |
-|---|---|
-| Text child (`<div>{userInput}</div>`) | **Yes** |
-| Attribute value (`<a href={url}>`) | **Yes** |
-| `dangerouslySetInnerHTML.__html` | **No — trusted** |
-| `safeHtml(...)` / `raw(...)` (`HtmlEscapedString`) | **No — trusted** |
-| Numbers | Not escaped (passed through `String(n)`) |
-| Booleans / `null` / `undefined` | Become `""` |
+| Source                                             | Escaped?                                 |
+| -------------------------------------------------- | ---------------------------------------- |
+| Text child (`<div>{userInput}</div>`)              | **Yes**                                  |
+| Attribute value (`<a href={url}>`)                 | **Yes**                                  |
+| `dangerouslySetInnerHTML.__html`                   | **No — trusted**                         |
+| `safeHtml(...)` / `raw(...)` (`HtmlEscapedString`) | **No — trusted**                         |
+| Numbers                                            | Not escaped (passed through `String(n)`) |
+| Booleans / `null` / `undefined`                    | Become `""`                              |
 
 The five characters that matter inside HTML are escaped:
 
 | Char | Replacement |
-|---|---|
-| `&` | `&amp;` |
-| `<` | `&lt;` |
-| `>` | `&gt;` |
-| `"` | `&quot;` |
-| `'` | `&#39;` |
+| ---- | ----------- |
+| `&`  | `&amp;`     |
+| `<`  | `&lt;`      |
+| `>`  | `&gt;`      |
+| `"`  | `&quot;`    |
+| `'`  | `&#39;`     |
 
 This is the same set as React, Solid, and the OWASP HTML escape table.
 
@@ -51,12 +57,12 @@ const html = `<div>${escapeHtml(comment.body)}</div>`;
 
 Behaviour:
 
-| Input | Output |
-|---|---|
-| `null`, `undefined`, `boolean` | `""` |
-| `number` | `String(n)` (no escape needed) |
-| `HtmlEscapedString` | underlying `value` (already trusted) |
-| anything else | `String(v)` then escaped |
+| Input                          | Output                               |
+| ------------------------------ | ------------------------------------ |
+| `null`, `undefined`, `boolean` | `""`                                 |
+| `number`                       | `String(n)` (no escape needed)       |
+| `HtmlEscapedString`            | underlying `value` (already trusted) |
+| anything else                  | `String(v)` then escaped             |
 
 `escapeHtml` is **runtime-agnostic**:
 
@@ -91,7 +97,7 @@ const Card = createComponent<{ markdown: string }>(({ markdown }) => {
 ```ts
 class HtmlEscapedString extends String {
   readonly value: string;
-  toString(): string;  // returns this.value
+  toString(): string; // returns this.value
 }
 ```
 
@@ -144,10 +150,10 @@ Attribute values are always escaped on the server, regardless of source. Boolean
 
 Attribute names are emitted verbatim except for two aliases:
 
-| JSX | HTML |
-|---|---|
+| JSX         | HTML    |
+| ----------- | ------- |
 | `className` | `class` |
-| `htmlFor` | `for` |
+| `htmlFor`   | `for`   |
 
 Other React aliases (`tabIndex`, `crossOrigin`) are normalised by the **client renderer** but not by the SSR renderer. Either spell them with the JSX form (which TS likes) or with the lowercase HTML form — both work in the browser.
 
@@ -188,9 +194,7 @@ The flow is:
 Just interpolate it — no escape call needed:
 
 ```tsx
-const Comment = ({ body }: { body: string }) => (
-  <p class="comment">{body}</p>
-);
+const Comment = ({ body }: { body: string }) => <p class="comment">{body}</p>;
 ```
 
 `body` will be HTML-escaped automatically when this tree is rendered server-side (or set as `textContent` client-side, which is also safe).
@@ -213,12 +217,12 @@ function listItem(text: string) {
 
 ## Common mistakes
 
-| Mistake | Fix |
-|---|---|
-| Concatenating user data into `dangerouslySetInnerHTML` | Use plain text children (auto-escaped) |
-| Using `safeHtml` on `marked.parse(input)` directly | Sanitise (`DOMPurify`) before wrapping |
-| Building URLs by string concat (`href={`/x?q=${q}`}`) | Use `URL` API + interpolation; values are still escaped, but build them safely |
-| Forgetting that numbers aren’t escaped | If you embed numbers in HTML, that’s fine; if you embed user-supplied strings parsed as numbers, validate them first |
+| Mistake                                                | Fix                                                                                                                  |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Concatenating user data into `dangerouslySetInnerHTML` | Use plain text children (auto-escaped)                                                                               |
+| Using `safeHtml` on `marked.parse(input)` directly     | Sanitise (`DOMPurify`) before wrapping                                                                               |
+| Building URLs by string concat (`href={`/x?q=${q}`}`)  | Use `URL` API + interpolation; values are still escaped, but build them safely                                       |
+| Forgetting that numbers aren’t escaped                 | If you embed numbers in HTML, that’s fine; if you embed user-supplied strings parsed as numbers, validate them first |
 
 ---
 

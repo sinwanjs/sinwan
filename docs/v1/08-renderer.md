@@ -55,8 +55,14 @@ If the component returns a `Promise<SinwanElement>`, `mount()` inserts an empty 
 
 ```tsx
 const Posts = createComponent(async () => {
-  const data = await fetch("/api/posts").then(r => r.json());
-  return <ul>{data.map(p => <li>{p.title}</li>)}</ul>;
+  const data = await fetch("/api/posts").then((r) => r.json());
+  return (
+    <ul>
+      {data.map((p) => (
+        <li>{p.title}</li>
+      ))}
+    </ul>
+  );
 });
 
 mount(Posts, document.getElementById("app")!);
@@ -114,12 +120,12 @@ The renderer returns a tagged-union `MountedNode` describing what was created:
 
 ```ts
 type MountedNode =
-  | MountedText            // { type: "text", node: Text }
-  | MountedReactiveText    // { type: "reactive-text", node: Text, dispose }
-  | MountedElement         // { type: "element", node: Element, children, eventCleanups, attrDisposers, refCleanup }
-  | MountedFragment        // { type: "fragment", children, anchor: Comment }
-  | MountedReactiveBlock   // { type: "reactive-block", dispose, children, startAnchor, endAnchor }
-  | MountedComponent;      // { type: "component", children, disposers, instance }
+  | MountedText // { type: "text", node: Text }
+  | MountedReactiveText // { type: "reactive-text", node: Text, dispose }
+  | MountedElement // { type: "element", node: Element, children, eventCleanups, attrDisposers, refCleanup }
+  | MountedFragment // { type: "fragment", children, anchor: Comment }
+  | MountedReactiveBlock // { type: "reactive-block", dispose, children, startAnchor, endAnchor }
+  | MountedComponent; // { type: "component", children, disposers, instance }
 ```
 
 You almost never need to inspect this directly. It’s exposed for:
@@ -158,15 +164,10 @@ Direct binding via `el.addEventListener` (not delegation). Handler removal happe
 Helpers exposed for advanced users:
 
 ```ts
-import {
-  bindEvent,
-  bindEvents,
-  isEventProp,
-  toEventName,
-} from "sinwan";
+import { bindEvent, bindEvents, isEventProp, toEventName } from "sinwan";
 
-isEventProp("onClick");        // → true
-toEventName("onMouseEnter");   // → "mouseenter"
+isEventProp("onClick"); // → true
+toEventName("onMouseEnter"); // → "mouseenter"
 
 const cleanup = bindEvent(el, "click", handler);
 // later...
@@ -209,14 +210,14 @@ The exported `domOps` object is live: renderer modules read from the same object
 
 ## Lifecycle ↔ renderer interplay
 
-| Renderer event | Hook fired |
-|---|---|
-| Component setup begins (synchronous) | none — but `getCurrentInstance()` returns the new instance, so `onMounted` etc. register on it |
-| Sub-component mounted | child’s `onMounted` (children before parent overall) |
-| Component fully in DOM | `onMounted` (bottom-up, owner instance active while the callback runs) |
-| Reactive attribute / text / control-flow helper effect re-runs | owner’s `onUpdated`, queued after DOM writes and deduped per flush |
-| Element removed via `unmount()` | `onUnmounted` (bottom-up, owner instance active while the callback runs) |
-| Setup throws | walks parents, fires the first `onError` it finds |
+| Renderer event                                                 | Hook fired                                                                                     |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Component setup begins (synchronous)                           | none — but `getCurrentInstance()` returns the new instance, so `onMounted` etc. register on it |
+| Sub-component mounted                                          | child’s `onMounted` (children before parent overall)                                           |
+| Component fully in DOM                                         | `onMounted` (bottom-up, owner instance active while the callback runs)                         |
+| Reactive attribute / text / control-flow helper effect re-runs | owner’s `onUpdated`, queued after DOM writes and deduped per flush                             |
+| Element removed via `unmount()`                                | `onUnmounted` (bottom-up, owner instance active while the callback runs)                       |
+| Setup throws                                                   | walks parents, fires the first `onError` it finds                                              |
 
 ---
 
@@ -240,7 +241,7 @@ import { Show } from "sinwan";
 
 <Show when={isOpen}>
   <Modal />
-</Show>
+</Show>;
 ```
 
 ### Hot-replace a sub-tree
@@ -258,11 +259,13 @@ function swap(next: SinwanComponent) {
 ### Custom focus management on mount
 
 ```tsx
-const Input = createComponent<{ initialValue?: string }>(({ initialValue = "" }) => {
-  let el!: HTMLInputElement;
-  onMounted(() => el.focus());
-  return <input value={initialValue} ref={n => (el = n!)} />;
-});
+const Input = createComponent<{ initialValue?: string }>(
+  ({ initialValue = "" }) => {
+    let el!: HTMLInputElement;
+    onMounted(() => el.focus());
+    return <input value={initialValue} ref={(n) => (el = n!)} />;
+  },
+);
 ```
 
 The renderer sets the ref before `onMounted` runs and clears it during unmount.

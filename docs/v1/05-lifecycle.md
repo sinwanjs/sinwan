@@ -6,12 +6,12 @@ Sinwan exposes Vue-style lifecycle hooks that register on the **current componen
 import { onMounted, onUnmounted, onUpdated, onError } from "sinwan";
 ```
 
-| Hook | Fires when | Order |
-|---|---|---|
-| `onMounted` | After the component’s DOM is in the document | Bottom-up (children → parent) |
-| `onUnmounted` | When the component is removed | Bottom-up (children → parent) |
-| `onUpdated` | After a reactive update inside the component | Per-component, in scheduler order |
-| `onError` | When this component or a descendant throws | Bubbles up the tree |
+| Hook          | Fires when                                   | Order                             |
+| ------------- | -------------------------------------------- | --------------------------------- |
+| `onMounted`   | After the component’s DOM is in the document | Bottom-up (children → parent)     |
+| `onUnmounted` | When the component is removed                | Bottom-up (children → parent)     |
+| `onUpdated`   | After a reactive update inside the component | Per-component, in scheduler order |
+| `onError`     | When this component or a descendant throws   | Bubbles up the tree               |
 
 All four follow the same rule: **register synchronously while a component instance is active**. Calling them from module scope, event handlers, timers, promise continuations, or other code with no active component instance throws synchronously.
 
@@ -133,7 +133,7 @@ If you need to react to a specific signal change outside renderer-owned DOM work
 
 ```tsx
 effect(() => {
-  count.value;            // track
+  count.value; // track
   // do something after the next flush
   nextTick(() => measure());
 });
@@ -151,7 +151,7 @@ Register a handler that catches errors thrown during the **setup** of this compo
 
 ```tsx
 const Boundary = createComponent(({ children }) => {
-  onError(err => {
+  onError((err) => {
     console.error("Boundary caught:", err);
     // optionally surface in UI by writing to a signal
   });
@@ -217,7 +217,9 @@ If you have a long-lived effect or subscription, you can register its dispose fu
 ```ts
 import { getCurrentInstance, effect } from "sinwan";
 
-const dispose = effect(() => { /* ... */ });
+const dispose = effect(() => {
+  /* ... */
+});
 const i = getCurrentInstance();
 if (i) i.effects.push(dispose);
 ```
@@ -238,8 +240,14 @@ The renderer already pushes its own internal effects this way. Doing it yourself
 
 ```tsx
 import {
-  signal, effect, batch, nextTick,
-  createComponent, onMounted, onUnmounted, onError,
+  signal,
+  effect,
+  batch,
+  nextTick,
+  createComponent,
+  onMounted,
+  onUnmounted,
+  onError,
   getCurrentInstance,
 } from "sinwan";
 
@@ -254,7 +262,7 @@ const Widget = createComponent(() => {
   });
 
   // 3. Errors
-  onError(err => console.error("[Widget]", err));
+  onError((err) => console.error("[Widget]", err));
 
   // 4. Reactive effect outside the renderer
   const stopTitleSync = effect(() => {

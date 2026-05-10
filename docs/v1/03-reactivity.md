@@ -2,19 +2,19 @@
 
 Sinwan’s reactive layer is a small, well-defined system inspired by SolidJS, Vue 3, and Preact Signals. It exports four primitives:
 
-| Primitive | Purpose |
-|---|---|
-| `signal(value)` | Reactive value cell, read & write |
-| `computed(getter)` | Lazy, cached derived value |
-| `effect(fn)` | Side effect that re-runs when its tracked deps change |
-| `batch(fn)` | Coalesce multiple writes into a single effect flush |
+| Primitive          | Purpose                                               |
+| ------------------ | ----------------------------------------------------- |
+| `signal(value)`    | Reactive value cell, read & write                     |
+| `computed(getter)` | Lazy, cached derived value                            |
+| `effect(fn)`       | Side effect that re-runs when its tracked deps change |
+| `batch(fn)`        | Coalesce multiple writes into a single effect flush   |
 
 Plus two utilities:
 
-| Utility | Purpose |
-|---|---|
-| `nextTick(fn?)` | Promise that resolves after the next reactive flush |
-| `isSignal(v)` / `isComputed(v)` | Type guards |
+| Utility                         | Purpose                                             |
+| ------------------------------- | --------------------------------------------------- |
+| `nextTick(fn?)`                 | Promise that resolves after the next reactive flush |
+| `isSignal(v)` / `isComputed(v)` | Type guards                                         |
 
 All of them live in `sinwan` and `sinwan/reactivity` (re-export).
 
@@ -39,9 +39,9 @@ Create a reactive cell containing a single value.
 function signal<T>(initial: T): Signal<T>;
 
 interface Signal<T> {
-  value: T;                                       // get/set, tracks/triggers
-  peek(): T;                                      // get without tracking
-  subscribe(fn: (value: T) => void): () => void;  // manual sub, returns unsub
+  value: T; // get/set, tracks/triggers
+  peek(): T; // get without tracking
+  subscribe(fn: (value: T) => void): () => void; // manual sub, returns unsub
 }
 ```
 
@@ -50,16 +50,16 @@ interface Signal<T> {
 ```ts
 const count = signal(0);
 
-console.log(count.value);  // 0
+console.log(count.value); // 0
 count.value = 5;
-console.log(count.value);  // 5
+console.log(count.value); // 5
 ```
 
 Setting `value` to the same value (compared with `Object.is`) is a no-op — no effects fire.
 
 ```ts
 count.value = 5;
-count.value = 5;  // no flush, deduped
+count.value = 5; // no flush, deduped
 ```
 
 ### `peek()` — read without tracking
@@ -89,8 +89,8 @@ const unsub = count.subscribe((newValue) => {
   console.log("count changed:", newValue);
 });
 
-count.value = 10;  // logs "count changed: 10"
-unsub();           // stops listening
+count.value = 10; // logs "count changed: 10"
+unsub(); // stops listening
 ```
 
 Manual subscribers fire **synchronously** on every write (after the equality check). They do not go through the microtask scheduler.
@@ -103,8 +103,8 @@ Signals (and computeds) implement `toString()` and `valueOf()` so they interpola
 const name = signal("World");
 const n = signal(2);
 
-const greeting = `Hello, ${name}!`;   // "Hello, World!"
-const total = 10 + n;                 // 12
+const greeting = `Hello, ${name}!`; // "Hello, World!"
+const total = 10 + n; // 12
 ```
 
 But the renderer detects signals via `isSignal` first — passing one as a JSX child or attribute creates a real reactive binding (preferred over string interpolation).
@@ -129,8 +129,8 @@ A lazily-evaluated, cached derived value.
 function computed<T>(getter: () => T): Computed<T>;
 
 interface Computed<T> {
-  readonly value: T;  // read tracks; lazy & cached
-  peek(): T;          // read without tracking
+  readonly value: T; // read tracks; lazy & cached
+  peek(): T; // read without tracking
 }
 ```
 
@@ -145,14 +145,14 @@ const a = signal(1);
 const b = signal(2);
 const sum = computed(() => a.value + b.value);
 
-console.log(sum.value);  // 3 — getter ran once
+console.log(sum.value); // 3 — getter ran once
 
 batch(() => {
   a.value = 10;
   b.value = 20;
 });
 
-console.log(sum.value);  // 30 — getter ran exactly once more
+console.log(sum.value); // 30 — getter ran exactly once more
 ```
 
 ### Why lazy?
@@ -167,7 +167,7 @@ big.value;
 big.value;
 big.value;
 
-input.value = newInput;  // marks dirty, but doesn't recompute yet
+input.value = newInput; // marks dirty, but doesn't recompute yet
 
 // expensiveCalc runs once more, on this read:
 big.value;
@@ -202,11 +202,11 @@ function effect(fn: EffectFn): CleanupFn;
 const count = signal(0);
 
 const dispose = effect(() => {
-  console.log("count =", count.value);  // logs immediately: "count = 0"
+  console.log("count =", count.value); // logs immediately: "count = 0"
 });
 
-count.value = 1;  // microtask: "count = 1"
-count.value = 2;  // queued — but flushed only once: "count = 2"
+count.value = 1; // microtask: "count = 1"
+count.value = 2; // queued — but flushed only once: "count = 2"
 ```
 
 After the synchronous first run, subsequent runs are scheduled on the microtask queue and deduplicated.
@@ -218,7 +218,7 @@ If your effect returns a function, it is called **before the next run** and **on
 ```ts
 effect(() => {
   const id = setInterval(tick, 1000);
-  return () => clearInterval(id);  // cleanup
+  return () => clearInterval(id); // cleanup
 });
 ```
 
@@ -229,7 +229,9 @@ The cleanup runs in the order: previous-cleanup → current-effect.
 Calling the function returned by `effect()` permanently disposes the effect — it stops running, unsubscribes from every dep, and runs your cleanup one last time:
 
 ```ts
-const dispose = effect(() => { /* ... */ });
+const dispose = effect(() => {
+  /* ... */
+});
 // later...
 dispose();
 ```
@@ -383,7 +385,7 @@ effect(() => {
 ```ts
 counter.value = 5;
 await nextTick();
-const text = el.textContent;  // reflects the new value
+const text = el.textContent; // reflects the new value
 ```
 
 ### Coalesced writes from a network response
@@ -431,9 +433,7 @@ By wrapping it in a function, you pass the **live logic** to the renderer, allow
 Functional getters in JSX children can return complex content, including other JSX elements, fragments, or arrays:
 
 ```tsx
-<div>
-  {() => count.value === 1 ? <p>Winner!</p> : <span>Try again</span>}
-</div>
+<div>{() => (count.value === 1 ? <p>Winner!</p> : <span>Try again</span>)}</div>
 ```
 
 SinwanJS treats these as **Reactive Blocks**. It uses hidden comment anchors in the DOM to surgically swap the content whenever the function's return value changes, ensuring that only the specific part of the tree is updated.
@@ -450,11 +450,11 @@ SinwanJS treats these as **Reactive Blocks**. It uses hidden comment anchors in 
 
 ## Reference summary
 
-| Function | Signature | Notes |
-|---|---|---|
-| `signal` | `<T>(v: T) => Signal<T>` | Reactive cell |
-| `computed` | `<T>(g: () => T) => Computed<T>` | Lazy, cached |
-| `effect` | `(fn: EffectFn) => CleanupFn` | First run sync; returns dispose |
-| `batch` | `(fn: () => void) => void` | Sync flush at end |
-| `nextTick` | `(fn?: () => void) => Promise<void>` | Resolves after flush |
-| `isSignal` / `isComputed` | `(v: unknown) => v is …` | Type guards |
+| Function                  | Signature                            | Notes                           |
+| ------------------------- | ------------------------------------ | ------------------------------- |
+| `signal`                  | `<T>(v: T) => Signal<T>`             | Reactive cell                   |
+| `computed`                | `<T>(g: () => T) => Computed<T>`     | Lazy, cached                    |
+| `effect`                  | `(fn: EffectFn) => CleanupFn`        | First run sync; returns dispose |
+| `batch`                   | `(fn: () => void) => void`           | Sync flush at end               |
+| `nextTick`                | `(fn?: () => void) => Promise<void>` | Resolves after flush            |
+| `isSignal` / `isComputed` | `(v: unknown) => v is …`             | Type guards                     |

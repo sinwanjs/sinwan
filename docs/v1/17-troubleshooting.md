@@ -1,6 +1,6 @@
 # Troubleshooting
 
-A field guide for the most common Sinwan issues. If you don’t find your problem here, open an issue with a minimal repro at https://github.com/sinwanjs/sinwan/issues.
+A field guide for the most common Sinwan issues. If you don’t find your problem here, open an issue with a minimal repro at https://github.com/sinwanjs/sinwan-ui/issues.
 
 ---
 
@@ -14,10 +14,14 @@ A field guide for the most common Sinwan issues. If you don’t find your proble
 
 ```tsx
 // ✅ Helper is fine if it is executed while setup is active.
-function setupTimer() { onMounted(() => { /* ... */ }); }
+function setupTimer() {
+  onMounted(() => {
+    /* ... */
+  });
+}
 
 const Timer = createComponent(() => {
-  setupTimer();   // executes synchronously inside setup
+  setupTimer(); // executes synchronously inside setup
   return <div />;
 });
 ```
@@ -25,7 +29,9 @@ const Timer = createComponent(() => {
 ```tsx
 // ❌ Definitely doesn’t work — call happens with no active instance.
 const Timer = createComponent(() => <div />);
-onMounted(() => { /* throws */ });
+onMounted(() => {
+  /* throws */
+});
 ```
 
 ---
@@ -67,27 +73,31 @@ onMounted(() => { /* throws */ });
 1. **You wrote `count` instead of `count.value`** (or vice-versa). Reading `.value` tracks; writing updates. The renderer accepts both `signal` and `signal.value` directly because `Signal.toString()` returns the value, but only the **signal itself** (not its current value) creates a reactive binding.
 
    ```tsx
-   {/* ✅ Reactive */}
-   <p>{count}</p>
+   {
+     /* ✅ Reactive */
+   }
+   <p>{count}</p>;
 
-   {/* ❌ Read once, never updates */}
-   <p>{count.value}</p>
+   {
+     /* ❌ Read once, never updates */
+   }
+   <p>{count.value}</p>;
    ```
 
 2. **You destructured a signal**:
 
    ```tsx
-   const { value } = count;       // captures the value at this moment
+   const { value } = count; // captures the value at this moment
    ```
 
-   Signals carry their reactivity on the `value` *getter*. Don’t pull it out.
+   Signals carry their reactivity on the `value` _getter_. Don’t pull it out.
 
 3. **You mutated an object held by a signal**:
 
    ```ts
    const items = signal<Item[]>([]);
-   items.value.push(newItem);     // ❌ no trigger
-   items.value = [...items.value, newItem];  // ✅
+   items.value.push(newItem); // ❌ no trigger
+   items.value = [...items.value, newItem]; // ✅
    ```
 
    Sinwan compares with `Object.is`. Reassign with a new array/object reference.
@@ -96,7 +106,7 @@ onMounted(() => { /* throws */ });
 
    ```ts
    const data = await fetch("/x");
-   const x = a.value;             // not tracked — too late
+   const x = a.value; // not tracked — too late
    ```
 
    Read everything synchronously **before** the first `await` if you need tracking.
@@ -108,18 +118,22 @@ onMounted(() => { /* throws */ });
 `name` is interpolated into a regular string template — that’s a one-off `String()` call, not a reactive binding. To make it reactive, render the signal as a child:
 
 ```tsx
-{/* ✅ */}
-<p>Hello {name}!</p>
+{
+  /* ✅ */
+}
+<p>Hello {name}!</p>;
 
-{/* ❌ Static */}
-<p>{`Hello ${name}!`}</p>
+{
+  /* ❌ Static */
+}
+<p>{`Hello ${name}!`}</p>;
 ```
 
 If you really need a single string, derive it via `computed`:
 
 ```tsx
 const greeting = computed(() => `Hello ${name.value}!`);
-<p>{greeting}</p>
+<p>{greeting}</p>;
 ```
 
 ---
@@ -164,8 +178,8 @@ Set one of these in your `tsconfig.json`.
 {
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "sinwan"
-  }
+    "jsxImportSource": "sinwan",
+  },
 }
 ```
 
@@ -206,7 +220,9 @@ Symptoms: memory usage climbs, devtools shows many `ReactiveEffect` instances af
 **Fix:** Either capture the dispose function and call it in `onUnmounted`, or push it into `getCurrentInstance()!.effects`:
 
 ```tsx
-const dispose = effect(() => { /* ... */ });
+const dispose = effect(() => {
+  /* ... */
+});
 onUnmounted(dispose);
 
 // or
@@ -226,10 +242,10 @@ Use `<For fallback={...}>` for reactive list shape + empty-state UI:
 ```tsx
 <For
   each={items}
-  key={item => item.id}
+  key={(item) => item.id}
   fallback={<li class="empty">No items yet.</li>}
 >
-  {item => <li>{item.label}</li>}
+  {(item) => <li>{item.label}</li>}
 </For>
 ```
 
@@ -274,16 +290,20 @@ import { signal, effect, batch, nextTick } from "sinwan";
 
 const c = signal(0);
 let observed = -1;
-effect(() => { observed = c.value; });
+effect(() => {
+  observed = c.value;
+});
 
 c.value = 5;
-expect(observed).toBe(5);  // ❌ scheduled, not yet ran
+expect(observed).toBe(5); // ❌ scheduled, not yet ran
 
 await nextTick();
-expect(observed).toBe(5);  // ✅
+expect(observed).toBe(5); // ✅
 
-batch(() => { c.value = 9; });
-expect(observed).toBe(9);  // ✅ batch flushes synchronously
+batch(() => {
+  c.value = 9;
+});
+expect(observed).toBe(9); // ✅ batch flushes synchronously
 ```
 
 ---

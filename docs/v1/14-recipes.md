@@ -41,9 +41,13 @@ const TempConverter = createComponent(() => {
       <input
         type="number"
         value={c}
-        onInput={e => (c.value = Number((e.currentTarget as HTMLInputElement).value))}
+        onInput={(e) =>
+          (c.value = Number((e.currentTarget as HTMLInputElement).value))
+        }
       />
-      <p>{c}°C = {f}°F</p>
+      <p>
+        {c}°C = {f}°F
+      </p>
     </div>
   );
 });
@@ -76,7 +80,7 @@ const TodoApp = createComponent(() => {
   };
 
   const toggle = (id: number) => {
-    todos.value = todos.value.map(t =>
+    todos.value = todos.value.map((t) =>
       t.id === id ? { ...t, done: !t.done } : t,
     );
   };
@@ -84,10 +88,17 @@ const TodoApp = createComponent(() => {
   return (
     <div class="todo-app">
       <h1>Todo</h1>
-      <form onSubmit={e => { e.preventDefault(); add(); }}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          add();
+        }}
+      >
         <input
           value={draft}
-          onInput={e => (draft.value = (e.currentTarget as HTMLInputElement).value)}
+          onInput={(e) =>
+            (draft.value = (e.currentTarget as HTMLInputElement).value)
+          }
           placeholder="What needs doing?"
         />
         <button type="submit">Add</button>
@@ -95,14 +106,16 @@ const TodoApp = createComponent(() => {
       <ul>
         <For
           each={todos}
-          fallback={
-            <li class="empty">No todos yet!</li>
-          }
-          key={t => t.id}
+          fallback={<li class="empty">No todos yet!</li>}
+          key={(t) => t.id}
         >
-          {t => (
+          {(t) => (
             <li class={{ done: t.done }}>
-              <input type="checkbox" checked={t.done} onChange={() => toggle(t.id)} />
+              <input
+                type="checkbox"
+                checked={t.done}
+                onChange={() => toggle(t.id)}
+              />
               <span>{t.text}</span>
             </li>
           )}
@@ -120,7 +133,10 @@ const TodoApp = createComponent(() => {
 ```tsx
 import { signal, createComponent, onMounted } from "sinwan";
 
-interface User { id: number; name: string; }
+interface User {
+  id: number;
+  name: string;
+}
 
 const UserList = createComponent(() => {
   const users = signal<User[]>([]);
@@ -142,7 +158,11 @@ const UserList = createComponent(() => {
     <section>
       {loading.value && <p>Loading…</p>}
       {error.value && <p class="err">{error.value}</p>}
-      <ul>{users.value.map(u => <li key={u.id}>{u.name}</li>)}</ul>
+      <ul>
+        {users.value.map((u) => (
+          <li key={u.id}>{u.name}</li>
+        ))}
+      </ul>
     </section>
   );
 });
@@ -171,7 +191,11 @@ const App = createComponent(({ children }) => {
   provide(ThemeKey, theme);
   return (
     <div class={appClass}>
-      <button onClick={() => (theme.value = theme.value === "light" ? "dark" : "light")}>
+      <button
+        onClick={() =>
+          (theme.value = theme.value === "light" ? "dark" : "light")
+        }
+      >
         Toggle theme
       </button>
       {children}
@@ -221,7 +245,9 @@ const SignUp = createComponent(() => {
         <input
           type="email"
           value={email}
-          onInput={e => (email.value = (e.currentTarget as HTMLInputElement).value)}
+          onInput={(e) =>
+            (email.value = (e.currentTarget as HTMLInputElement).value)
+          }
         />
       </label>
       <label>
@@ -229,7 +255,9 @@ const SignUp = createComponent(() => {
         <input
           type="password"
           value={password}
-          onInput={e => (password.value = (e.currentTarget as HTMLInputElement).value)}
+          onInput={(e) =>
+            (password.value = (e.currentTarget as HTMLInputElement).value)
+          }
         />
       </label>
       <button type="submit" disabled={isSubmitDisabled}>
@@ -257,19 +285,23 @@ export interface CartStore {
 }
 
 export function createCartStore(): CartStore {
-  const items = signal<CartStore["items"] extends Signal<infer T> ? T : never>([]);
-  const total = computed(() => items.value.reduce((s, i) => s + i.qty * i.price, 0));
+  const items = signal<CartStore["items"] extends Signal<infer T> ? T : never>(
+    [],
+  );
+  const total = computed(() =>
+    items.value.reduce((s, i) => s + i.qty * i.price, 0),
+  );
   return {
     items,
     total,
     add(id, price) {
-      const existing = items.value.find(i => i.id === id);
+      const existing = items.value.find((i) => i.id === id);
       items.value = existing
-        ? items.value.map(i => (i.id === id ? { ...i, qty: i.qty + 1 } : i))
+        ? items.value.map((i) => (i.id === id ? { ...i, qty: i.qty + 1 } : i))
         : [...items.value, { id, price, qty: 1 }];
     },
     remove(id) {
-      items.value = items.value.filter(i => i.id !== id);
+      items.value = items.value.filter((i) => i.id !== id);
     },
   };
 }
@@ -376,7 +408,9 @@ import { signal, effect, nextTick } from "sinwan";
 test("effect re-runs when signal changes", async () => {
   const c = signal(0);
   let observed = -1;
-  effect(() => { observed = c.value; });
+  effect(() => {
+    observed = c.value;
+  });
   expect(observed).toBe(0);
 
   c.value = 5;
