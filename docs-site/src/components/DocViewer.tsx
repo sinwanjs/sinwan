@@ -93,18 +93,23 @@ export const DocViewer = createComponent(() => {
   return (
     <div class="content-viewer">
       {() => isLoading.value && <div class="loading-indicator">Loading...</div>}
-      <div
-        class="doc-body"
-        ref={(el) => {
-          effect(() => {
-            if (el && content.value) {
-              (el as HTMLElement).innerHTML = content.value;
-              rewriteInternalDocLinks(el as HTMLElement);
-              Prism.highlightAllUnder(el as HTMLElement);
-            }
-          });
+      <div class="doc-body">
+        {() => {
+          if (!content.value) return null;
+          
+          return (
+            <div
+              ref={(el) => {
+                if (el) {
+                  el.innerHTML = content.value;
+                  rewriteInternalDocLinks(el);
+                  Prism.highlightAllUnder(el);
+                }
+              }}
+            />
+          );
         }}
-      />
+      </div>
     </div>
   );
 });
