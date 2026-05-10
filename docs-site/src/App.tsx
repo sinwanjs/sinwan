@@ -18,12 +18,17 @@ export const SidebarOpenKey: InjectionKey<Signal<boolean>> =
   Symbol("sidebar-open");
 
 export const App = createComponent(() => {
-  const theme = signal<Theme>(
-    typeof window !== "undefined" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches
+  // Get initial theme from localStorage or system preference
+  const getInitialTheme = (): Theme => {
+    if (typeof window === "undefined") return "light";
+    const stored = localStorage.getItem("theme");
+    if (stored === "light" || stored === "dark") return stored;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
       ? "dark"
-      : "light",
-  );
+      : "light";
+  };
+
+  const theme = signal<Theme>(getInitialTheme());
   const currentPage = signal(
     window.location.hash.slice(1) || "00-philosophy.md",
   );
@@ -35,7 +40,10 @@ export const App = createComponent(() => {
 
   onMounted(() => {
     const root = document.documentElement;
-    const stop = theme.subscribe((t) => root.setAttribute("data-theme", t));
+    const stop = theme.subscribe((t) => {
+      root.setAttribute("data-theme", t);
+      localStorage.setItem("theme", t);
+    });
     root.setAttribute("data-theme", theme.peek());
 
     const hash = window.location.hash.slice(1);
