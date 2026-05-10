@@ -3,6 +3,7 @@ import { createComponent, inject, signal, effect } from "sinwan";
 import { CurrentPageKey } from "../App";
 import { marked } from "marked";
 import Prism from "prismjs";
+// @ts-expect-error - CSS import for syntax highlighting
 import "prismjs/themes/prism-tomorrow.css";
 // Add some common languages
 import "prismjs/components/prism-typescript";
@@ -28,18 +29,20 @@ export const DocViewer = createComponent(() => {
     const loadDoc = async () => {
       const docToLoad = currentPage.value;
       console.log("[DocViewer] Loading doc:", docToLoad);
-      
+
       try {
         // Try serverless function first (SSR support)
         if (typeof window !== "undefined") {
           try {
-            console.log("[DocViewer] Attempting SSR from serverless function...");
+            console.log(
+              "[DocViewer] Attempting SSR from serverless function...",
+            );
             const response = await fetch(
               `/.netlify/functions/render?doc=${docToLoad}`,
               { signal: AbortSignal.timeout(3000) },
             );
             console.log("[DocViewer] Response status:", response.status);
-            
+
             if (response.ok) {
               const data = await response.json();
               console.log("[DocViewer] SSR successful, rendering...");
@@ -58,19 +61,27 @@ export const DocViewer = createComponent(() => {
           }
         }
       } catch (err) {
-        console.warn("[DocViewer] SSR unavailable, falling back to client-side:", err);
+        console.warn(
+          "[DocViewer] SSR unavailable, falling back to client-side:",
+          err,
+        );
       }
 
       // Fallback to client-side rendering
       console.log("[DocViewer] Using client-side rendering for:", docToLoad);
       const path = `../../../docs/v1/${docToLoad}`;
       const mod = docs[path] as { default: string } | undefined;
-      
+
       if (mod) {
         console.log("[DocViewer] Found in client-side docs, rendering...");
         content.value = marked.parse(mod.default) as string;
       } else {
-        console.error("[DocViewer] Document not found:", docToLoad, "Path tried:", path);
+        console.error(
+          "[DocViewer] Document not found:",
+          docToLoad,
+          "Path tried:",
+          path,
+        );
         content.value = `<h1>404</h1><p>Document not found: ${docToLoad}</p><p>Tried: ${path}</p>`;
       }
       isLoading.value = false;
