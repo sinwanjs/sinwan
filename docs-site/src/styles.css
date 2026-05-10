@@ -600,6 +600,17 @@ img {
   h2 { font-size: 1.45rem; }
   .main-content { padding: 0; }
   .sidebar-toggle { width: 100%; justify-content: center; }
+
+  /* Responsive tables */
+  table {
+    font-size: 0.85rem;
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  th, td {
+    padding: 0.6rem 0.75rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
