@@ -1,5 +1,6 @@
 import { Show } from "sinwan";
 import { Match } from "sinwan";
+import { For } from "sinwan";
 import { Switch } from "sinwan";
 import { computed } from "sinwan";
 import { signal, createComponent, onMounted } from "sinwan";
@@ -18,26 +19,20 @@ export const Counter = createComponent(() => {
       <p>You clicked the button {count} times.</p>
       <button onClick={() => (count.value += 1)}>Increment</button>
       <button onClick={() => (count.value = 0)}>Reset</button>
-      <Show when={isEven}>
-        <p>Count is even</p>
-      </Show>
       <Switch>
-        <Match when={() => count.value === 0}>
-          <p>Count is zero</p>
-        </Match>
-        <Match when={() => count.value === 1}>
-          <p>Count is one</p>
-        </Match>
-        <Match when={() => count.value === 2}>
-          <p>Count is two</p>
-        </Match>
-        <Match when={() => count.value === 3}>
-          <p>Count is three</p>
-        </Match>
+        <For each={[0, 1, 2, 3, 4]}>
+          {(n) => (
+            <Match when={is(n)}>
+              <Show when={isEven}>
+                <p>Count is even.</p>
+              </Show>
+              <Show when={!isEven}>
+                <p>Count is odd.</p>
+              </Show>
+            </Match>
+          )}
+        </For>
       </Switch>
-      {() =>
-        count.value === 1 ? <p>Count is one</p> : <p>Count is not one</p>
-      }
     </div>
   );
 });
