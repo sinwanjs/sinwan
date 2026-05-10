@@ -26,16 +26,23 @@ export const DocViewer = createComponent(() => {
   effect(() => {
     isLoading.value = true;
     const loadDoc = async () => {
+      const docToLoad = currentPage.value;
+      console.log("[DocViewer] Loading doc:", docToLoad);
+      
       try {
         // Try serverless function first (SSR support)
         if (typeof window !== "undefined") {
           try {
+            console.log("[DocViewer] Attempting SSR from serverless function...");
             const response = await fetch(
-              `/.netlify/functions/render?doc=${currentPage.value}`,
+              `/.netlify/functions/render?doc=${docToLoad}`,
               { signal: AbortSignal.timeout(3000) },
             );
+            console.log("[DocViewer] Response status:", response.status);
+            
             if (response.ok) {
               const data = await response.json();
+              console.log("[DocViewer] SSR successful, rendering...");
               if (data.content) {
                 content.value = marked.parse(data.content) as string;
                 isLoading.value = false;
@@ -45,22 +52,26 @@ export const DocViewer = createComponent(() => {
             }
           } catch (fetchErr) {
             console.warn(
-              "Serverless function error, using client-side:",
+              "[DocViewer] Serverless function error, using client-side:",
               fetchErr,
             );
           }
         }
       } catch (err) {
-        console.warn("SSR unavailable, falling back to client-side:", err);
+        console.warn("[DocViewer] SSR unavailable, falling back to client-side:", err);
       }
 
       // Fallback to client-side rendering
-      const path = `../../../docs/v1/${currentPage.value}`;
+      console.log("[DocViewer] Using client-side rendering for:", docToLoad);
+      const path = `../../../docs/v1/${docToLoad}`;
       const mod = docs[path] as { default: string } | undefined;
+      
       if (mod) {
+        console.log("[DocViewer] Found in client-side docs, rendering...");
         content.value = marked.parse(mod.default) as string;
       } else {
-        content.value = "<h1>404</h1><p>Document not found.</p>";
+        console.error("[DocViewer] Document not found:", docToLoad, "Path tried:", path);
+        content.value = `<h1>404</h1><p>Document not found: ${docToLoad}</p><p>Tried: ${path}</p>`;
       }
       isLoading.value = false;
       window.scrollTo(0, 0);
