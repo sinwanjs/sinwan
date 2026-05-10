@@ -1,3 +1,7 @@
+# Base directory: docs-site
+# This is where Netlify installs dependencies and runs build command
+base = "."
+
 [build]
 command = "bun run build"
 functions = "netlify/functions"
@@ -5,3 +9,10 @@ publish = "dist"
 
 [functions]
 node_bundler = "esbuild"
+
+# Environment variables
+[context.production]
+environment = { NODE_ENV = "production" }
+
+[context.deploy-preview]
+environment = { NODE_ENV = "production" }
