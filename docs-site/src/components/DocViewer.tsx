@@ -27,14 +27,10 @@ export const DocViewer = createComponent(() => {
     isLoading.value = true;
     const loadDoc = async () => {
       const docToLoad = currentPage.value;
-      console.log("[DocViewer] Loading doc:", docToLoad);
-
-      console.log("[DocViewer] Using client-side rendering for:", docToLoad);
       const path = `../../../docs/v1/${docToLoad}`;
       const mod = docs[path] as { default: string } | undefined;
 
       if (mod) {
-        console.log("[DocViewer] Found in client-side docs, rendering...");
         content.value = marked.parse(mod.default) as string;
       } else {
         console.error(

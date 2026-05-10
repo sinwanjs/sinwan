@@ -1,4 +1,4 @@
-import { createComponent, inject } from "sinwan";
+import { createComponent, inject, For } from "sinwan";
 import { CurrentPageKey, SidebarOpenKey } from "../App";
 
 const DOCS = [
@@ -47,22 +47,24 @@ export const Sidebar = createComponent(() => {
       <nav>
         <div class="sidebar-section-label">Contents</div>
         <ul class="nav-list">
-          {DOCS.map((doc) => (
-            <li class="nav-item">
-              <a
-                href={`#${doc.id}`}
-                class={() =>
-                  `nav-link ${currentPage.value === doc.id ? "active" : ""}`
-                }
-                onClick={(e) => {
-                  currentPage.value = doc.id;
-                  sidebarOpen.value = false;
-                }}
-              >
-                {doc.title}
-              </a>
-            </li>
-          ))}
+          <For each={DOCS}>
+            {(doc) => (
+              <li class="nav-item">
+                <a
+                  href={`#${doc.id}`}
+                  class={() =>
+                    `nav-link ${currentPage.value === doc.id ? "active" : ""}`
+                  }
+                  onClick={() => {
+                    currentPage.value = doc.id;
+                    sidebarOpen.value = false;
+                  }}
+                >
+                  {doc.title}
+                </a>
+              </li>
+            )}
+          </For>
         </ul>
       </nav>
     </aside>
