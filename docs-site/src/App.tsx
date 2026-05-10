@@ -82,7 +82,7 @@ export const App = createComponent(() => {
                 </span>
                 <span class="sidebar-toggle-label">Menu</span>
               </button>
-              <p class="content-kicker">Sinwan docs</p>
+              <p class="content-kicker">Sinwan docs </p>
               <h1 class="content-title">
                 A fast reactive UI library for JSX, fine-grained reactivity,
                 SSR, and hydration.
