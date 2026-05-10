@@ -50,7 +50,10 @@ export function applyAttributes(
   for (const [key, value] of Object.entries(props)) {
     if (SKIP_PROPS.has(key) || isEventProp(key)) continue;
 
-    if (isReactive(value)) {
+    const attrName = resolveAttributeName(key);
+    const isComplex = attrName === "class" || attrName === "style";
+    
+    if (isReactive(value) || (isComplex && containsReactive(value))) {
       // Reactive attribute — wrap in an effect
       const state: AttributeBindingState = { previousStyleProps: new Set() };
       let initialized = false;
@@ -146,14 +149,18 @@ export function resolveAttributeName(key: string): string {
 /**
  * Apply a style object to an element.
  */
+/**
+ * Apply a style object to an element.
+ */
 function applyStyle(
   el: HTMLElement,
-  styles: Record<string, string | number | null | undefined>,
+  value: unknown,
   state?: AttributeBindingState,
 ): void {
+  const styleObj = normalizeStyle(value);
   const nextProps = new Set<string>();
 
-  for (const [prop, val] of Object.entries(styles)) {
+  for (const [prop, val] of Object.entries(styleObj)) {
     nextProps.add(prop);
 
     if (val == null) {
@@ -161,12 +168,8 @@ function applyStyle(
       continue;
     }
 
-    // Convert camelCase to kebab-case for style.setProperty
-    if (prop.includes("-")) {
-      el.style.setProperty(prop, String(val));
-    } else {
-      (el.style as any)[prop] = val;
-    }
+    const kebabProp = prop.startsWith("--") ? prop : camelToKebab(prop);
+    el.style.setProperty(kebabProp, String(val));
   }
 
   if (!state) {
@@ -182,32 +185,103 @@ function applyStyle(
   state.previousStyleProps = nextProps;
 }
 
-function removeStyleProperty(el: HTMLElement, prop: string): void {
-  if (prop.includes("-")) {
-    el.style.removeProperty(prop);
-  } else {
-    (el.style as any)[prop] = "";
+function normalizeStyle(
+  value: unknown,
+): Record<string, string | number | null | undefined> {
+  const resolved = resolve(value);
+  if (!resolved) return {};
+
+  if (typeof resolved === "string") {
+    return parseStyleString(resolved);
   }
+
+  if (Array.isArray(resolved)) {
+    return resolved.reduce((acc, item) => {
+      const normalized = normalizeStyle(item);
+      return Object.assign(acc, normalized);
+    }, {} as Record<string, any>);
+  }
+
+  if (typeof resolved === "object") {
+    const result: Record<string, any> = {};
+    for (const [k, v] of Object.entries(resolved)) {
+      result[k] = resolve(v);
+    }
+    return result;
+  }
+
+  return {};
+}
+
+function parseStyleString(style: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  style.split(";").forEach((rule) => {
+    const i = rule.indexOf(":");
+    if (i > 0) {
+      const prop = rule.slice(0, i).trim();
+      const val = rule.slice(i + 1).trim();
+      if (prop && val) {
+        result[prop] = val;
+      }
+    }
+  });
+  return result;
+}
+
+function removeStyleProperty(el: HTMLElement, prop: string): void {
+  const kebabProp = prop.startsWith("--") ? prop : camelToKebab(prop);
+  el.style.removeProperty(kebabProp);
 }
 
 /**
  * Apply class value — supports string, array, or object notation.
+ * Recursively resolves reactive values.
  */
 function applyClass(el: Element, value: unknown): void {
-  let classStr: string;
+  domOps.setAttribute(el, "class", normalizeClass(value));
+}
 
-  if (Array.isArray(value)) {
-    // ["foo", "bar", false && "baz"] → "foo bar"
-    classStr = value.filter(Boolean).join(" ");
-  } else if (typeof value === "object" && value !== null) {
-    // { foo: true, bar: false } → "foo"
-    classStr = Object.entries(value)
-      .filter(([, v]) => Boolean(v))
-      .map(([k]) => k)
+function normalizeClass(value: unknown): string {
+  const resolved = resolve(value);
+  if (!resolved) return "";
+  if (typeof resolved === "string") return resolved;
+
+  if (Array.isArray(resolved)) {
+    // ["foo", "bar", false && "baz", signal] → "foo bar val"
+    return resolved
+      .map(normalizeClass)
+      .filter(Boolean)
       .join(" ");
-  } else {
-    classStr = String(value);
   }
 
-  domOps.setAttribute(el, "class", classStr);
+  if (typeof resolved === "object") {
+    // { foo: true, bar: false, baz: signal } → "foo baz"
+    return Object.entries(resolved)
+      .filter(([, v]) => Boolean(resolve(v)))
+      .map(([k]) => k)
+      .join(" ");
+  }
+
+  return String(resolved);
+}
+
+/**
+ * Recursively check if a value contains any reactive element.
+ */
+function containsReactive(value: unknown): boolean {
+  if (isReactive(value)) return true;
+  if (Array.isArray(value)) return value.some(containsReactive);
+  if (typeof value === "object" && value !== null) {
+    // For style objects/class objects, we only check one level deep for performance
+    // but recursive is safer for nested class arrays.
+    return Object.values(value).some(containsReactive);
+  }
+  return false;
+}
+
+/**
+ * Convert camelCase to kebab-case.
+ */
+function camelToKebab(str: string): string {
+  return str.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
 }

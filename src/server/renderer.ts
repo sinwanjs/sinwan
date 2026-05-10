@@ -35,6 +35,10 @@ import {
   isPortalElement,
   isShowElement,
   isSwitchElement,
+  resolveKeyChildren,
+  resolveMatchChildren,
+  resolveShowChildren,
+  resolveSwitchContent,
 } from "../component/control-flow.ts";
 
 // Component cache - maps component identity to render function
@@ -354,41 +358,6 @@ async function renderIndexElement(element: SinwanElement): Promise<string> {
   return rendered.join("");
 }
 
-function resolveSwitchContent(element: SinwanElement): SinwanNode {
-  const props = element.props as { fallback?: SinwanNode; children?: SinwanNode };
-  const children = normalizeContent(props.children ?? element.children);
-
-  for (const child of children) {
-    const match = getMatchElement(child);
-    if (!match) {
-      continue;
-    }
-
-    const when = readReactive((match.props as any).when);
-    if (when) {
-      return resolveMatchChildren(match, when);
-    }
-  }
-
-  return props.fallback;
-}
-
-function resolveMatchChildren(element: SinwanElement, value: unknown): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function resolveKeyChildren(element: SinwanElement, value: unknown): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
 function createDynamicElement(element: SinwanElement, tag: unknown): SinwanElement | null {
   if (typeof tag !== "string" && typeof tag !== "function") {
     return null;
@@ -402,14 +371,6 @@ function createDynamicElement(element: SinwanElement, tag: unknown): SinwanEleme
     props,
     children,
   };
-}
-
-function resolveShowChildren(element: SinwanElement, value: unknown): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
 }
 
 function readReactive(value: unknown): unknown {

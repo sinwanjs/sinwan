@@ -89,11 +89,21 @@ export function renderElementToDOM(
     tag === Dynamic ||
     tag === Portal
   ) {
-    return renderElementToDOM((tag as Function)(props), parent, anchor, namespace);
+    return renderElementToDOM(
+      (tag as Function)(props),
+      parent,
+      anchor,
+      namespace,
+    );
   }
 
   if (tag === Visible) {
-    return renderElementToDOM((tag as Function)(props), parent, anchor, namespace);
+    return renderElementToDOM(
+      (tag as Function)(props),
+      parent,
+      anchor,
+      namespace,
+    );
   }
 
   if (
@@ -115,7 +125,14 @@ export function renderElementToDOM(
 
   // Intrinsic HTML element
   if (typeof tag === "string") {
-    return renderIntrinsicToDOM(tag, props, children, parent, anchor, namespace);
+    return renderIntrinsicToDOM(
+      tag,
+      props,
+      children,
+      parent,
+      anchor,
+      namespace,
+    );
   }
 
   // Fallback — render children
@@ -220,7 +237,12 @@ function renderComponentToDOM(
 
     // Render the returned element tree (still under this instance)
     if (result && typeof result === "object" && "tag" in result) {
-      child = renderElementToDOM(result as SinwanElement, parent, anchor, namespace);
+      child = renderElementToDOM(
+        result as SinwanElement,
+        parent,
+        anchor,
+        namespace,
+      );
     } else {
       child = renderNodeToDOM(result as SinwanNode, parent, anchor, namespace);
     }
@@ -280,13 +302,19 @@ function renderFragmentToDOM(
   return { type: "fragment", children: mounted, anchor: anchorComment };
 }
 
-function getElementNamespace(tag: string, parentNamespace: string | null): string | null {
+function getElementNamespace(
+  tag: string,
+  parentNamespace: string | null,
+): string | null {
   if (tag === "svg") return SVG_NS;
   if (tag === "math") return MATH_NS;
   return parentNamespace;
 }
 
-function getChildNamespace(tag: string, namespace: string | null): string | null {
+function getChildNamespace(
+  tag: string,
+  namespace: string | null,
+): string | null {
   if (namespace === SVG_NS && tag === "foreignObject") {
     return null;
   }

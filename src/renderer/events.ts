@@ -16,7 +16,8 @@ import type { CleanupFn } from "../reactivity/index.ts";
  * Check if a prop key is an event handler (starts with "on").
  */
 export function isEventProp(key: string): boolean {
-  return key.length > 2 && key[0] === "o" && key[1] === "n" && key[2]! >= "A" && key[2]! <= "Z";
+  // Matches onClick, onclick, onMouseMove, onmousemove, etc.
+  return key.length > 2 && key.startsWith("on");
 }
 
 /**

@@ -71,6 +71,8 @@ export interface MountedPortal {
   anchor: Comment;
   children: MountedNode[];
   dispose: CleanupFn;
+  target?: Node;
+  targetAnchor?: Comment;
 }
 
 /** Union of all mounted node types. */

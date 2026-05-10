@@ -8,6 +8,24 @@ All notable changes to **Sinwan** are documented in this file. The format follow
 
 No unreleased changes.
 
+## [1.1.2] — Renderer Hardening & Portal Stability
+
+Sinwan 1.1.2 focuses on hardening the client renderer for high-frequency churn scenarios, improving style normalization, and ensuring deterministic Portal reordering.
+
+### Added
+
+- **Portal Reordering Support**: Portals now track their relative position in the source tree and re-synchronize their content order in the target element when moved (e.g., inside a `<For>` loop).
+- **Style Normalization**: Introduced a recursive `normalizeStyle` helper that robustly handles arrays of styles, nested objects, and string-style rules, ensuring deterministic property application.
+
+### Fixed
+
+- **Component Context Persistence**: Fixed a bug where child components rendered within reactive blocks (`<Show>`, `<For>`, etc.) could lose their parent component instance during updates, causing lifecycle hooks like `onMounted` to be skipped.
+- **Instance Memory Leaks**: Hardened `fireUnmountedHooks` to proactively remove unmounted instances from their parents, preventing infinite growth of the component tree during rapid mount/unmount cycles.
+- **Lifecycle Disposal**: Guaranteed that all reactive effects owned by a component are disposed of on unmount, even if the component was unmounted before its initial mount lifecycle completed.
+- **Show Component Logic**: Corrected an issue where the `when` prop in `<Show>` blocks was occasionally resolved as a function instead of its underlying reactive value.
+
+---
+
 ## [1.1.1] — Reactivity Hardening & Dynamic Content
 
 Sinwan 1.1.1 hardens the reactivity system with a unified normalization layer and adds support for dynamic reactive nodes that can resolve to complex JSX structures.
@@ -92,4 +110,4 @@ Sinwan 1.0.0 is the first stable public release. It includes the original v1 run
 
 - Added 1.0.0 regression coverage for control flow, refs, namespaces, pluggable `domOps`, `onUpdated`, hydratable streaming, and release metadata.
 - Build pipeline: `tsc` for declarations and Bun.build for ESM/CJS development and production bundles.
-- Total tests: **114 / 114** pass.
+- Total tests: **245 pass / 0 fail**.

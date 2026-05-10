@@ -325,6 +325,51 @@ describe("Switch/Match", () => {
     await nextTick();
     expect(container.textContent).toBe("done");
   });
+
+  it("renders Match elements nested inside other control flow components", async () => {
+    const list = signal([0, 1, 2, 3]);
+    const target = signal(2);
+    const showMatch = signal(true);
+
+    const App = createComponent(() =>
+      el(Switch, {
+        fallback: el("p", {}, "fallback"),
+        children: [
+          el(Show, {
+            when: showMatch,
+            children: el(For, {
+              each: list,
+              children: (n: number) =>
+                el(Match, {
+                  when: () => n === target.value,
+                  children: el("p", {}, `Count is ${n}`),
+                }),
+            }),
+          }),
+          el(Match, {
+            when: true,
+            children: "Outer Match",
+          }),
+        ],
+      }),
+    );
+
+    mount(App, container);
+    expect(container.textContent).toBe("Count is 2");
+
+    target.value = 1;
+    await nextTick();
+    expect(container.textContent).toBe("Count is 1");
+
+    showMatch.value = false;
+    await nextTick();
+    expect(container.textContent).toBe("Outer Match");
+
+    showMatch.value = true;
+    target.value = 5; // Not in list
+    await nextTick();
+    expect(container.textContent).toBe("Outer Match");
+  });
 });
 
 describe("Index", () => {

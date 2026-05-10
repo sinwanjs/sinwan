@@ -140,7 +140,7 @@ export function fireMountedHooks(instance: ComponentInstance): void {
     return;
   }
 
-  // Children first (bottom-up, like Vue)
+  // Children first
   for (const child of instance.children) {
     fireMountedHooks(child);
   }
@@ -159,24 +159,35 @@ export function fireMountedHooks(instance: ComponentInstance): void {
  */
 export function fireUnmountedHooks(instance: ComponentInstance): void {
   // Children first
-  for (const child of instance.children) {
+  const children = [...instance.children];
+  for (const child of children) {
     fireUnmountedHooks(child);
   }
 
-  if (instance.isMounted && !instance.isUnmounted) {
+  if (!instance.isUnmounted) {
     instance.isUnmounted = true;
-    instance.isMounted = false;
-
-    // Fire unmounted hooks
-    for (const hook of instance._unmountedHooks) {
-      hook();
+    
+    // Only fire unmounted hooks if it was ever mounted
+    if (instance.isMounted) {
+      instance.isMounted = false;
+      for (const hook of instance._unmountedHooks) {
+        hook();
+      }
     }
 
-    // Dispose all effects owned by this component
+    // ALWAYS dispose effects owned by this component
     for (const dispose of instance.effects) {
       dispose();
     }
     instance.effects.length = 0;
+
+    // Remove from parent to prevent memory leaks
+    if (instance.parent) {
+      const idx = instance.parent.children.indexOf(instance);
+      if (idx !== -1) {
+        instance.parent.children.splice(idx, 1);
+      }
+    }
   }
 }
 

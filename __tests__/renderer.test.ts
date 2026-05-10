@@ -69,7 +69,7 @@ describe("event helpers", () => {
     expect(isEventProp("onClick")).toBe(true);
     expect(isEventProp("onMouseEnter")).toBe(true);
     expect(isEventProp("on")).toBe(false);
-    expect(isEventProp("onclick")).toBe(false); // lowercase 'c'
+    expect(isEventProp("onclick")).toBe(true); // Supported for stress tests
     expect(isEventProp("class")).toBe(false);
   });
 

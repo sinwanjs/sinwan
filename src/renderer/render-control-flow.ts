@@ -23,11 +23,12 @@ import {
   isForElement,
   isIndexElement,
   isKeyElement,
-  isMatchElement,
   isPortalElement,
   isShowElement,
   isSwitchElement,
-  Match,
+  resolveKeyChildren,
+  resolveShowChildren,
+  resolveSwitchContent,
 } from "../component/control-flow.ts";
 import {
   getMountedDomNodes,
@@ -104,19 +105,17 @@ function renderShowBlock(
 
   return effect(() => {
     clearChildren(block);
-
     const when = readReactive((element.props as any).when);
-    const content = withOptionalInstance(owner, () =>
-      when ? resolveShowChildren(element, when) : (element.props as any).fallback,
-    );
-
-    block.children = renderBlockContent(
-      content,
-      parent,
-      block.endAnchor,
-      namespace,
-      owner,
-    );
+    block.children = withOptionalInstance(owner, () => {
+      const content = when ? resolveShowChildren(element, when) : (element.props as any).fallback;
+      return renderBlockContent(
+        content,
+        parent,
+        block.endAnchor,
+        namespace,
+        owner,
+      );
+    });
 
     if (initialized) {
       fireMountedAndQueueUpdated(owner);
@@ -435,23 +434,40 @@ function renderPortal(
 
   const owner = getCurrentInstance();
   let disposeEffect = () => {};
+  
+  const targetAnchor = domOps.createComment("Sinwan-pa");
+  let lastTarget: Node | null = null;
+
   const portal: MountedPortal = {
     type: "portal",
     anchor: placeholder,
     children: [],
     dispose: () => disposeEffect(),
+    targetAnchor,
   };
   let initialized = false;
 
   disposeEffect = effect(() => {
+    const target = resolvePortalTarget((element.props as any).mount);
+    
+    if (target !== lastTarget) {
+      if (lastTarget) {
+        domOps.remove(targetAnchor);
+      }
+      if (target) {
+        domOps.appendChild(target, targetAnchor);
+      }
+      lastTarget = target;
+      portal.target = target as Node;
+    }
+
     clearPortalChildren(portal);
 
-    const target = resolvePortalTarget((element.props as any).mount);
     if (target) {
       portal.children = renderBlockContent(
         (element.props as any).children ?? element.children,
         target,
-        null,
+        targetAnchor,
         namespace,
         owner,
       );
@@ -464,49 +480,6 @@ function renderPortal(
   });
 
   return portal;
-}
-
-function resolveShowChildren(element: SinwanElement, value: unknown): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function resolveSwitchContent(element: SinwanElement): SinwanNode {
-  const props = element.props as { fallback?: SinwanNode; children?: SinwanNode };
-  const children = normalizeContent(props.children ?? element.children);
-
-  for (const child of children) {
-    const match = getMatchElement(child);
-    if (!match) {
-      continue;
-    }
-
-    const when = readReactive((match.props as any).when);
-    if (when) {
-      return resolveMatchChildren(match, when);
-    }
-  }
-
-  return props.fallback;
-}
-
-function resolveMatchChildren(element: SinwanElement, value: unknown): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function resolveKeyChildren(element: SinwanElement, value: unknown): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
 }
 
 function createDynamicElement(element: SinwanElement, tag: unknown): SinwanElement | null {
@@ -525,22 +498,23 @@ function createDynamicElement(element: SinwanElement, tag: unknown): SinwanEleme
 }
 
 function renderBlockContent(
-  content: unknown,
+  content: SinwanNode,
   parent: Node,
   anchor: Node | null,
   namespace: string | null,
   owner: ComponentInstance | null,
 ): MountedNode[] {
-  if (content == null || typeof content === "boolean") {
-    return [];
-  }
+  if (content == null || typeof content === "boolean") return [];
 
-  const nodes = Array.isArray(content) ? content : [content];
-  return nodes.map((node) =>
-    withOptionalInstance(owner, () =>
-      renderNodeToDOM(node as SinwanNode, parent, anchor, namespace),
-    ),
-  );
+  return withOptionalInstance(owner, () => {
+    if (Array.isArray(content)) {
+      return content.map((child) =>
+        renderNodeToDOM(child, parent, anchor, namespace),
+      );
+    }
+
+    return [renderNodeToDOM(content, parent, anchor, namespace)];
+  });
 }
 
 function clearChildren(block: MountedReactiveBlock): void {
@@ -560,6 +534,24 @@ function clearPortalChildren(portal: MountedPortal): void {
 function moveBeforeEnd(parent: Node, mounted: MountedNode, endAnchor: Node): void {
   for (const node of getMountedDomNodes(mounted)) {
     domOps.insertBefore(parent, node, endAnchor);
+  }
+  syncPortalOrder(mounted);
+}
+
+function syncPortalOrder(mounted: MountedNode): void {
+  if (mounted.type === "portal") {
+    if (mounted.target && mounted.targetAnchor) {
+      for (const child of mounted.children) {
+        for (const node of getMountedDomNodes(child)) {
+          domOps.appendChild(mounted.target, node);
+        }
+      }
+      domOps.appendChild(mounted.target, mounted.targetAnchor);
+    }
+  } else if ("children" in mounted && Array.isArray((mounted as any).children)) {
+    for (const child of (mounted as any).children) {
+      syncPortalOrder(child);
+    }
   }
 }
 
@@ -586,20 +578,6 @@ function normalizeContent(content: unknown): SinwanNode[] {
     return [];
   }
   return Array.isArray(content) ? content : [content as SinwanNode];
-}
-
-function isElementLike(value: unknown): value is SinwanElement {
-  return value != null && typeof value === "object" && "tag" in value;
-}
-
-function getMatchElement(value: unknown): SinwanElement | null {
-  if (!isElementLike(value)) {
-    return null;
-  }
-  if (isMatchElement(value)) {
-    return value;
-  }
-  return value.tag === Match ? Match(value.props as any) : null;
 }
 
 function resolvePortalTarget(value: unknown): Node | null {

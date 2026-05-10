@@ -17,5 +17,5 @@ export type { CleanupFn, EffectFn } from "./effect.ts";
 
 // Batching & scheduling
 export { batch } from "./batch.ts";
-export { nextTick } from "./scheduler.ts";
+export { nextTick, flushSync } from "./scheduler.ts";
 export { isReactive, resolve } from "./normalization.ts";
