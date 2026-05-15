@@ -354,12 +354,45 @@ import { computed, For, Index } from "sinwan";
 
 `<For>` performs keyed insert, remove, reorder, fallback, and cleanup work for signal-backed arrays. If `key` is omitted, item identity is used. `<Index>` keeps DOM rows stable by index and updates per-index item accessors, which is useful when list order is stable.
 
+### Virtual scrolling
+
+```tsx
+import { Virtual } from "sinwan";
+
+<Virtual
+  each={items}
+  key={(item) => item.id}
+  itemHeight={50}
+  containerHeight={400}
+  overscan={5}
+  fallback={<p>No items yet.</p>}
+>
+  {(item, index) => (
+    <div>
+      {index()}. {item.label}
+    </div>
+  )}
+</Virtual>;
+```
+
+`<Virtual>` renders only the items visible inside a fixed-height scrollable container. It computes a window from `scrollTop`, `itemHeight`, `containerHeight`, and `overscan`, mounts only the rows in that window, and reuses keyed rows as the user scrolls. The total scrollable height is set automatically (`items.length * itemHeight`). Items are positioned absolutely at their correct `top` offset inside a relative content wrapper.
+
+| Prop              | Type                                           | Required | Default | Description                                   |
+| ----------------- | ---------------------------------------------- | -------- | ------- | --------------------------------------------- |
+| `each`            | `Reactive<readonly T[]>`                       | Yes      | —       | Source array (signal, computed, or getter)    |
+| `key`             | `(item: T, index: number) => unknown`          | No       | item    | Key function for stable row identity          |
+| `itemHeight`      | `number`                                       | Yes      | —       | Fixed height of each row in pixels            |
+| `containerHeight` | `number`                                       | Yes      | —       | Height of the scrollable viewport in pixels   |
+| `overscan`        | `number`                                       | No       | `3`     | Extra rows to render above and below viewport |
+| `fallback`        | `SinwanNode`                                   | No       | —       | Shown when `each` is empty or not an array    |
+| `children`        | `(item: T, index: () => number) => SinwanNode` | Yes      | —       | Row renderer (same signature as `<For>`)      |
+
 ---
 
 ## Structural helpers
 
 ```tsx
-import { Dynamic, Key, Portal, Visible } from "sinwan";
+import { Dynamic, Key, Portal, Visible, Virtual } from "sinwan";
 
 <Key when={routeId}>
   {id => <RoutePage id={id} />}
@@ -376,7 +409,7 @@ import { Dynamic, Key, Portal, Visible } from "sinwan";
 </Portal>
 ```
 
-`<Key>` remounts its subtree when the key changes. `<Dynamic>` swaps the rendered tag/component. `<Visible>` toggles CSS `display` without unmounting children. `<Portal>` renders children into another DOM target and cleans them up with the owner tree.
+`<Key>` remounts its subtree when the key changes. `<Dynamic>` swaps the rendered tag/component. `<Visible>` toggles CSS `display` without unmounting children. `<Portal>` renders children into another DOM target and cleans them up with the owner tree. `<Virtual>` renders only the visible slice of a large list with absolute positioning and scroll tracking (see [Virtual scrolling](#virtual-scrolling)).
 
 ---
 

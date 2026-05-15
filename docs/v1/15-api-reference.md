@@ -204,6 +204,22 @@ function Portal(props: {
 
 Renders children into another DOM target. Defaults to `document.body` on the client.
 
+### `Virtual(props)` &nbsp;·&nbsp; _sinwan_
+
+```ts
+function Virtual<T>(props: {
+  each: Reactive<readonly T[]>;
+  key?: (item: T, index: number) => string | number | symbol;
+  itemHeight: number;
+  containerHeight: number;
+  overscan?: number;
+  fallback?: SinwanNode;
+  children: (item: T, index: () => number) => SinwanNode;
+}): SinwanElement;
+```
+
+Virtualized list rendering — mounts only the visible slice of a large array inside a scrollable container. See [`04-components.md`](./04-components.md#virtual-scrolling).
+
 ---
 
 ## Lifecycle
@@ -568,22 +584,22 @@ See [`09-ssr.md`](./09-ssr.md) and [`10-hydration.md`](./10-hydration.md).
 
 ## Public types (sinwan)
 
-| Name                                                                                                                                                  | Defined in                    |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| `SinwanNode`, `SinwanElement`, `SinwanPrimitive`                                                                                                      | `types.ts`                    |
-| `SinwanComponent<P>`                                                                                                                                  | `types.ts`                    |
-| `SinwanSlots`                                                                                                                                         | `types.ts`                    |
-| `RenderResult`                                                                                                                                        | `types.ts`                    |
-| `PropsWithChildren<P>` / `PropsWithSlots<P>`                                                                                                          | `types.ts`                    |
-| `Reactive<T>`                                                                                                                                         | `types.ts`                    |
-| `ShowProps<T>`, `ForProps<T>`, `SwitchProps`, `MatchProps<T>`, `IndexProps<T>`, `KeyProps<T>`, `DynamicProps`, `VisibleProps`, `PortalProps`          | `component/control-flow.ts`   |
-| `Signal<T>`, `Computed<T>`                                                                                                                            | `reactivity/*`                |
-| `CleanupFn`, `EffectFn`                                                                                                                               | `reactivity/effect.ts`        |
-| `ComponentInstance`                                                                                                                                   | `component/instance.ts`       |
-| `InjectionKey<T>`                                                                                                                                     | `component/provide-inject.ts` |
-| `MountedNode`, `MountedText`, `MountedReactiveText`, `MountedElement`, `MountedFragment`, `MountedReactiveBlock`, `MountedComponent`, `MountedPortal` | `renderer/types.ts`           |
-| `AppInstance`                                                                                                                                         | `renderer/types.ts`           |
-| `DOMOps`                                                                                                                                              | `renderer/dom-ops.ts`         |
-| `HydrationCursor`                                                                                                                                     | `hydration/walk.ts`           |
+| Name                                                                                                                                                            | Defined in                    |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| `SinwanNode`, `SinwanElement`, `SinwanPrimitive`                                                                                                                | `types.ts`                    |
+| `SinwanComponent<P>`                                                                                                                                            | `types.ts`                    |
+| `SinwanSlots`                                                                                                                                                   | `types.ts`                    |
+| `RenderResult`                                                                                                                                                  | `types.ts`                    |
+| `PropsWithChildren<P>` / `PropsWithSlots<P>`                                                                                                                    | `types.ts`                    |
+| `Reactive<T>`                                                                                                                                                   | `types.ts`                    |
+| `ShowProps<T>`, `ForProps<T>`, `SwitchProps`, `MatchProps<T>`, `IndexProps<T>`, `KeyProps<T>`, `DynamicProps`, `VisibleProps`, `PortalProps`, `VirtualProps<T>` | `component/control-flow.ts`   |
+| `Signal<T>`, `Computed<T>`                                                                                                                                      | `reactivity/*`                |
+| `CleanupFn`, `EffectFn`                                                                                                                                         | `reactivity/effect.ts`        |
+| `ComponentInstance`                                                                                                                                             | `component/instance.ts`       |
+| `InjectionKey<T>`                                                                                                                                               | `component/provide-inject.ts` |
+| `MountedNode`, `MountedText`, `MountedReactiveText`, `MountedElement`, `MountedFragment`, `MountedReactiveBlock`, `MountedComponent`, `MountedPortal`           | `renderer/types.ts`           |
+| `AppInstance`                                                                                                                                                   | `renderer/types.ts`           |
+| `DOMOps`                                                                                                                                                        | `renderer/dom-ops.ts`         |
+| `HydrationCursor`                                                                                                                                               | `hydration/walk.ts`           |
 
 Full type definitions in [`16-types.md`](./16-types.md).

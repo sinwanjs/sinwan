@@ -20,6 +20,7 @@ import {
   Show,
   Switch,
   Visible,
+  Virtual,
 } from "../src/component/control-flow.ts";
 import type { SinwanElement } from "../src/types.ts";
 
@@ -612,5 +613,187 @@ describe("Portal", () => {
 
     app.unmount();
     expect(target.textContent).toBe("");
+  });
+});
+
+describe("Virtual", () => {
+  it("renders only visible items on initial mount", async () => {
+    const items = signal(Array.from({ length: 100 }, (_, i) => `item-${i}`));
+
+    const App = cc(() =>
+      el(Virtual, {
+        each: items,
+        itemHeight: 50,
+        containerHeight: 200,
+        overscan: 2,
+        children: (item: string) => el("div", { class: "row" }, item),
+      }),
+    );
+
+    mount(App, container);
+    await nextTick();
+
+    const rows = byTag(container, "div");
+    // Container + content wrapper + 6 visible rows (0..5)
+    // container(1) + content(1) + rows(6) = 8 divs
+    expect(rows.length).toBe(8);
+
+    const rowEls = rows.filter((r) => r.classList.contains("row"));
+    expect(rowEls.length).toBe(6);
+    expect(rowEls[0]!.textContent).toBe("item-0");
+    expect(rowEls[5]!.textContent).toBe("item-5");
+  });
+
+  it("updates visible items on scroll", async () => {
+    const items = signal(Array.from({ length: 100 }, (_, i) => `item-${i}`));
+
+    const App = cc(() =>
+      el(Virtual, {
+        each: items,
+        itemHeight: 50,
+        containerHeight: 200,
+        overscan: 2,
+        children: (item: string) => el("div", { class: "row" }, item),
+      }),
+    );
+
+    mount(App, container);
+    await nextTick();
+
+    const virtualContainer = Array.from(container.children).find(
+      (c) => (c as any).style?.overflow === "auto",
+    ) as HTMLElement;
+    expect(virtualContainer).toBeTruthy();
+
+    virtualContainer.scrollTop = 400;
+    virtualContainer.dispatchEvent(new (win as any).Event("scroll") as Event);
+    await nextTick();
+
+    const rows = byTag(container, "div").filter((r) =>
+      r.classList.contains("row"),
+    );
+    // scrollTop=400 => startIndex=floor(400/50)=8, endIndex=ceil((400+200)/50)=12
+    // with overscan 2: start=6, end=14 => 8 items (6..13)
+    expect(rows.length).toBe(8);
+    expect(rows[0]!.textContent).toBe("item-6");
+    expect(rows[7]!.textContent).toBe("item-13");
+  });
+
+  it("renders fallback when list is empty", async () => {
+    const items = signal<string[]>([]);
+
+    const App = cc(() =>
+      el(Virtual, {
+        each: items,
+        itemHeight: 50,
+        containerHeight: 200,
+        fallback: el("p", { id: "empty" }, "No items"),
+        children: (item: string) => el("div", { class: "row" }, item),
+      }),
+    );
+
+    mount(App, container);
+    await nextTick();
+
+    expect(container.textContent).toBe("No items");
+    expect(doc.getElementById("empty")).toBeTruthy();
+  });
+
+  it("updates visible window when list changes", async () => {
+    const items = signal(Array.from({ length: 20 }, (_, i) => `item-${i}`));
+
+    const App = cc(() =>
+      el(Virtual, {
+        each: items,
+        itemHeight: 50,
+        containerHeight: 200,
+        overscan: 0,
+        children: (item: string) => el("div", { class: "row" }, item),
+      }),
+    );
+
+    mount(App, container);
+    await nextTick();
+
+    let rows = byTag(container, "div").filter((r) =>
+      r.classList.contains("row"),
+    );
+    expect(rows.length).toBe(4);
+    expect(rows[0]!.textContent).toBe("item-0");
+
+    items.value = Array.from({ length: 50 }, (_, i) => `new-${i}`);
+    await nextTick();
+
+    rows = byTag(container, "div").filter((r) => r.classList.contains("row"));
+    expect(rows.length).toBe(4);
+    expect(rows[0]!.textContent).toBe("new-0");
+  });
+
+  it("positions items with absolute positioning", async () => {
+    const items = signal(["a", "b", "c"]);
+
+    const App = cc(() =>
+      el(Virtual, {
+        each: items,
+        itemHeight: 50,
+        containerHeight: 200,
+        overscan: 0,
+        children: (item: string) => el("div", { class: "row" }, item),
+      }),
+    );
+
+    mount(App, container);
+    await nextTick();
+
+    const rows = byTag(container, "div").filter((r) =>
+      r.classList.contains("row"),
+    );
+    expect(rows.length).toBe(3);
+    expect(rows[0]!.style.position).toBe("absolute");
+    expect(rows[0]!.style.top).toBe("0px");
+    expect(rows[1]!.style.top).toBe("50px");
+    expect(rows[2]!.style.top).toBe("100px");
+  });
+
+  it("reuses keyed items when scrolling", async () => {
+    type Item = { id: string; label: string };
+    const data = Array.from({ length: 20 }, (_, i) => ({
+      id: String(i),
+      label: `item-${i}`,
+    }));
+    const items = signal<Item[]>(data);
+    const mountedIds: string[] = [];
+
+    const Row = cc<{ item: Item }>(({ item }) => {
+      onMounted(() => mountedIds.push(item.id));
+      return el("div", { class: "row" }, item.label);
+    });
+
+    const App = cc(() =>
+      el(Virtual, {
+        each: items,
+        key: (item: Item) => item.id,
+        itemHeight: 50,
+        containerHeight: 200,
+        overscan: 2,
+        children: (item: Item) => el(Row, { item }),
+      }),
+    );
+
+    mount(App, container);
+    await nextTick();
+
+    // scrollTop=0, overscan=2 => items 0..5 visible
+    expect(mountedIds).toEqual(["0", "1", "2", "3", "4", "5"]);
+
+    const virtualContainer = Array.from(container.children).find(
+      (c) => (c as any).style?.overflow === "auto",
+    ) as HTMLElement;
+    // scroll to show items 0..7 (overlap 0..5 reused, 6..7 new)
+    virtualContainer.scrollTop = 100;
+    virtualContainer.dispatchEvent(new (win as any).Event("scroll") as Event);
+    await nextTick();
+
+    expect(mountedIds).toEqual(["0", "1", "2", "3", "4", "5", "6", "7"]);
   });
 });

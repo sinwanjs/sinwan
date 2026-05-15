@@ -24,6 +24,7 @@ import {
   Portal,
   Switch,
   Visible,
+  Virtual,
   isDynamicElement,
   isErrorBoundaryElement,
   isForElement,
@@ -35,6 +36,7 @@ import {
   isSwitchElement,
   isActivityElement,
   isViewTransitionElement,
+  isVirtualElement,
   Show,
   SUSPENSE_TYPE,
 } from "../component/control-flow.ts";
@@ -113,7 +115,8 @@ export function renderElementToDOM(
       tag === Dynamic ||
       tag === Portal ||
       tag === Visible ||
-      tag === ErrorBoundary
+      tag === ErrorBoundary ||
+      tag === Virtual
     ) {
       return renderElementToDOM(
         (tag as Function)(props),
@@ -138,7 +141,8 @@ export function renderElementToDOM(
     isSuspenseElement(element) ||
     isActivityElement(element) ||
     isViewTransitionElement(element) ||
-    isErrorBoundaryElement(element)
+    isErrorBoundaryElement(element) ||
+    isVirtualElement(element)
   ) {
     return renderControlFlowToDOM(element, parent, anchor, namespace);
   }

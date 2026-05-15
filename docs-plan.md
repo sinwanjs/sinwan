@@ -60,7 +60,8 @@ docs/
 │           │   ├── Dynamic.md
 │           │   ├── Visible.md
 │           │   ├── Portal.md
-│           │   └── ErrorBoundary.md
+│           │   ├── ErrorBoundary.md
+│           │   └── Virtual.md
 │           │
 │           ├── jsx/
 │           │   ├── index.mdx

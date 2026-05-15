@@ -381,8 +381,9 @@ function renderVirtualBlock<T>(
         reused.index = listIndex;
         const nodes = getMountedDomNodes(reused.mounted);
         for (const node of nodes) {
-          if (node instanceof HTMLElement) {
-            node.style.top = `${listIndex * itemHeight}px`;
+          const el = node as any;
+          if (el.style && typeof el.style === "object") {
+            el.style.top = `${listIndex * itemHeight}px`;
           }
         }
         nextRecords[i] = reused;
@@ -408,13 +409,14 @@ function renderVirtualBlock<T>(
 
       const nodes = getMountedDomNodes(record.mounted);
       for (const node of nodes) {
-        if (node instanceof HTMLElement) {
-          node.style.position = "absolute";
-          node.style.top = `${listIndex * itemHeight}px`;
-          node.style.height = `${itemHeight}px`;
-          node.style.left = "0";
-          node.style.right = "0";
-          node.style.boxSizing = "border-box";
+        const el = node as any;
+        if (el.style && typeof el.style === "object") {
+          el.style.position = "absolute";
+          el.style.top = `${listIndex * itemHeight}px`;
+          el.style.height = `${itemHeight}px`;
+          el.style.left = "0";
+          el.style.right = "0";
+          el.style.boxSizing = "border-box";
         }
       }
 
