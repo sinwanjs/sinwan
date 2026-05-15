@@ -131,6 +131,7 @@ export type {
   ReducerAction,
   EffectCallback,
   GetterDependencyList,
+  Getter,
   TransitionFunction,
   TransitionStartFunction,
   OptimisticReducer,

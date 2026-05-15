@@ -21,47 +21,153 @@ export const VIEW_TRANSITION_TYPE = Symbol.for("Sinwan.ViewTransition");
 export const ERROR_BOUNDARY_TYPE = Symbol.for("Sinwan.ErrorBoundary");
 export const VIRTUAL_TYPE = Symbol.for("Sinwan.Virtual");
 
+/**
+ * Props for the `<Show>` control flow component.
+ * @template T - Type of the `when` value.
+ * @property when - Reactive truthy value that determines rendering.
+ * @property fallback - Content to render if `when` is falsy.
+ * @property children - Content or render function to render when `when` is truthy.
+ */
 export interface ShowProps<T> {
+  /**
+   * Reactive truthy value that determines rendering.
+   */
   when: Reactive<T | false | null | undefined>;
+  /**
+   * Content to render if `when` is falsy.
+   */
   fallback?: SinwanNode;
+  /**
+   * Content or render function to render when `when` is truthy.
+   */
   children?: SinwanNode | ((value: NonNullable<T>) => SinwanNode);
 }
 
+/**
+ * Props for the `<For>` control flow component (looping over arrays).
+ * @template T - Type of array items.
+ * @property each - Reactive array to iterate over.
+ * @property key - Function to extract a unique key per item (optional).
+ * @property fallback - Content to render if the array is empty.
+ * @property children - Render function for each item.
+ */
 export interface ForProps<T> {
+  /**
+   * Reactive array to iterate over.
+   */
   each: Reactive<readonly T[]>;
+  /**
+   * Function to extract a unique key for each item (optional).
+   */
   key?: (item: T, index: number) => string | number | symbol;
+  /**
+   * Content to render if the array is empty.
+   */
   fallback?: SinwanNode;
+  /**
+   * Render function for each item, receives the item and an index accessor.
+   */
   children?: (item: T, index: () => number) => SinwanNode;
 }
 
+/**
+ * Props for the `<Switch>` control flow component.
+ * @property fallback - Content to render if no `<Match>` is truthy.
+ * @property children - List of `<Match>` elements to evaluate.
+ */
 export interface SwitchProps {
+  /**
+   * Content to render if no <Match> branch is truthy.
+   */
   fallback?: SinwanNode;
+  /**
+   * List of <Match> elements to evaluate, or an array of nodes.
+   */
   children?: SinwanNode | SinwanNode[];
 }
 
+/**
+ * Props for a `<Match>` branch in `<Switch>`.
+ * @template T - Type of the `when` value.
+ * @property when - Reactive value; truthy triggers this branch.
+ * @property children - Content or render function if this branch matches.
+ */
 export interface MatchProps<T> {
   when: Reactive<T | false | null | undefined>;
   children?: SinwanNode | ((value: NonNullable<T>) => SinwanNode);
 }
 
+/**
+ * Props for the `<Index>` control flow component (looping with stable index).
+ * @template T - Type of array items.
+ * @property each - Reactive array to iterate over.
+ * @property fallback - Content to render if the array is empty.
+ * @property children - Render function, receives an accessor for the item and current index.
+ */
 export interface IndexProps<T> {
+  /**
+   * Reactive array to iterate over.
+   */
   each: Reactive<readonly T[]>;
+  /**
+   * Content to render if the array is empty.
+   */
   fallback?: SinwanNode;
+  /**
+   * Render function, receives an accessor for the item and current index.
+   */
   children?: (item: () => T, index: number) => SinwanNode;
 }
 
+/**
+ * Props for the `<Key>` control flow component.
+ * @template T - Type of the `when` value.
+ * @property when - Reactive value to pass to children.
+ * @property children - Content or render function receiving the value.
+ */
 export interface KeyProps<T> {
-  when: Reactive<T>;
-  children?: SinwanNode | ((value: T) => SinwanNode);
+  /**
+   * Reactive value to pass to children.
+   */
+  when: Reactive<T | null | undefined>;
+  /**
+   * Content or render function receiving the value.
+   */
+  children?: SinwanNode | ((value: NonNullable<T>) => SinwanNode);
 }
 
+/**
+ * Type of tag accepted by the `<Dynamic>` component.
+ * Can be a string HTML tag or a Sinwan component.
+ * @template P - Props type for the dynamic component.
+ */
 export type DynamicTag<P extends object = any> = string | SinwanComponent<P>;
 
+/**
+ * Props for the `<Dynamic>` component.
+ * @template P - Props type for the dynamic component.
+ * @property component - Reactive tag (string or component) to render.
+ * @property children - Content to render inside the dynamic component.
+ */
 export type DynamicProps<P extends object = Record<string, unknown>> = P & {
+  /**
+   * Reactive tag (string HTML tag or Sinwan component) to render.
+   */
   component: Reactive<DynamicTag<P> | null | undefined>;
+  /**
+   * Content to render inside the dynamic component.
+   */
   children?: SinwanNode;
 };
 
+/**
+ * Props for the `<Visible>` component.
+ * @property when - Reactive value that controls visibility.
+ * @property as - HTML tag to render (default: "span").
+ * @property style - Style object/string, can be reactive.
+ * @property children - Content to render inside the element.
+ * @property [key: string] - Additional props passed to the rendered element.
+ */
 export interface VisibleProps {
   when: Reactive<unknown>;
   as?: string;
@@ -75,26 +181,85 @@ export interface VisibleProps {
   [key: string]: unknown;
 }
 
+/**
+ * Props for the `<Portal>` component.
+ * @property mount - Reactive reference to a DOM node or selector to mount into.
+ * @property children - Content to render inside the portal.
+ */
 export interface PortalProps {
+  /**
+   * Reference to a DOM node, CSS selector, or function returning a DOM node.
+   * Determines where the portal's children will be mounted.
+   */
   mount?: Reactive<Node | string | (() => Node | null) | null | undefined>;
+  /**
+   * Content to render inside the portal.
+   */
   children?: SinwanNode;
 }
 
+/**
+ * Props for the `<ErrorBoundary>` component.
+ * @property fallback - Content or render function to render on error.
+ * @property children - Content to render within the boundary.
+ */
 export interface ErrorBoundaryProps {
+  /**
+   * Content or render function to display when an error is caught.
+   * Receives the error and a reset callback.
+   */
   fallback?: SinwanNode | ((error: Error, reset: () => void) => SinwanNode);
+
+  /**
+   * Content to render within the error boundary.
+   */
   children?: SinwanNode;
 }
+
+/**
+ * Props for the `<Virtual>` control flow component.
+ * @template T - Type of array items.
+ * @property each - Reactive array to render virtually.
+ * @property key - Function to extract a unique key per item (optional).
+ * @property fallback - Content to render if the array is empty.
+ * @property children - Render function for each item, receives the item and index.
+ */
 
 export interface VirtualProps<T> {
+  /**
+   * Items to render virtually. Should be a reactive array.
+   */
   each: Reactive<readonly T[]>;
+  /**
+   * Function to extract a unique key for each item. Optional.
+   */
   key?: (item: T, index: number) => string | number | symbol;
+  /**
+   * Height of each item in pixels.
+   */
   itemHeight: number;
+  /**
+   * Height of the scrollable container in pixels.
+   */
   containerHeight: number;
+  /**
+   * Number of extra items to render above and below the visible window. Optional.
+   */
   overscan?: number;
+  /**
+   * Content to render when the array is empty. Optional.
+   */
   fallback?: SinwanNode;
+  /**
+   * Render function for each item, receives the item and a getter for its index.
+   */
   children?: (item: T, index: () => number) => SinwanNode;
 }
 
+/**
+ * Control flow primitive for conditional rendering.
+ * Renders children if `when` is truthy, otherwise renders fallback.
+ */
 export function Show<T>(props: ShowProps<T>): SinwanElement {
   return {
     tag: SHOW_TYPE,
@@ -103,6 +268,10 @@ export function Show<T>(props: ShowProps<T>): SinwanElement {
   };
 }
 
+/**
+ * Control flow primitive for looping over arrays.
+ * Renders children for each item in the array, with optional fallback.
+ */
 export function For<T>(props: ForProps<T>): SinwanElement {
   return {
     tag: FOR_TYPE,
@@ -111,6 +280,10 @@ export function For<T>(props: ForProps<T>): SinwanElement {
   };
 }
 
+/**
+ * Control flow primitive for exclusive branching.
+ * Renders the first matching `<Match>` child, or fallback if none match.
+ */
 export function Switch(props: SwitchProps): SinwanElement {
   return {
     tag: SWITCH_TYPE,
@@ -119,6 +292,10 @@ export function Switch(props: SwitchProps): SinwanElement {
   };
 }
 
+/**
+ * Control flow primitive for a single branch in `<Switch>`.
+ * Renders children if the `when` prop is truthy.
+ */
 export function Match<T>(props: MatchProps<T>): SinwanElement {
   return {
     tag: MATCH_TYPE,
@@ -127,6 +304,10 @@ export function Match<T>(props: MatchProps<T>): SinwanElement {
   };
 }
 
+/**
+ * Control flow primitive for array iteration with stable indices.
+ * Renders children with an accessor for each item and its index.
+ */
 export function Index<T>(props: IndexProps<T>): SinwanElement {
   return {
     tag: INDEX_TYPE,
@@ -135,6 +316,10 @@ export function Index<T>(props: IndexProps<T>): SinwanElement {
   };
 }
 
+/**
+ * Control flow primitive for keyed value rendering.
+ * Passes the value from `when` to children or render function.
+ */
 export function Key<T>(props: KeyProps<T>): SinwanElement {
   return {
     tag: KEY_TYPE,
@@ -143,6 +328,10 @@ export function Key<T>(props: KeyProps<T>): SinwanElement {
   };
 }
 
+/**
+ * Renders a dynamic tag or component, determined by the reactive `component` prop.
+ * Accepts children and additional props.
+ */
 export function Dynamic<P extends object = Record<string, unknown>>(
   props: DynamicProps<P>,
 ): SinwanElement {
@@ -153,6 +342,10 @@ export function Dynamic<P extends object = Record<string, unknown>>(
   };
 }
 
+/**
+ * Conditionally renders an element or component with a given tag and style.
+ * Hides the element by setting `display: none` when `when` is falsy.
+ */
 export function Visible(props: VisibleProps): SinwanElement {
   const { when, as = "span", style, children, ...rest } = props;
 
@@ -184,6 +377,10 @@ export function Visible(props: VisibleProps): SinwanElement {
   };
 }
 
+/**
+ * Renders children into a DOM node outside the normal hierarchy.
+ * Mount point is controlled by the `mount` prop.
+ */
 export function Portal(props: PortalProps): SinwanElement {
   return {
     tag: PORTAL_TYPE,
@@ -192,6 +389,10 @@ export function Portal(props: PortalProps): SinwanElement {
   };
 }
 
+/**
+ * Error boundary for catching render errors in children.
+ * Renders fallback content or function on error.
+ */
 export function ErrorBoundary(props: ErrorBoundaryProps): SinwanElement {
   return {
     tag: ERROR_BOUNDARY_TYPE,
@@ -200,6 +401,10 @@ export function ErrorBoundary(props: ErrorBoundaryProps): SinwanElement {
   };
 }
 
+/**
+ * Virtualized list control flow primitive.
+ * Efficiently renders only visible items in a scrollable container.
+ */
 export function Virtual<T>(props: VirtualProps<T>): SinwanElement {
   return {
     tag: VIRTUAL_TYPE,
