@@ -1,9 +1,12 @@
-import { Virtual } from "sinwan";
-import { Show } from "sinwan";
-import { signal, cc, For, onUpdated } from "sinwan";
+import { Show } from "sinwan/component";
+import { Virtual } from "sinwan/component";
+import { onUpdated } from "sinwan/component";
+import { For } from "sinwan/component";
+import { cc } from "sinwan/component";
 import { Getter } from "sinwan/react-client";
 import { useState } from "sinwan/react-client";
 import { useEffect } from "sinwan/react-client";
+import { signal } from "sinwan/reactivity";
 
 export type Country = {
   name: string;

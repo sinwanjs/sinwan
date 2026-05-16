@@ -1,21 +1,20 @@
 import {
-  signal,
-  computed,
   cc,
   onMounted,
   onUnmounted,
   provide,
   inject,
   type InjectionKey,
-  type Signal,
-} from "sinwan";
+} from "sinwan/component";
+import { signal, computed } from "sinwan/reactivity";
 
-import { Counter as Counter1 } from "./components/counter-1";
+// import { Counter as Counter1 } from "./components/counter-1";
 import { Counter } from "./components/Counter";
 import { Clock } from "./components/Clock";
 import { TodoList } from "./components/TodoList";
 import { TempConverter } from "./components/TempConverter";
 import { LifecycleLog } from "./components/LifecycleLog";
+import { Signal } from "sinwan/reactivity";
 
 // ─── Theme via provide / inject ────────────────────────────
 
@@ -118,7 +117,7 @@ export const App = cc(() => (
         <p class="subtitle">
           Single signal, reactive text + reactive disabled attribute.
         </p>
-        <Counter1 />
+        {/* <Counter1 /> */}
       </section>
 
       <footer>

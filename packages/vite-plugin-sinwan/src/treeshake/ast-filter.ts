@@ -54,6 +54,20 @@ function parseModule(code: string): {
   const bindings = new Map<string, Binding>();
 
   for (const stmt of ast.program.body) {
+    // import { Show } from "./chunk.js";
+    // Imported locals can be re-exported by entry bundles, so they must be
+    // modeled as bindings instead of being dropped as orphaned imports.
+    if (t.isImportDeclaration(stmt)) {
+      for (const spec of stmt.specifiers) {
+        bindings.set(spec.local.name, {
+          name: spec.local.name,
+          node: spec,
+          parentPath: stmt,
+        });
+      }
+      continue;
+    }
+
     // function Show() {}
     if (t.isFunctionDeclaration(stmt) && stmt.id) {
       bindings.set(stmt.id.name, { name: stmt.id.name, node: stmt });
@@ -226,6 +240,15 @@ function buildReferenceGraph(
   const graph = new Map<string, Set<string>>();
 
   for (const [name, binding] of bindings) {
+    if (
+      t.isImportSpecifier(binding.node) ||
+      t.isImportDefaultSpecifier(binding.node) ||
+      t.isImportNamespaceSpecifier(binding.node)
+    ) {
+      graph.set(name, new Set());
+      continue;
+    }
+
     const refs = collectReferences(binding.node);
     const localRefs = new Set<string>();
     for (const ref of refs) {
@@ -338,9 +361,15 @@ export function filterAstByUsedExports(
   // Determine which local bindings are entry points
   const entryBindings = resolveExportBindings(ast, keepExports);
 
-  // If the chunk has no recognizable ES-module exports, it is likely a
-  // pre-minified bundle.  Bail out to avoid stripping the entire runtime.
-  if (entryBindings.size === 0) {
+  // Check whether the file actually contains any export declarations.
+  // If it has exports but none match what we want, that's a legitimate
+  // "all unused" scenario — we should still process it.  If it has no
+  // exports at all, it's likely a pre-minified bundle; bail out so we
+  // don't accidentally strip the entire runtime.
+  const hasAnyExports = ast.program.body.some((stmt) =>
+    t.isExportNamedDeclaration(stmt),
+  );
+  if (!hasAnyExports) {
     return {
       code,
       keptExports: [],
@@ -404,6 +433,11 @@ export function filterAstByUsedExports(
   const keptBindingsList: string[] = [];
   const removedBindingsList: string[] = [];
 
+  const removeProgramStatement = (node: t.Node) => {
+    const stmtIdx = ast.program.body.indexOf(node as t.Statement);
+    if (stmtIdx >= 0) ast.program.body.splice(stmtIdx, 1);
+  };
+
   for (const [name, binding] of bindings) {
     if (reachable.has(name)) {
       keptBindingsList.push(name);
@@ -423,14 +457,38 @@ export function filterAstByUsedExports(
         decl.declarations.splice(idx, 1);
         // If no declarators remain, remove the whole declaration
         if (decl.declarations.length === 0) {
-          const stmtIdx = ast.program.body.indexOf(decl);
-          if (stmtIdx >= 0) ast.program.body.splice(stmtIdx, 1);
+          removeProgramStatement(decl);
+        }
+      }
+    } else if (binding.parentPath && t.isImportDeclaration(binding.parentPath)) {
+      const decl = binding.parentPath;
+      const idx = decl.specifiers.indexOf(binding.node as any);
+      if (idx >= 0) {
+        decl.specifiers.splice(idx, 1);
+        if (decl.specifiers.length === 0) {
+          removeProgramStatement(decl);
+        }
+      }
+    } else if (
+      binding.parentPath &&
+      t.isExportNamedDeclaration(binding.parentPath)
+    ) {
+      const exportDecl = binding.parentPath;
+      const decl = exportDecl.declaration;
+      if (t.isVariableDeclaration(decl)) {
+        const idx = decl.declarations.indexOf(
+          binding.node as t.VariableDeclarator,
+        );
+        if (idx >= 0) {
+          decl.declarations.splice(idx, 1);
+          if (decl.declarations.length === 0) {
+            removeProgramStatement(exportDecl);
+          }
         }
       }
     } else {
       // Otherwise remove the whole statement
-      const stmtIdx = ast.program.body.indexOf(binding.node as t.Statement);
-      if (stmtIdx >= 0) ast.program.body.splice(stmtIdx, 1);
+      removeProgramStatement(binding.node);
     }
   }
 
@@ -440,6 +498,10 @@ export function filterAstByUsedExports(
   for (let i = ast.program.body.length - 1; i >= 0; i--) {
     const stmt = ast.program.body[i];
     if (t.isImportDeclaration(stmt)) {
+      if (stmt.specifiers.length === 0) {
+        continue;
+      }
+
       let hasKept = false;
       for (const spec of stmt.specifiers) {
         if (

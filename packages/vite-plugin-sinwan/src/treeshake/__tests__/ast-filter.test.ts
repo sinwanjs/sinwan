@@ -66,4 +66,18 @@ export function publicUnused() { return unusedUtil(); }
     expect(result.code).not.toContain("publicUnused");
     expect(result.code).not.toContain("unusedUtil");
   });
+
+  it("preserves import specifiers for kept re-exports", () => {
+    const code = `
+import { For, Show, Virtual } from "./control-flow.js";
+function cc(fn) { return fn; }
+export { cc, For, Show, Virtual };
+`;
+    const result = filterAstByUsedExports(code, new Set(["cc", "For"]));
+    expect(result.code).toContain("import { For }");
+    expect(result.code).toContain("function cc");
+    expect(result.code).toContain("export { cc, For }");
+    expect(result.code).not.toContain("Show");
+    expect(result.code).not.toContain("Virtual");
+  });
 });

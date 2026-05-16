@@ -3,93 +3,35 @@
   "version": "1.1.2",
   "description": "Sinwan — Reactive UI library with SSR, hydration, and fine-grained reactivity",
   "type": "commonjs",
-  "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/types.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
+    "./component": {
+      "types": "./dist/component.d.ts",
       "import": {
-        "development": "./dist/esm/index.development.js",
-        "production": "./dist/esm/index.production.min.js",
-        "default": "./dist/esm/index.production.min.js"
+        "development": "./dist/esm/component/index.development.js",
+        "production": "./dist/esm/component/index.production.min.js",
+        "default": "./dist/esm/component/index.production.min.js"
       },
       "require": {
-        "development": "./dist/cjs/index.development.js",
-        "production": "./dist/cjs/index.production.min.js",
-        "default": "./dist/index.js"
+        "development": "./dist/cjs/component/index.development.js",
+        "production": "./dist/cjs/component/index.production.min.js",
+        "default": "./dist/component.js"
       },
-      "default": "./dist/index.js"
+      "default": "./dist/component.js"
     },
-    "./jsx-runtime": {
-      "types": "./dist/jsx-runtime.d.ts",
+    "./hydration": {
+      "types": "./dist/hydration.d.ts",
       "import": {
-        "development": "./dist/esm/jsx/jsx-runtime.development.js",
-        "production": "./dist/esm/jsx/jsx-runtime.production.min.js",
-        "default": "./dist/esm/jsx/jsx-runtime.production.min.js"
+        "development": "./dist/esm/hydration/index.development.js",
+        "production": "./dist/esm/hydration/index.production.min.js",
+        "default": "./dist/esm/hydration/index.production.min.js"
       },
       "require": {
-        "development": "./dist/cjs/jsx/jsx-runtime.development.js",
-        "production": "./dist/cjs/jsx/jsx-runtime.production.min.js",
-        "default": "./dist/jsx-runtime.js"
+        "development": "./dist/cjs/hydration/index.development.js",
+        "production": "./dist/cjs/hydration/index.production.min.js",
+        "default": "./dist/hydration.js"
       },
-      "default": "./dist/jsx-runtime.js"
-    },
-    "./jsx-dev-runtime": {
-      "types": "./dist/jsx-dev-runtime.d.ts",
-      "import": {
-        "development": "./dist/esm/jsx/jsx-dev-runtime.development.js",
-        "production": "./dist/esm/jsx/jsx-dev-runtime.production.min.js",
-        "default": "./dist/esm/jsx/jsx-dev-runtime.production.min.js"
-      },
-      "require": {
-        "development": "./dist/cjs/jsx/jsx-dev-runtime.development.js",
-        "production": "./dist/cjs/jsx/jsx-dev-runtime.production.min.js",
-        "default": "./dist/jsx-dev-runtime.js"
-      },
-      "default": "./dist/jsx-dev-runtime.js"
-    },
-    "./server": {
-      "types": "./dist/server.d.ts",
-      "import": {
-        "development": "./dist/esm/server/index.development.js",
-        "production": "./dist/esm/server/index.production.min.js",
-        "default": "./dist/esm/server/index.production.min.js"
-      },
-      "require": {
-        "development": "./dist/cjs/server/index.development.js",
-        "production": "./dist/cjs/server/index.production.min.js",
-        "default": "./dist/server.js"
-      },
-      "default": "./dist/server.js"
-    },
-    "./renderer": {
-      "types": "./dist/renderer.d.ts",
-      "import": {
-        "development": "./dist/esm/renderer/index.development.js",
-        "production": "./dist/esm/renderer/index.production.min.js",
-        "default": "./dist/esm/renderer/index.production.min.js"
-      },
-      "require": {
-        "development": "./dist/cjs/renderer/index.development.js",
-        "production": "./dist/cjs/renderer/index.production.min.js",
-        "default": "./dist/renderer.js"
-      },
-      "default": "./dist/renderer.js"
-    },
-    "./store": {
-      "types": "./dist/store.d.ts",
-      "import": {
-        "development": "./dist/esm/store/index.development.js",
-        "production": "./dist/esm/store/index.production.min.js",
-        "default": "./dist/esm/store/index.production.min.js"
-      },
-      "require": {
-        "development": "./dist/cjs/store/index.development.js",
-        "production": "./dist/cjs/store/index.production.min.js",
-        "default": "./dist/store.js"
-      },
-      "default": "./dist/store.js"
+      "default": "./dist/hydration.js"
     },
     "./react-client": {
       "types": "./dist/react-client.d.ts",
@@ -119,6 +61,20 @@
       },
       "default": "./dist/react-server.js"
     },
+    "./react-shared": {
+      "types": "./dist/react-shared.d.ts",
+      "import": {
+        "development": "./dist/esm/integrations/react/_shared.development.js",
+        "production": "./dist/esm/integrations/react/_shared.production.min.js",
+        "default": "./dist/esm/integrations/react/_shared.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/integrations/react/_shared.development.js",
+        "production": "./dist/cjs/integrations/react/_shared.production.min.js",
+        "default": "./dist/react-shared.js"
+      },
+      "default": "./dist/react-shared.js"
+    },
     "./react-static": {
       "types": "./dist/react-static.d.ts",
       "import": {
@@ -132,6 +88,90 @@
         "default": "./dist/react-static.js"
       },
       "default": "./dist/react-static.js"
+    },
+    "./jsx-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "import": {
+        "development": "./dist/esm/jsx/jsx-runtime.development.js",
+        "production": "./dist/esm/jsx/jsx-runtime.production.min.js",
+        "default": "./dist/esm/jsx/jsx-runtime.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/jsx/jsx-runtime.development.js",
+        "production": "./dist/cjs/jsx/jsx-runtime.production.min.js",
+        "default": "./dist/jsx-runtime.js"
+      },
+      "default": "./dist/jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./dist/jsx-dev-runtime.d.ts",
+      "import": {
+        "development": "./dist/esm/jsx/jsx-dev-runtime.development.js",
+        "production": "./dist/esm/jsx/jsx-dev-runtime.production.min.js",
+        "default": "./dist/esm/jsx/jsx-dev-runtime.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/jsx/jsx-dev-runtime.development.js",
+        "production": "./dist/cjs/jsx/jsx-dev-runtime.production.min.js",
+        "default": "./dist/jsx-dev-runtime.js"
+      },
+      "default": "./dist/jsx-dev-runtime.js"
+    },
+    "./reactivity": {
+      "types": "./dist/reactivity.d.ts",
+      "import": {
+        "development": "./dist/esm/reactivity/index.development.js",
+        "production": "./dist/esm/reactivity/index.production.min.js",
+        "default": "./dist/esm/reactivity/index.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/reactivity/index.development.js",
+        "production": "./dist/cjs/reactivity/index.production.min.js",
+        "default": "./dist/reactivity.js"
+      },
+      "default": "./dist/reactivity.js"
+    },
+    "./renderer": {
+      "types": "./dist/renderer.d.ts",
+      "import": {
+        "development": "./dist/esm/renderer/index.development.js",
+        "production": "./dist/esm/renderer/index.production.min.js",
+        "default": "./dist/esm/renderer/index.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/renderer/index.development.js",
+        "production": "./dist/cjs/renderer/index.production.min.js",
+        "default": "./dist/renderer.js"
+      },
+      "default": "./dist/renderer.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": {
+        "development": "./dist/esm/server/index.development.js",
+        "production": "./dist/esm/server/index.production.min.js",
+        "default": "./dist/esm/server/index.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/server/index.development.js",
+        "production": "./dist/cjs/server/index.production.min.js",
+        "default": "./dist/server.js"
+      },
+      "default": "./dist/server.js"
+    },
+    "./store": {
+      "types": "./dist/store.d.ts",
+      "import": {
+        "development": "./dist/esm/store/index.development.js",
+        "production": "./dist/esm/store/index.production.min.js",
+        "default": "./dist/esm/store/index.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/store/index.development.js",
+        "production": "./dist/cjs/store/index.production.min.js",
+        "default": "./dist/store.js"
+      },
+      "default": "./dist/store.js"
     },
     "./package.json": "./package.json"
   },

@@ -27,20 +27,12 @@ interface PublicEntry {
 }
 
 const ENTRIES: PublicEntry[] = [
-  { name: "index", internal: "index", types: "index" },
   {
-    name: "jsx-runtime",
-    internal: "jsx/jsx-runtime",
-    types: "jsx/jsx-runtime",
+    name: "component",
+    internal: "component/index",
+    types: "component/index",
   },
-  {
-    name: "jsx-dev-runtime",
-    internal: "jsx/jsx-dev-runtime",
-    types: "jsx/jsx-dev-runtime",
-  },
-  { name: "server", internal: "server/index", types: "server/index" },
-  { name: "renderer", internal: "renderer/index", types: "renderer/index" },
-  { name: "store", internal: "store/index", types: "store/index" },
+  { name: "hydration", internal: "hydration/index", types: "hydration/index" },
   {
     name: "react-client",
     internal: "integrations/react/_client",
@@ -52,10 +44,33 @@ const ENTRIES: PublicEntry[] = [
     types: "integrations/react/_server",
   },
   {
+    name: "react-shared",
+    internal: "integrations/react/_shared",
+    types: "integrations/react/_shared",
+  },
+  {
     name: "react-static",
     internal: "integrations/react/_static",
     types: "integrations/react/_static",
   },
+  {
+    name: "jsx-runtime",
+    internal: "jsx/jsx-runtime",
+    types: "jsx/jsx-runtime",
+  },
+  {
+    name: "jsx-dev-runtime",
+    internal: "jsx/jsx-dev-runtime",
+    types: "jsx/jsx-dev-runtime",
+  },
+  {
+    name: "reactivity",
+    internal: "reactivity/index",
+    types: "reactivity/index",
+  },
+  { name: "renderer", internal: "renderer/index", types: "renderer/index" },
+  { name: "server", internal: "server/index", types: "server/index" },
+  { name: "store", internal: "store/index", types: "store/index" },
 ];
 
 const cjsShim = (internal: string) => `'use strict';

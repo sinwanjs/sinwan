@@ -1,11 +1,6 @@
-import {
-  signal,
-  cc,
-  onMounted,
-  onUnmounted,
-  render,
-  type Signal,
-} from "sinwan";
+import { cc, onMounted, onUnmounted } from "sinwan/component";
+import { signal } from "sinwan/reactivity";
+import { render } from "sinwan/renderer";
 
 const log = signal<string[]>([]);
 

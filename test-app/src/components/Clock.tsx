@@ -1,4 +1,6 @@
-import { signal, computed, cc, onMounted, onUnmounted } from "sinwan";
+import { cc, onMounted, onUnmounted } from "sinwan/component";
+import { computed } from "sinwan/reactivity";
+import { signal } from "sinwan/reactivity";
 
 export const Clock = cc(() => {
   const now = signal(new Date());

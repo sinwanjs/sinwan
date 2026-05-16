@@ -1,5 +1,6 @@
-import { onUpdated } from "sinwan";
-import { signal, computed, cc, For } from "sinwan";
+import { onUpdated } from "sinwan/component";
+import { signal, computed } from "sinwan/reactivity";
+import { cc, For } from "sinwan/component";
 
 interface Todo {
   id: number;

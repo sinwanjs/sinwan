@@ -1,4 +1,5 @@
-import { signal, computed, cc } from "sinwan";
+import { signal, computed } from "sinwan/reactivity";
+import { cc } from "sinwan/component";
 
 export const Counter = cc(() => {
   const count = signal(0);
