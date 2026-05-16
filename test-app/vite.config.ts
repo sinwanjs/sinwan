@@ -1,8 +1,8 @@
 import { defineConfig } from "vite";
-import { sinwan } from "vite-plugin-sinwan";
+import { sinwan, sinwanTreeShake } from "vite-plugin-sinwan";
 
 export default defineConfig({
-  plugins: [sinwan()],
+  plugins: [sinwan(), sinwanTreeShake({ verbose: true })],
   esbuild: {
     jsx: "automatic",
     jsxImportSource: "sinwan",
