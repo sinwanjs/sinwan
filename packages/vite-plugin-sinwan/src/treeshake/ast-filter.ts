@@ -338,6 +338,18 @@ export function filterAstByUsedExports(
   // Determine which local bindings are entry points
   const entryBindings = resolveExportBindings(ast, keepExports);
 
+  // If the chunk has no recognizable ES-module exports, it is likely a
+  // pre-minified bundle.  Bail out to avoid stripping the entire runtime.
+  if (entryBindings.size === 0) {
+    return {
+      code,
+      keptExports: [],
+      removedExports: [],
+      keptBindings: [],
+      removedBindings: [],
+    };
+  }
+
   // Compute all reachable bindings
   const reachable = computeReachable(entryBindings, graph);
 

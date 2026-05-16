@@ -62,16 +62,66 @@ const defaults: Required<
   verbose: true,
   rewriteBundle: true,
   forceKeep: undefined,
-  sinwanChunkPattern: /sinwan/,
+  sinwanChunkPattern: /index\.(?:production|development)(?:\.min)?|sinwan/,
 };
 
 function isSinwanChunk(chunk: any, pattern: RegExp | string): boolean {
   if (chunk.type !== "chunk") return false;
   const re = typeof pattern === "string" ? new RegExp(pattern) : pattern;
-  if (chunk.facadeModuleId && re.test(chunk.facadeModuleId)) return true;
   if (chunk.name && re.test(chunk.name)) return true;
   if (chunk.fileName && re.test(chunk.fileName)) return true;
   return false;
+}
+
+/**
+ * Convert a glob pattern to a RegExp.
+ * Supports `**`, `*`, `?`, and brace expansion `{a,b,c}`.
+ */
+function globToRegex(pattern: string): RegExp {
+  let re = "";
+  let i = 0;
+  while (i < pattern.length) {
+    const c = pattern[i];
+    if (c === "*") {
+      if (pattern[i + 1] === "*") {
+        re += ".*";
+        i += 2;
+      } else {
+        re += "[^/]*";
+        i++;
+      }
+    } else if (c === "?") {
+      re += ".";
+      i++;
+    } else if (c === "{") {
+      const end = pattern.indexOf("}", i);
+      if (end === -1) {
+        re += "\\{";
+        i++;
+      } else {
+        const inner = pattern.slice(i + 1, end);
+        re +=
+          "(?:" +
+          inner
+            .split(",")
+            .map((s) => s.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+            .join("|") +
+          ")";
+        i = end + 1;
+      }
+    } else if (/[.*+?^${}()|[\]\\]/.test(c)) {
+      re += "\\" + c;
+      i++;
+    } else {
+      re += c;
+      i++;
+    }
+  }
+  return new RegExp(re);
+}
+
+function matchesGlob(id: string, pattern: string): boolean {
+  return globToRegex(pattern).test(id);
 }
 
 function formatBytes(bytes: number): string {
@@ -104,12 +154,8 @@ export function sinwanTreeShake(options: TreeShakeOptions = {}): Plugin {
 
     transform(code: string, id: string) {
       // Skip non-user files
-      const isIncluded = includePatterns.some((p) =>
-        new RegExp(p.replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*")).test(id),
-      );
-      const isExcluded = excludePatterns.some((p) =>
-        new RegExp(p.replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*")).test(id),
-      );
+      const isIncluded = includePatterns.some((p) => matchesGlob(id, p));
+      const isExcluded = excludePatterns.some((p) => matchesGlob(id, p));
 
       if (!isIncluded || isExcluded) {
         skippedFiles++;
@@ -143,6 +189,17 @@ export function sinwanTreeShake(options: TreeShakeOptions = {}): Plugin {
         console.log(
           `[sinwan-tree-shake] Expanded to ${needed.size} bindings after dependency resolution`,
         );
+      }
+
+      // Safety guard: if no identifiers were detected, skip tree-shaking to
+      // avoid accidentally stripping the entire Sinwan runtime.
+      if (merged.allUsedIdentifiers.size === 0) {
+        if (opts.verbose) {
+          console.warn(
+            `[sinwan-tree-shake] No Sinwan usage detected — skipping tree-shaking.`,
+          );
+        }
+        return;
       }
 
       if (!opts.rewriteBundle) {

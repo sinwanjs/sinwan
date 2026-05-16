@@ -1,30 +1,45 @@
+// tsconfig.json — base config (typecheck only, no emit)
 {
   "compilerOptions": {
-    // Environment setup & latest features
-    "lib": ["ESNext"],
+    // ─── Environment ───────────────────────────────────────
     "target": "ESNext",
-    "module": "ESNext",
-    "moduleDetection": "force",
-    "jsx": "react-jsx",
-    "allowJs": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["bun"],
 
-    // Bundler mode
-    "moduleResolution": "bundler",
-    "rootDir": "./src",
-    "outDir": "./dist",
-    "noEmit": false,
-
-    // Best practices
-    "strict": true,
+    // ─── Module ────────────────────────────────────────────
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
     "skipLibCheck": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
 
-    // Some stricter flags (disabled by default)
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false
-  }
+    // ─── Strictness ────────────────────────────────────────
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "noFallthroughCasesInSwitch": true,
+
+    // ─── JSX ───────────────────────────────────────────────
+    "jsx": "react-jsx",
+    "jsxImportSource": "sinwan", // custom JSX runtime
+
+    // ─── No Emit (typecheck only) ──────────────────────────
+    "noEmit": true,
+
+    // ─── Paths ─────────────────────────────────────────────
+    "paths": {
+      "sinwan": ["./src/index.ts"],
+      "sinwan/jsx-runtime": ["./src/jsx/jsx-runtime.ts"],
+      "sinwan/jsx-dev-runtime": ["./src/jsx/jsx-dev-runtime.ts"]
+    },
+
+    // ─── Decorators (for DI / metadata) ───────────────────
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": false // handled by @sinwan/reflector
+  },
+  "include": ["src/**/*", "__tests__/**/*", "examples/**/*", "build.ts"],
+  "exclude": ["dist", "node_modules"]
 }

@@ -1,0 +1,30 @@
+// tsconfig.build.json — emit type declarations only (Bun bundles the JS)
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // ─── Unlock emit ───────────────────────────────────
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+
+    // ─── Output ───────────────────────────────────────────
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,
+    // "declarationMap": true,
+
+    // ─── Inherit module / resolution from base (Bundler) ──
+    // "allowImportingTsExtensions": true (inherited) — works with emitDeclarationOnly
+
+    // ─── Lib (declarations need DOM types for renderer/hydration) ──
+    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src/**/*"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "node_modules",
+    "dist",
+    "docs",
+    "__tests__"
+  ]
+}

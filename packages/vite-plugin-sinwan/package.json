@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Vite plugin for Sinwan UI",
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
   "keywords": [
     "sinwan",
     "reactive",
@@ -24,15 +27,8 @@
     "url": "https://github.com/sinwanjs/sinwan",
     "directory": "packages/vite-plugin-sinwan"
   },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "require": "./dist/index.js",
-      "import": "./dist/index.js"
-    }
-  },
   "scripts": {
-    "build": "tsc --outDir dist"
+    "build": "bun run build.ts"
   },
   "devDependencies": {
     "@types/babel__generator": "^7.27.0",
