@@ -244,8 +244,16 @@ export interface VirtualProps<T> {
   containerHeight: number;
   /**
    * Number of extra items to render above and below the visible window. Optional.
+   * Clamped to list bounds at the edges.
    */
   overscan?: number;
+  /**
+   * Minimum number of items to keep in the DOM regardless of scroll position.
+   * When the computed window (including overscan) is smaller than this value,
+   * the window is expanded symmetrically and clamped to list bounds.
+   * Useful for guaranteeing a consistent rendered count near boundaries.
+   */
+  minRendered?: number;
   /**
    * Content to render when the array is empty. Optional.
    */

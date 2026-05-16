@@ -27,6 +27,7 @@ import {
   Switch,
   Visible,
   Show,
+  Virtual,
   isDynamicElement,
   isErrorBoundaryElement,
   isForElement,
@@ -36,6 +37,7 @@ import {
   isPortalElement,
   isShowElement,
   isSwitchElement,
+  isVirtualElement,
   isActivityElement,
   resolveKeyChildren,
   resolveMatchChildren,
@@ -136,7 +138,7 @@ export async function renderToString(node: SinwanNode): Promise<string> {
 
   // Handle arrays - render each child and concatenate
   if (Array.isArray(node)) {
-    // remplace map/Promise.all par boucle for pour éviter la création d'un tableau intermédiaire
+    // replace map/Promise.all with for loop to avoid creating an intermediate array
     const promises: Promise<string>[] = [];
     for (let i = 0; i < node.length; i++) {
       promises.push(renderToString(node[i]));
@@ -176,7 +178,8 @@ async function renderElement(element: SinwanElement): Promise<string> {
     tag === Key ||
     tag === Dynamic ||
     tag === Portal ||
-    tag === ErrorBoundary
+    tag === ErrorBoundary ||
+    tag === Virtual
   ) {
     return renderElement((tag as Function)(props));
   }
@@ -241,6 +244,10 @@ async function renderElement(element: SinwanElement): Promise<string> {
           : fallback;
       return renderToString(fallbackContent as SinwanNode);
     }
+  }
+
+  if (isVirtualElement(element)) {
+    return renderVirtualElement(element);
   }
 
   if (isActivityElement(element)) {
@@ -394,7 +401,7 @@ async function renderForElement(element: SinwanElement): Promise<string> {
     return props.fallback ? renderToString(props.fallback) : "";
   }
 
-  // remplace map/Promise.all par boucle for pour éviter la création d'un tableau intermédiaire (critique pour grandes listes)
+  // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
   const promises: Promise<string>[] = [];
   for (let i = 0; i < each.length; i++) {
     promises.push(renderToString(props.children!(each[i], () => i)));
@@ -422,7 +429,7 @@ async function renderIndexElement(element: SinwanElement): Promise<string> {
     return props.fallback ? renderToString(props.fallback) : "";
   }
 
-  // remplace map/Promise.all par boucle for pour éviter la création d'un tableau intermédiaire (critique pour grandes listes)
+  // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
   const promises: Promise<string>[] = [];
   for (let i = 0; i < each.length; i++) {
     promises.push(renderToString(props.children!(() => each[i], i)));
@@ -433,6 +440,76 @@ async function renderIndexElement(element: SinwanElement): Promise<string> {
     output += rendered[i];
   }
   return output;
+}
+
+async function renderVirtualElement(element: SinwanElement): Promise<string> {
+  const props = element.props as {
+    each?: unknown;
+    key?: (item: unknown, index: number) => string | number | symbol;
+    itemHeight: number;
+    containerHeight: number;
+    overscan?: number;
+    minRendered?: number;
+    fallback?: SinwanNode;
+    children?: (item: unknown, index: () => number) => SinwanNode;
+  };
+
+  const items = readReactive(props.each);
+  const list = Array.isArray(items) ? items : [];
+
+  if (list.length === 0) {
+    return props.fallback ? renderToString(props.fallback) : "";
+  }
+
+  const itemHeight = props.itemHeight;
+  const containerHeight = props.containerHeight;
+  const overscan = props.overscan ?? 3;
+  const minRendered = props.minRendered ?? 0;
+
+  // Compute initial visible window at scrollTop=0
+  let startIndex = 0;
+  let endIndex = Math.ceil(containerHeight / itemHeight);
+  startIndex = Math.max(0, startIndex - overscan);
+  endIndex = Math.min(list.length, endIndex + overscan);
+
+  if (minRendered > 0) {
+    const visibleCount = endIndex - startIndex;
+    if (visibleCount < minRendered) {
+      const deficit = minRendered - visibleCount;
+      const expandStart = Math.min(startIndex, Math.floor(deficit / 2));
+      const expandEnd = Math.min(
+        list.length - endIndex,
+        Math.ceil(deficit / 2),
+      );
+      let remaining = deficit - expandStart - expandEnd;
+      startIndex -= expandStart;
+      endIndex += expandEnd;
+      if (remaining > 0) {
+        if (endIndex < list.length) {
+          endIndex = Math.min(list.length, endIndex + remaining);
+        } else if (startIndex > 0) {
+          startIndex = Math.max(0, startIndex - remaining);
+        }
+      }
+    }
+  }
+
+  const totalHeight = list.length * itemHeight;
+  const renderChild = props.children;
+
+  let itemsHtml = "";
+  if (typeof renderChild === "function") {
+    const promises: Promise<string>[] = [];
+    for (let i = startIndex; i < endIndex; i++) {
+      promises.push(renderToString(renderChild(list[i], () => i)));
+    }
+    const results = await Promise.all(promises);
+    for (let i = 0; i < results.length; i++) {
+      itemsHtml += results[i];
+    }
+  }
+
+  return `<div style="overflow:auto;height:${containerHeight}px"><div style="position:relative;height:${totalHeight}px">${itemsHtml}</div></div>`;
 }
 
 function createDynamicElement(

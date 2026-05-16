@@ -225,7 +225,7 @@ function normalizeStyle(
   }
 
   if (Array.isArray(resolved)) {
-    // remplace reduce par boucle for pour éviter la surcharge d'appels de fonction
+    // replace reduce with for loop to avoid function call overhead
     const result: Record<string, any> = {};
     for (let i = 0; i < resolved.length; i++) {
       const normalized = normalizeStyle(resolved[i]);
@@ -251,7 +251,7 @@ function normalizeStyle(
 
 function parseStyleString(style: string): Record<string, string> {
   const result: Record<string, string> = {};
-  // remplace forEach par boucle for pour éviter la création d'une fonction callback
+  // replace forEach with for loop to avoid creating a callback function
   const rules = style.split(";");
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i];
@@ -287,7 +287,7 @@ function normalizeClass(value: unknown): string {
 
   if (Array.isArray(resolved)) {
     // ["foo", "bar", false && "baz", signal] → "foo bar val"
-    // remplace map/filter par boucle for pour éviter la création de tableaux intermédiaires
+    // replace map/filter with for loop to avoid creating intermediate arrays
     const parts: string[] = [];
     for (let i = 0; i < resolved.length; i++) {
       const normalized = normalizeClass(resolved[i]);
@@ -300,7 +300,7 @@ function normalizeClass(value: unknown): string {
 
   if (typeof resolved === "object") {
     // { foo: true, bar: false, baz: signal } → "foo baz"
-    // remplace Object.entries/filter/map par boucle for pour éviter la création de tableaux intermédiaires
+    // replace Object.entries/filter/map with for loop to avoid creating intermediate arrays
     const parts: string[] = [];
     const obj = resolved as Record<string, unknown>;
     for (const key in obj) {
@@ -323,7 +323,7 @@ function normalizeClass(value: unknown): string {
 function containsReactive(value: unknown): boolean {
   if (isReactive(value)) return true;
   if (Array.isArray(value)) {
-    // remplace some par boucle for avec break pour arrêter dès qu'on trouve une valeur réactive
+    // replace some with for loop and break to stop as soon as a reactive value is found
     for (let i = 0; i < value.length; i++) {
       if (containsReactive(value[i])) return true;
     }
@@ -332,7 +332,7 @@ function containsReactive(value: unknown): boolean {
   if (typeof value === "object" && value !== null) {
     // For style objects/class objects, we only check one level deep for performance
     // but recursive is safer for nested class arrays.
-    // remplace Object.values/some par boucle for avec break pour arrêter dès qu'on trouve une valeur réactive
+    // replace Object.values/some with for loop and break to stop as soon as a reactive value is found
     const obj = value as Record<string, unknown>;
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {

@@ -4,6 +4,8 @@
  * Tests are organized to mirror the React documentation sections.
  */
 
+globalThis.__DEV__ = true;
+
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";

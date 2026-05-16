@@ -379,6 +379,24 @@ import { Virtual } from "sinwan";
 
 **Overscan at scroll boundaries.** `overscan` is added to both sides of the viewport, but clamped to the list bounds. At `scrollTop = 0` the window starts at index `0`, so overscan only applies below the viewport. For example, with `containerHeight={50}`, `itemHeight={16}`, and `overscan={3}`, the viewport fits 4 items and the rendered window is 7 items (`0` through `6`). Once you scroll down, the buffer applies symmetrically (e.g. `startIndex = 3`, `endIndex = 10`).
 
+**Guaranteeing a minimum rendered count.** `minRendered` ensures a minimum number of DOM rows are kept in the window even when the computed viewport (plus overscan) is smaller — for example near the start or end of the list. When the visible window is smaller than `minRendered`, it is expanded symmetrically and clamped to list bounds. This is useful when you need a consistent rendered count for measurement or layout stability.
+
+```tsx
+<Virtual
+  each={items}
+  itemHeight={50}
+  containerHeight={200}
+  overscan={2}
+  minRendered={10}
+>
+  {(item, index) => (
+    <div>
+      {index}. {item.name}
+    </div>
+  )}
+</Virtual>
+```
+
 | Prop              | Type                                           | Required | Default | Description                                   |
 | ----------------- | ---------------------------------------------- | -------- | ------- | --------------------------------------------- |
 | `each`            | `Reactive<readonly T[]>`                       | Yes      | —       | Source array (signal, computed, or getter)    |
@@ -386,6 +404,7 @@ import { Virtual } from "sinwan";
 | `itemHeight`      | `number`                                       | Yes      | —       | Fixed height of each row in pixels            |
 | `containerHeight` | `number`                                       | Yes      | —       | Height of the scrollable viewport in pixels   |
 | `overscan`        | `number`                                       | No       | `3`     | Extra rows to render above and below viewport |
+| `minRendered`     | `number`                                       | No       | `0`     | Minimum rows to keep in the DOM at all times  |
 | `fallback`        | `SinwanNode`                                   | No       | —       | Shown when `each` is empty or not an array    |
 | `children`        | `(item: T, index: () => number) => SinwanNode` | Yes      | —       | Row renderer (same signature as `<For>`)      |
 

@@ -49,7 +49,7 @@ const result = await Bun.build({
   format,
   splitting: format === "esm",
   packages: "external",
-  sourcemap: isProd ? "external" : "linked",
+  // sourcemap: isProd ? "external" : "linked",
   minify: isProd
     ? { whitespace: true, syntax: true, identifiers: true }
     : false,

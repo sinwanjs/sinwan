@@ -74,12 +74,14 @@ export function useActionState<S, P>(
     if (!inTransition() && !isServer()) {
       const probe = reducerAction(state.peek() as Awaited<S>, payload);
       if (probe && typeof (probe as PromiseLike<S>).then === "function") {
-        console.error(
-          "An async function with useActionState was called outside of a transition. " +
-            "This is likely not what you intended (for example, isPending will not update correctly). " +
-            "Either call the returned function inside startTransition, " +
-            "or pass it to an `action` or `formAction` prop.",
-        );
+        if (typeof __DEV__ !== "undefined" && __DEV__) {
+          console.error(
+            "An async function with useActionState was called outside of a transition. " +
+              "This is likely not what you intended (for example, isPending will not update correctly). " +
+              "Either call the returned function inside startTransition, " +
+              "or pass it to an `action` or `formAction` prop.",
+          );
+        }
       }
     }
 

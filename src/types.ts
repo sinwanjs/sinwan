@@ -11,6 +11,10 @@ import type { Signal, Computed } from "./reactivity/index.ts";
 // Primitive node types that can be rendered
 export type SinwanPrimitive = string | number | boolean | null | undefined;
 
+declare global {
+  var __DEV__: boolean | undefined;
+}
+
 /**
  * A value that may be plain `T` or a reactive container (`Signal<T>` /
  * `Computed<T>`). Used by JSX attribute types so reactive props type-check.

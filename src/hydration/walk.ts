@@ -28,6 +28,7 @@ import {
   Switch,
   Visible,
   Show,
+  Virtual,
   isDynamicElement,
   isForElement,
   isIndexElement,
@@ -36,6 +37,7 @@ import {
   isPortalElement,
   isShowElement,
   isSwitchElement,
+  isVirtualElement,
 } from "../component/control-flow.ts";
 import {
   parseTextOpenMarker,
@@ -234,7 +236,8 @@ export function hydrateElement(
     tag === Index ||
     tag === Key ||
     tag === Dynamic ||
-    tag === Portal
+    tag === Portal ||
+    tag === Virtual
   ) {
     return hydrateElement((tag as Function)(props), cursor);
   }
@@ -253,7 +256,8 @@ export function hydrateElement(
     isSwitchElement(element) ||
     isIndexElement(element) ||
     isKeyElement(element) ||
-    isDynamicElement(element)
+    isDynamicElement(element) ||
+    isVirtualElement(element)
   ) {
     return hydrateControlFlow(element, cursor);
   }
@@ -385,7 +389,7 @@ function hydrateControlFlow(
       children?: (item: unknown, index: () => number) => SinwanNode;
     };
     const items = readReactive(props.each);
-    // remplace map par boucle for pour éviter la création d'un tableau intermédiaire (critique pour hydratation)
+    // replace map with for loop to avoid creating an intermediate array (critical for hydration)
     const children =
       Array.isArray(items) && typeof props.children === "function"
         ? (() => {
@@ -412,7 +416,7 @@ function hydrateControlFlow(
       children?: (item: () => unknown, index: number) => SinwanNode;
     };
     const items = readReactive(props.each);
-    // remplace map par boucle for pour éviter la création d'un tableau intermédiaire (critique pour hydratation)
+    // replace map with for loop to avoid creating an intermediate array (critical for hydration)
     const children =
       Array.isArray(items) && typeof props.children === "function"
         ? (() => {
@@ -437,6 +441,92 @@ function hydrateControlFlow(
     const tag = readReactive((element.props as any).component);
     const dynamic = createDynamicElement(element, tag);
     return dynamic ? hydrateElement(dynamic, cursor) : hydrateArray([], cursor);
+  }
+
+  if (isVirtualElement(element)) {
+    const props = element.props as {
+      each?: unknown;
+      key?: (item: unknown, index: number) => string | number | symbol;
+      itemHeight: number;
+      containerHeight: number;
+      overscan?: number;
+      minRendered?: number;
+      fallback?: SinwanNode;
+      children?: (item: unknown, index: () => number) => SinwanNode;
+    };
+
+    const items = readReactive(props.each);
+    const list = Array.isArray(items) ? items : [];
+
+    if (list.length === 0) {
+      return hydrateContent(props.fallback ?? null, cursor);
+    }
+
+    const itemHeight = props.itemHeight;
+    const containerHeight = props.containerHeight;
+    const overscan = props.overscan ?? 3;
+    const minRendered = props.minRendered ?? 0;
+
+    let startIndex = 0;
+    let endIndex = Math.ceil(containerHeight / itemHeight);
+    startIndex = Math.max(0, startIndex - overscan);
+    endIndex = Math.min(list.length, endIndex + overscan);
+
+    if (minRendered > 0) {
+      const visibleCount = endIndex - startIndex;
+      if (visibleCount < minRendered) {
+        const deficit = minRendered - visibleCount;
+        const expandStart = Math.min(startIndex, Math.floor(deficit / 2));
+        const expandEnd = Math.min(
+          list.length - endIndex,
+          Math.ceil(deficit / 2),
+        );
+        let remaining = deficit - expandStart - expandEnd;
+        startIndex -= expandStart;
+        endIndex += expandEnd;
+        if (remaining > 0) {
+          if (endIndex < list.length) {
+            endIndex = Math.min(list.length, endIndex + remaining);
+          } else if (startIndex > 0) {
+            startIndex = Math.max(0, startIndex - remaining);
+          }
+        }
+      }
+    }
+
+    const renderChild = props.children;
+    if (typeof renderChild !== "function") {
+      return hydrateArray([], cursor);
+    }
+
+    // Advance past the container div rendered by the server
+    const containerDiv = advance(cursor) as HTMLElement;
+    if (!containerDiv || containerDiv.nodeType !== 1) {
+      return hydrateArray([], cursor);
+    }
+
+    const contentDiv = containerDiv.firstChild as HTMLElement;
+    if (!contentDiv || contentDiv.nodeType !== 1) {
+      return hydrateArray([], cursor);
+    }
+
+    const itemCursor: HydrationCursor = {
+      parent: contentDiv,
+      current: contentDiv.firstChild,
+    };
+
+    const children: MountedNode[] = [];
+    for (let i = startIndex; i < endIndex; i++) {
+      children.push(
+        hydrateNode(
+          renderChild(list[i], () => i),
+          itemCursor,
+        ),
+      );
+    }
+
+    const anchor = document.createComment("Sinwan-f");
+    return { type: "fragment", children, anchor };
   }
 
   return hydrateArray(element.children, cursor);

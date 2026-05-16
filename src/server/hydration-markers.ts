@@ -49,6 +49,7 @@ import {
   Switch,
   Visible,
   Show,
+  Virtual,
   isDynamicElement,
   isErrorBoundaryElement,
   isForElement,
@@ -58,6 +59,7 @@ import {
   isPortalElement,
   isShowElement,
   isSwitchElement,
+  isVirtualElement,
 } from "../component/control-flow.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
@@ -186,7 +188,7 @@ async function renderNodeH(
   }
 
   if (Array.isArray(node)) {
-    // remplace map/Promise.all par boucle for pour éviter la création d'un tableau intermédiaire
+    // replace map/Promise.all with for loop to avoid creating an intermediate array
     const promises: Promise<string>[] = [];
     for (let i = 0; i < node.length; i++) {
       promises.push(renderNodeH(node[i], ctx));
@@ -226,7 +228,7 @@ async function renderElementH(
 
   // Fragment
   if (tag === "") {
-    // remplace map/Promise.all par boucle for pour éviter la création d'un tableau intermédiaire
+    // replace map/Promise.all with for loop to avoid creating an intermediate array
     const promises: Promise<string>[] = [];
     for (let i = 0; i < children.length; i++) {
       promises.push(renderNodeH(children[i], ctx));
@@ -247,7 +249,8 @@ async function renderElementH(
     tag === Key ||
     tag === Dynamic ||
     tag === Portal ||
-    tag === ErrorBoundary
+    tag === ErrorBoundary ||
+    tag === Virtual
   ) {
     return await renderElementH((tag as Function)(props), ctx, isComponentRoot);
   }
@@ -323,6 +326,10 @@ async function renderElementH(
           : fallback;
       return await renderNodeH(fallbackContent as SinwanNode, ctx);
     }
+  }
+
+  if (isVirtualElement(element)) {
+    return await renderVirtualElementH(element, ctx);
   }
 
   // Functional component
@@ -462,7 +469,7 @@ async function renderIntrinsicH(
   }
 
   // Render children with markers
-  // remplace map/Promise.all par boucle for pour éviter la création d'un tableau intermédiaire
+  // replace map/Promise.all with for loop to avoid creating an intermediate array
   const promises: Promise<string>[] = [];
   for (let i = 0; i < children.length; i++) {
     promises.push(renderNodeH(children[i], ctx));
@@ -540,7 +547,7 @@ async function renderForElementH(
     return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
   }
 
-  // remplace map/Promise.all par boucle for pour éviter la création d'un tableau intermédiaire (critique pour grandes listes)
+  // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
   const promises: Promise<string>[] = [];
   for (let i = 0; i < each.length; i++) {
     promises.push(
@@ -576,7 +583,7 @@ async function renderIndexElementH(
     return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
   }
 
-  // remplace map/Promise.all par boucle for pour éviter la création d'un tableau intermédiaire (critique pour grandes listes)
+  // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
   const promises: Promise<string>[] = [];
   for (let i = 0; i < each.length; i++) {
     promises.push(
@@ -592,6 +599,83 @@ async function renderIndexElementH(
     output += results[i];
   }
   return output;
+}
+
+async function renderVirtualElementH(
+  element: SinwanElement,
+  ctx: HydrationContext,
+): Promise<string> {
+  const props = element.props as {
+    each?: unknown;
+    key?: (item: unknown, index: number) => string | number | symbol;
+    itemHeight: number;
+    containerHeight: number;
+    overscan?: number;
+    minRendered?: number;
+    fallback?: SinwanNode;
+    children?: (item: unknown, index: () => number) => SinwanNode;
+  };
+
+  const items = readReactive(props.each);
+  const list = Array.isArray(items) ? items : [];
+
+  if (list.length === 0) {
+    return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
+  }
+
+  const itemHeight = props.itemHeight;
+  const containerHeight = props.containerHeight;
+  const overscan = props.overscan ?? 3;
+  const minRendered = props.minRendered ?? 0;
+
+  let startIndex = 0;
+  let endIndex = Math.ceil(containerHeight / itemHeight);
+  startIndex = Math.max(0, startIndex - overscan);
+  endIndex = Math.min(list.length, endIndex + overscan);
+
+  if (minRendered > 0) {
+    const visibleCount = endIndex - startIndex;
+    if (visibleCount < minRendered) {
+      const deficit = minRendered - visibleCount;
+      const expandStart = Math.min(startIndex, Math.floor(deficit / 2));
+      const expandEnd = Math.min(
+        list.length - endIndex,
+        Math.ceil(deficit / 2),
+      );
+      let remaining = deficit - expandStart - expandEnd;
+      startIndex -= expandStart;
+      endIndex += expandEnd;
+      if (remaining > 0) {
+        if (endIndex < list.length) {
+          endIndex = Math.min(list.length, endIndex + remaining);
+        } else if (startIndex > 0) {
+          startIndex = Math.max(0, startIndex - remaining);
+        }
+      }
+    }
+  }
+
+  const totalHeight = list.length * itemHeight;
+  const renderChild = props.children;
+
+  let itemsHtml = "";
+  if (typeof renderChild === "function") {
+    const promises: Promise<string>[] = [];
+    for (let i = startIndex; i < endIndex; i++) {
+      promises.push(
+        renderNodeH(
+          renderChild(list[i], () => i),
+          ctx,
+        ),
+      );
+    }
+    const results = await Promise.all(promises);
+    for (let i = 0; i < results.length; i++) {
+      itemsHtml += results[i];
+    }
+  }
+
+  return `<div style="overflow:auto;height:${containerHeight}px"><div style="position:relative;height:${totalHeight}px">${itemsHtml}</div></div>`;
 }
 
 function resolveShowChildren(

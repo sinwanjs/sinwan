@@ -31,6 +31,13 @@ const HOOK_KEY = Symbol.for("sinwan.react.hook_slots");
 function getSlots(): HookSlots {
   const instance = getCurrentInstance();
   if (!instance) {
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      console.warn(
+        "Warning: Invalid hook call. Hooks can only be called inside the body of a component setup function.\n" +
+        "In SinwanJS, make sure you are not calling hooks inside event handlers, inside `setTimeout`/`setInterval`, " +
+        "or after an `await` in an async component. Hooks must be called synchronously at the top level of the component."
+      );
+    }
     throw new Error(
       "[sinwan/react] Hook called outside of a component setup function. " +
         "Hooks may only be invoked at the top level of a component.",

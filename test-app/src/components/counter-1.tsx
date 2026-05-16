@@ -79,6 +79,7 @@ export const Counter = cc(async () => {
         itemHeight={16}
         key={(item) => item}
         overscan={3}
+        minRendered={3}
       >
         {(item) => <div>{item}</div>}
       </Virtual>

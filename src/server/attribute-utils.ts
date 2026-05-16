@@ -86,7 +86,7 @@ export function renderServerAttribute(key: string, value: unknown): string {
 
 function stringifyClass(value: object): string {
   if (Array.isArray(value)) {
-    // remplace filter par boucle for pour éviter la création d'un tableau intermédiaire
+    // replace filter with for loop to avoid creating an intermediate array
     const parts: string[] = [];
     for (let i = 0; i < value.length; i++) {
       const item = value[i];
@@ -97,7 +97,7 @@ function stringifyClass(value: object): string {
     return parts.join(" ");
   }
 
-  // remplace Object.entries/filter/map par boucle for pour éviter la création de tableaux intermédiaires
+  // replace Object.entries/filter/map with for loop to avoid creating intermediate arrays
   const parts: string[] = [];
   const obj = value as Record<string, unknown>;
   for (const key in obj) {
@@ -112,7 +112,7 @@ function stringifyClass(value: object): string {
 }
 
 function stringifyStyle(value: object): string {
-  // remplace Object.entries/filter/map par boucle for pour éviter la création de tableaux intermédiaires
+  // replace Object.entries/filter/map with for loop to avoid creating intermediate arrays
   const parts: string[] = [];
   const obj = value as Record<string, unknown>;
   for (const key in obj) {

@@ -796,4 +796,129 @@ describe("Virtual", () => {
 
     expect(mountedIds).toEqual(["0", "1", "2", "3", "4", "5", "6", "7"]);
   });
+
+  it("clamps overscan at start boundary so window does not exceed list length", async () => {
+    const items = signal(Array.from({ length: 10 }, (_, i) => `item-${i}`));
+
+    const App = cc(() =>
+      el(Virtual, {
+        each: items,
+        itemHeight: 50,
+        containerHeight: 100,
+        overscan: 5,
+        children: (item: string) => el("div", { class: "row" }, item),
+      }),
+    );
+
+    mount(App, container);
+    await nextTick();
+
+    const rows = byTag(container, "div").filter((r) =>
+      r.classList.contains("row"),
+    );
+    // scrollTop=0, container fits 2 items, overscan=5
+    // startIndex = max(0, 0-5) = 0, endIndex = min(10, 2+5) = 7
+    expect(rows.length).toBe(7);
+    expect(rows[0]!.textContent).toBe("item-0");
+    expect(rows[6]!.textContent).toBe("item-6");
+  });
+
+  it("expands window symmetrically after scrolling with overscan", async () => {
+    const items = signal(Array.from({ length: 100 }, (_, i) => `item-${i}`));
+
+    const App = cc(() =>
+      el(Virtual, {
+        each: items,
+        itemHeight: 50,
+        containerHeight: 200,
+        overscan: 3,
+        children: (item: string) => el("div", { class: "row" }, item),
+      }),
+    );
+
+    mount(App, container);
+    await nextTick();
+
+    const virtualContainer = Array.from(container.children).find(
+      (c) => (c as any).style?.overflow === "auto",
+    ) as HTMLElement;
+    expect(virtualContainer).toBeTruthy();
+
+    virtualContainer.scrollTop = 500;
+    virtualContainer.dispatchEvent(new (win as any).Event("scroll") as Event);
+    await nextTick();
+
+    const rows = byTag(container, "div").filter((r) =>
+      r.classList.contains("row"),
+    );
+    // scrollTop=500 => startIndex=floor(500/50)=10
+    // endIndex=ceil((500+200)/50)=14
+    // with overscan 3: start=7, end=17 => 10 items (7..16)
+    expect(rows.length).toBe(10);
+    expect(rows[0]!.textContent).toBe("item-7");
+    expect(rows[9]!.textContent).toBe("item-16");
+  });
+
+  it("enforces minRendered near start boundary", async () => {
+    const items = signal(Array.from({ length: 100 }, (_, i) => `item-${i}`));
+
+    const App = cc(() =>
+      el(Virtual, {
+        each: items,
+        itemHeight: 50,
+        containerHeight: 100,
+        overscan: 0,
+        minRendered: 8,
+        children: (item: string) => el("div", { class: "row" }, item),
+      }),
+    );
+
+    mount(App, container);
+    await nextTick();
+
+    const rows = byTag(container, "div").filter((r) =>
+      r.classList.contains("row"),
+    );
+    // Without minRendered: viewport fits 2 items (0..1)
+    // With minRendered=8: expanded to 8 items (0..7)
+    expect(rows.length).toBe(8);
+    expect(rows[0]!.textContent).toBe("item-0");
+    expect(rows[7]!.textContent).toBe("item-7");
+  });
+
+  it("enforces minRendered near end boundary", async () => {
+    const items = signal(Array.from({ length: 10 }, (_, i) => `item-${i}`));
+
+    const App = cc(() =>
+      el(Virtual, {
+        each: items,
+        itemHeight: 50,
+        containerHeight: 100,
+        overscan: 0,
+        minRendered: 8,
+        children: (item: string) => el("div", { class: "row" }, item),
+      }),
+    );
+
+    mount(App, container);
+    await nextTick();
+
+    const virtualContainer = Array.from(container.children).find(
+      (c) => (c as any).style?.overflow === "auto",
+    ) as HTMLElement;
+    expect(virtualContainer).toBeTruthy();
+
+    // Scroll to end: scrollTop = 300 (items 0..9, total height 500, container 100)
+    virtualContainer.scrollTop = 300;
+    virtualContainer.dispatchEvent(new (win as any).Event("scroll") as Event);
+    await nextTick();
+
+    const rows = byTag(container, "div").filter((r) =>
+      r.classList.contains("row"),
+    );
+    // At end: visible items 6..9 (4 items), minRendered=8 => expand to 2..9 (8 items)
+    expect(rows.length).toBe(8);
+    expect(rows[0]!.textContent).toBe("item-2");
+    expect(rows[7]!.textContent).toBe("item-9");
+  });
 });

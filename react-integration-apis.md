@@ -608,7 +608,22 @@ Sinwan’s implicit async handling means you do **not** need `<Suspense>` to acc
 
 ---
 
-## 4. Résumé des exports par sub-path
+## 5. Development Diagnostics (`__DEV__`)
+
+SinwanJS provides several development-only warnings to help catch common React integration mistakes early. These warnings mimic React's developer experience and are automatically stripped out in production builds (when `__DEV__` is false).
+
+### Invalid Hook Calls
+If you attempt to call a React hook outside of a component setup function (e.g., inside an event handler, after an `await` in an async component, or outside any component), SinwanJS will log a detailed warning explaining that this violates the Rules of Hooks, before throwing an error.
+
+### Server-Side `useLayoutEffect`
+Calling `useLayoutEffect` on the server is a no-op, but it often indicates a bug because the effect cannot run during SSR, leading to hydration mismatches. SinwanJS logs a warning when `useLayoutEffect` is called during SSR, advising you to use it only in client-side components.
+
+### Async Action State Transitions
+When using `useActionState`, if an asynchronous action is dispatched outside of a transition context (and not on the server), SinwanJS warns you that `isPending` might not update correctly, mirroring React's behavior.
+
+---
+
+## 6. Résumé des exports par sub-path
 
 | Sub-path              | Exports                                                                                                                                                                                           |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

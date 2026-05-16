@@ -280,6 +280,7 @@ function renderVirtualBlock<T>(
     itemHeight: number;
     containerHeight: number;
     overscan?: number;
+    minRendered?: number;
     fallback?: SinwanNode;
     children?: (item: T, index: () => number) => SinwanNode;
   };
@@ -287,6 +288,7 @@ function renderVirtualBlock<T>(
   const itemHeight = props.itemHeight;
   const containerHeight = props.containerHeight;
   const overscan = props.overscan ?? 3;
+  const minRendered = props.minRendered ?? 0;
 
   const container = domOps.createElement("div") as HTMLElement;
   container.style.overflow = "auto";
@@ -355,6 +357,29 @@ function renderVirtualBlock<T>(
     let endIndex = Math.ceil((scrollTop + containerHeight) / itemHeight);
     startIndex = Math.max(0, startIndex - overscan);
     endIndex = Math.min(list.length, endIndex + overscan);
+
+    if (minRendered > 0) {
+      const visibleCount = endIndex - startIndex;
+      if (visibleCount < minRendered) {
+        const deficit = minRendered - visibleCount;
+        const expandStart = Math.min(startIndex, Math.floor(deficit / 2));
+        const expandEnd = Math.min(
+          list.length - endIndex,
+          Math.ceil(deficit / 2),
+        );
+        let remaining = deficit - expandStart - expandEnd;
+        startIndex -= expandStart;
+        endIndex += expandEnd;
+        if (remaining > 0) {
+          if (endIndex < list.length) {
+            endIndex = Math.min(list.length, endIndex + remaining);
+          } else if (startIndex > 0) {
+            startIndex = Math.max(0, startIndex - remaining);
+          }
+        }
+      }
+    }
+
     const visibleCount = Math.max(0, endIndex - startIndex);
 
     const nextRecords: ForRecord<T>[] = new Array(visibleCount);
@@ -458,8 +483,8 @@ function renderForBlock<T>(
 ): () => void {
   let initialized = false;
   let records: ForRecord<T>[] = [];
-  let lastList: readonly T[] | null = null; // optimisation: détecte si le tableau a changé
-  let recordsByKey: Map<unknown, ForRecord<T>> | null = new Map(); // optimisation: lookup O(1) par clé
+  let lastList: readonly T[] | null = null; // optimisation: detects if the array changed
+  let recordsByKey: Map<unknown, ForRecord<T>> | null = new Map(); // optimisation: O(1) lookup by key
   let recordsByNumericKey: Array<ForRecord<T> | undefined> | null = null;
 
   return effect(() => {
@@ -560,14 +585,14 @@ function renderForBlock<T>(
       return;
     }
 
-    // optimisation: détecte si c'est une mise à jour simple (peu d'éléments changés)
-    // fonctionne même si la référence du tableau a changé (ex: array.slice())
+    // optimisation: detect if this is a simple update (few elements changed)
+    // works even if the array reference changed (e.g., array.slice())
     const isSameLength = lastList && lastList.length === list.length;
     let simpleUpdate = isSameLength;
     let changedIndex = -1;
     let changedIndices: number[] = [];
 
-    // vérifie si peu d'éléments ont changé (optimisation pour update et swap)
+    // check if few elements changed (optimisation for update and swap)
     if (simpleUpdate) {
       let diffCount = 0;
       for (let i = 0; i < list.length; i++) {
@@ -583,26 +608,26 @@ function renderForBlock<T>(
       }
     }
 
-    // fast-path pour swap de deux éléments (O(1) au lieu de O(n))
+    // fast-path for swapping two elements (O(1) instead of O(n))
     if (simpleUpdate && records.length > 0 && changedIndices.length === 2) {
       const i = changedIndices[0]!;
       const j = changedIndices[1]!;
-      // vérifie que c'est un vrai swap (les deux items ont simplement échangé de place)
+      // verify it's a real swap (the two items simply exchanged places)
       if (lastList![i] === list[j] && lastList![j] === list[i]) {
         const recordI = records[i]!;
         const recordJ = records[j]!;
-        // échange les items et index
+        // swap items and indexes
         recordI.item = list[i]!;
         recordJ.item = list[j]!;
         const tmpIndex = recordI.index;
         recordI.index = recordJ.index;
         recordJ.index = tmpIndex;
-        // échange dans records et block.children
+        // swap in records and block.children
         records[i] = recordJ;
         records[j] = recordI;
         block.children[i] = recordJ.mounted;
         block.children[j] = recordI.mounted;
-        // réordonne uniquement les deux nœuds dans le DOM (uniquement pour arbres mono-nœud)
+        // reorder only the two nodes in the DOM (only for single-node trees)
         const nodesI = getMountedDomNodes(recordI.mounted);
         const nodesJ = getMountedDomNodes(recordJ.mounted);
         if (nodesI.length === 1 && nodesJ.length === 1) {
@@ -611,7 +636,7 @@ function renderForBlock<T>(
           const nextI = nodeI.nextSibling;
           const nextJ = nodeJ.nextSibling;
           const parentNode = nodeI.parentNode!;
-          // détermine si I est avant J
+          // determine if I is before J
           let iBeforeJ = false;
           let n: Node | null = nodeI;
           while (n) {
@@ -645,7 +670,7 @@ function renderForBlock<T>(
       }
     }
 
-    // si c'est une mise à jour simple d'un seul élément, utilise le diffing rapide par clé
+    // if it's a simple single-element update, use fast keyed diffing
     if (simpleUpdate && records.length > 0 && changedIndices.length === 1) {
       const newItem = list[changedIndex];
       const key = props.key ? props.key(newItem, changedIndex) : newItem;
@@ -661,10 +686,10 @@ function renderForBlock<T>(
           oldRecord.item = newItem;
           oldRecord.index = changedIndex;
 
-          // optimisation critique style SolidJS: tente de mettre à jour en-place
+          // critical SolidJS-style optimisation: try to update in-place
           const newContent = renderChild(newItem, () => oldRecord.index);
 
-          // si le nouveau contenu est primitif, met à jour tous les nœuds texte existants
+          // if the new content is primitive, update all existing text nodes
           if (
             typeof newContent === "string" ||
             typeof newContent === "number"
@@ -675,23 +700,23 @@ function renderForBlock<T>(
             newContent !== null &&
             "tag" in newContent
           ) {
-            // si c'est un élément, tente de mettre à jour en-place si la structure correspond
+            // if it's an element, try to update in-place if the structure matches
             const element = newContent as SinwanElement;
             if (
               oldRecord.mounted.type === "element" &&
               oldRecord.mounted.node.tagName.toLowerCase() ===
                 String(element.tag)
             ) {
-              // structure identique - met à jour les nœuds texte récursivement
+              // identical structure - update text nodes recursively
               updateTextNodeContent(oldRecord.mounted, "");
-              // ré-render le contenu pour obtenir les nouvelles valeurs
+              // re-render content to get the new values
               removeMountedNode(oldRecord.mounted);
               oldRecord.mounted = withOptionalInstance(owner, () =>
                 renderNodeToDOM(newContent, parent, block.endAnchor, namespace),
               );
               block.children[changedIndex] = oldRecord.mounted;
             } else {
-              // structure différente - re-render complet
+              // different structure - full re-render
               removeMountedNode(oldRecord.mounted);
               oldRecord.mounted = withOptionalInstance(owner, () =>
                 renderNodeToDOM(newContent, parent, block.endAnchor, namespace),
@@ -699,7 +724,7 @@ function renderForBlock<T>(
               block.children[changedIndex] = oldRecord.mounted;
             }
           } else {
-            // re-render complet pour autres types
+            // full re-render for other types
             removeMountedNode(oldRecord.mounted);
             oldRecord.mounted = withOptionalInstance(owner, () =>
               renderNodeToDOM(newContent, parent, block.endAnchor, namespace),
@@ -758,7 +783,7 @@ function renderForBlock<T>(
       }
     } else {
       oldByKey = new Map<unknown, ForRecord<T>>();
-      // optimisation: utilise recordsByKey existant au lieu de reconstruire
+      // optimisation: reuse existing recordsByKey instead of rebuilding
       for (const record of records) {
         oldByKey.set(record.key, record);
       }
@@ -773,7 +798,7 @@ function renderForBlock<T>(
       : null;
     let reusedCount = 0;
 
-    // remplace forEach par boucle for pour éviter la création d'une fonction callback (critique pour grandes listes)
+    // replace forEach with for loop to avoid creating a callback function (critical for large lists)
     for (let i = 0; i < list.length; i++) {
       const item = list[i]!;
       const key = keys[i]!;
@@ -840,8 +865,8 @@ function renderForBlock<T>(
       }
     }
 
-    // réordonne le DOM seulement si des anciens enregistrements ont été réutilisés
-    // (sinon tous les nœuds sont nouveaux et déjà dans le bon ordre)
+    // reorder the DOM only if old records were reused
+    // (otherwise all nodes are new and already in the correct order)
     if (reusedCount > 0) {
       const fragment = domOps.createDocumentFragment();
       for (let i = 0; i < nextRecords.length; i++) {
@@ -868,7 +893,7 @@ function renderForBlock<T>(
     recordsByKey = nextRecordsByKey;
     recordsByNumericKey = nextRecordsByNumeric;
     lastList = list;
-    // remplace map par boucle for pour éviter la création d'un tableau intermédiaire (critique pour diffing)
+    // replace map with for loop to avoid creating an intermediate array (critical for diffing)
     const mountedChildren: MountedNode[] = new Array(nextRecords.length);
     for (let i = 0; i < nextRecords.length; i++) {
       mountedChildren[i] = nextRecords[i]!.mounted;
@@ -990,7 +1015,7 @@ function renderIndexBlock<T>(
       removeMountedNode(removed.mounted);
     }
 
-    // remplace map par boucle for pour éviter la création d'un tableau intermédiaire (critique pour diffing)
+    // replace map with for loop to avoid creating an intermediate array (critical for diffing)
     const mountedChildren: MountedNode[] = [];
     for (let i = 0; i < records.length; i++) {
       mountedChildren.push(records[i].mounted);
@@ -1168,7 +1193,7 @@ function renderBlockContent(
 
   return withOptionalInstance(owner, () => {
     if (Array.isArray(content)) {
-      // remplace map par boucle for pour éviter la création d'un tableau intermédiaire (critique pour rendu de contenu)
+      // replace map with for loop to avoid creating an intermediate array (critical for content rendering)
       const children: MountedNode[] = [];
       for (let i = 0; i < content.length; i++) {
         children.push(renderNodeToDOM(content[i], parent, anchor, namespace));
@@ -1631,15 +1656,15 @@ function insertNode(parent: Node, child: Node, anchor: Node | null): void {
   }
 }
 
-// optimisation critique pour update 1/1k: met à jour le contenu texte sans re-render complet
-// approche style SolidJS: met à jour récursivement les nœuds texte existants
+// critical optimisation for 1/1k updates: update text content without full re-render
+// SolidJS-style approach: recursively update existing text nodes
 function updateTextNodeContent(mounted: MountedNode, newContent: string): void {
   if (mounted.type === "text") {
     mounted.node.data = newContent;
     return;
   }
   if (mounted.type === "element") {
-    // cherche récursivement tous les nœuds texte et met à jour
+    // recursively find all text nodes and update
     for (const child of mounted.children) {
       if (child.type === "text") {
         child.node.data = newContent;

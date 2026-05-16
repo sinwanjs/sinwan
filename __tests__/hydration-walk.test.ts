@@ -14,6 +14,7 @@ import {
   Dynamic,
   Visible,
   PORTAL_TYPE,
+  Virtual,
 } from "../src/component/control-flow.ts";
 import { raw } from "../src/escaper.ts";
 import type { SinwanElement } from "../src/types.ts";
@@ -23,12 +24,11 @@ function el(
   props: Record<string, unknown> = {},
   ...children: any[]
 ): SinwanElement {
-  const childValue = children.length === 1 ? children[0] : children;
-  return {
-    tag: tag as any,
-    props: { ...props, children: childValue },
-    children,
-  };
+  const finalProps = { ...props };
+  if (children.length > 0 || finalProps.children === undefined) {
+    finalProps.children = children.length === 1 ? children[0] : children;
+  }
+  return { tag: tag as any, props: finalProps, children };
 }
 
 let doc: Document;
@@ -172,6 +172,46 @@ describe("hydrateElement control flow", () => {
     container.innerHTML = html;
     const app = hydrate(App, container);
     expect(container.textContent).toContain("visible-text");
+    app.unmount();
+  });
+
+  it("hydrates Virtual with initial visible window", async () => {
+    const items = Array.from({ length: 20 }, (_, i) => `item-${i}`);
+    const App = cc(() =>
+      el(Virtual, {
+        each: items,
+        itemHeight: 50,
+        containerHeight: 100,
+        overscan: 2,
+        children: (item: string) => el("div", { class: "row" }, item),
+      }),
+    );
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+    const app = hydrate(App, container);
+
+    const rows = Array.from(container.querySelectorAll(".row"));
+    // scrollTop=0, container fits 2 items, overscan=2 => 0..3 (4 items)
+    expect(rows.length).toBe(4);
+    expect(rows[0]!.textContent).toBe("item-0");
+    expect(rows[3]!.textContent).toBe("item-3");
+    app.unmount();
+  });
+
+  it("hydrates Virtual fallback when list is empty", async () => {
+    const App = cc(() =>
+      el(Virtual, {
+        each: [],
+        itemHeight: 50,
+        containerHeight: 100,
+        fallback: el("p", { id: "empty" }, "No items"),
+        children: (item: string) => el("div", { class: "row" }, item),
+      }),
+    );
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+    const app = hydrate(App, container);
+    expect(container.textContent).toContain("No items");
     app.unmount();
   });
 });

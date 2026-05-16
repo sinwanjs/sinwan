@@ -10,7 +10,7 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "declaration": true,
-    "declarationMap": true,
+    // "declarationMap": true,
 
     // ─── Inherit module / resolution from base (Bundler) ──
     // "allowImportingTsExtensions": true (inherited) — works with emitDeclarationOnly
