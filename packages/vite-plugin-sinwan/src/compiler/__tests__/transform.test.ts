@@ -11,7 +11,9 @@ describe("transformJSX", () => {
       'html: "<div class=\\"card\\"><p>Hello</p></div>"',
     );
     expect(result.code).toContain("_$createTemplate(_$tmpl_0");
-    expect(result.code).toContain('import { _$createTemplate } from "sinwan"');
+    expect(result.code).toContain(
+      'import { _$createTemplate } from "sinwan/renderer"',
+    );
   });
 
   it("handles dynamic children with comment markers", () => {

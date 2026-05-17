@@ -38,7 +38,7 @@ describe("portableEscape fallback", () => {
         escapeHtml: freshEscapeHtml,
         safeHtml: freshSafeHtml,
         isSafeHtml: freshIsSafeHtml,
-      } = await import("../src/escaper.ts?" + Date.now());
+      } = await import("../src/common/escaper.ts?" + Date.now());
       expect(freshEscapeHtml("<script>")).toBe("&lt;script&gt;");
       expect(freshEscapeHtml("safe")).toBe("safe");
       expect(freshSafeHtml("x").value).toBe("x");

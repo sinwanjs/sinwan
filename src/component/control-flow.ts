@@ -558,6 +558,37 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
         const child = resolveKeyChildren(element, key);
         const match = findTruthyMatch(normalizeContent(child));
         if (match !== undefined) return match;
+      } else if (isDynamicElement(element)) {
+        const tag = readReactive((element.props as any).component);
+        if (typeof tag === "string" || typeof tag === "function") {
+          const { component, ...rest } = element.props as Record<
+            string,
+            unknown
+          >;
+          const children = normalizeContent(rest.children ?? element.children);
+          const dynamicEl: SinwanElement = {
+            tag: tag as SinwanElement["tag"],
+            props: rest,
+            children,
+          };
+          const match = findTruthyMatch([dynamicEl]);
+          if (match !== undefined) return match;
+        }
+      } else if (isVirtualElement(element)) {
+        const props = element.props as any;
+        const items = readReactive(props.each);
+        if (!Array.isArray(items) || items.length === 0) {
+          if (props.fallback) {
+            const match = findTruthyMatch(normalizeContent(props.fallback));
+            if (match !== undefined) return match;
+          }
+        } else if (typeof props.children === "function") {
+          for (let i = 0; i < items.length; i++) {
+            const child = props.children(items[i], () => i);
+            const match = findTruthyMatch(normalizeContent(child));
+            if (match !== undefined) return match;
+          }
+        }
       }
     }
   }
