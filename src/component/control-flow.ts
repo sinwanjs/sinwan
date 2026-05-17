@@ -510,7 +510,9 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
           tag === For ||
           tag === Index ||
           tag === Key ||
-          tag === Switch
+          tag === Switch ||
+          tag === Dynamic ||
+          tag === Virtual
         ) {
           element = (tag as Function)(element.props);
         }
@@ -533,6 +535,10 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
           );
           if (match !== undefined) return match;
         }
+      } else if (isSwitchElement(element)) {
+        const content = resolveSwitchContent(element);
+        const match = findTruthyMatch(normalizeContent(content));
+        if (match !== undefined) return match;
       } else if (isForElement(element)) {
         const props = element.props as any;
         const items = readReactive(props.each);
@@ -589,7 +595,13 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
             if (match !== undefined) return match;
           }
         }
+      } else {
+        // It's a standard/non-control-flow element (like a div), so it's a truthy match
+        return element;
       }
+    } else {
+      // It's a primitive (like a string or a number), which is a truthy match
+      return node;
     }
   }
   return undefined;
