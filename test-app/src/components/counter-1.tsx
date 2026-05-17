@@ -77,14 +77,29 @@ export const Counter = cc(async () => {
         <CountryList countries={countries.countries} />
       </Show>
       <Virtual
-        containerHeight={50}
+        containerHeight={56}
+        itemHeight={15}
         each={items}
-        itemHeight={16}
         key={(item) => item}
-        overscan={3}
-        minRendered={3}
+        overscan={1}
+        minRendered={1}
       >
-        {(item) => <div>{item}</div>}
+        {(item) => (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: "6px 12px",
+              borderBottom: "1px solid var(--border)",
+              background: "var(--card)",
+              fontFamily: "Inter, system-ui, sans-serif",
+              fontSize: "14px",
+              color: "var(--fg)",
+            }}
+          >
+            Item #{item}
+          </div>
+        )}
       </Virtual>
     </div>
   );

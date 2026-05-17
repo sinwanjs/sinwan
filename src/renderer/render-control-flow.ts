@@ -463,6 +463,16 @@ function renderVirtualBlock<T>(
       }
     }
 
+    // Reorder DOM nodes to match nextRecords order
+    const fragment = domOps.createDocumentFragment();
+    for (let i = 0; i < nextRecords.length; i++) {
+      const nodes = getMountedDomNodes(nextRecords[i]!.mounted);
+      for (let j = 0; j < nodes.length; j++) {
+        fragment.appendChild(nodes[j]!);
+      }
+    }
+    domOps.appendChild(content, fragment);
+
     records = nextRecords;
     const mountedChildren: MountedNode[] = new Array(nextRecords.length);
     for (let i = 0; i < nextRecords.length; i++) {
