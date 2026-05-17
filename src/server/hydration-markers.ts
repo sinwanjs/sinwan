@@ -60,6 +60,9 @@ import {
   isShowElement,
   isSwitchElement,
   isVirtualElement,
+  isActivityElement,
+  isSuspenseElement,
+  isViewTransitionElement,
 } from "../component/control-flow.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
@@ -330,6 +333,49 @@ async function renderElementH(
 
   if (isVirtualElement(element)) {
     return await renderVirtualElementH(element, ctx);
+  }
+
+  if (isSuspenseElement(element)) {
+    return await renderNodeH(props.children as SinwanNode, ctx);
+  }
+
+  if (isViewTransitionElement(element)) {
+    const name = props.name;
+    const viewChildren = (props as any).children as SinwanNode;
+    if (!name) {
+      return await renderNodeMaybeRoot(viewChildren, ctx, isComponentRoot);
+    }
+    const wrapperTag = (props as any).as ?? "div";
+    const wrapperElement: SinwanElement = {
+      tag: wrapperTag,
+      props: {
+        style: { viewTransitionName: name },
+        children: viewChildren,
+      },
+      children: normalizeContent(viewChildren),
+    };
+    return await renderElementH(wrapperElement, ctx, isComponentRoot);
+  }
+
+  if (isActivityElement(element)) {
+    const mode = readReactive(props.mode) ?? "visible";
+    const activityChildren = (props as any).children as SinwanNode;
+    const tag = (element.props as any).as ?? "div";
+    const hidden = mode === "hidden";
+    
+    return await renderElementH(
+      {
+        tag,
+        props: {
+          "data-sinwan-activity": hidden ? "hidden" : "visible",
+          ...(hidden ? { hidden: true } : {}),
+          children: activityChildren,
+        },
+        children: normalizeContent(activityChildren),
+      },
+      ctx,
+      isComponentRoot,
+    );
   }
 
   // Functional component

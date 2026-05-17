@@ -504,17 +504,26 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
       // Expand functional control flow components if needed
       if (typeof element.tag === "function") {
         const tag = element.tag;
+        const expanded = (tag as Function)(element.props);
         if (
-          tag === Match ||
-          tag === Show ||
-          tag === For ||
-          tag === Index ||
-          tag === Key ||
-          tag === Switch ||
-          tag === Dynamic ||
-          tag === Virtual
+          expanded &&
+          typeof expanded === "object" &&
+          "tag" in expanded &&
+          (expanded.tag === MATCH_TYPE ||
+            expanded.tag === SHOW_TYPE ||
+            expanded.tag === FOR_TYPE ||
+            expanded.tag === INDEX_TYPE ||
+            expanded.tag === KEY_TYPE ||
+            expanded.tag === SWITCH_TYPE ||
+            expanded.tag === DYNAMIC_TYPE ||
+            expanded.tag === PORTAL_TYPE ||
+            expanded.tag === VIRTUAL_TYPE ||
+            expanded.tag === ERROR_BOUNDARY_TYPE ||
+            expanded.tag === SUSPENSE_TYPE ||
+            expanded.tag === ACTIVITY_TYPE ||
+            expanded.tag === VIEW_TRANSITION_TYPE)
         ) {
-          element = (tag as Function)(element.props);
+          element = expanded;
         }
       }
 

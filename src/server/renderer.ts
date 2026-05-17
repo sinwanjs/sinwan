@@ -39,6 +39,8 @@ import {
   isSwitchElement,
   isVirtualElement,
   isActivityElement,
+  isSuspenseElement,
+  isViewTransitionElement,
   resolveKeyChildren,
   resolveMatchChildren,
   resolveShowChildren,
@@ -250,21 +252,43 @@ async function renderElement(element: SinwanElement): Promise<string> {
     return renderVirtualElement(element);
   }
 
+  if (isSuspenseElement(element)) {
+    return renderToString((props as any).children as SinwanNode);
+  }
+
+  if (isViewTransitionElement(element)) {
+    const name = props.name;
+    const viewChildren = (props as any).children as SinwanNode;
+    if (!name) {
+      return renderToString(viewChildren);
+    }
+    const wrapperTag = (props as any).as ?? "div";
+    const wrapperElement: SinwanElement = {
+      tag: wrapperTag,
+      props: {
+        style: { viewTransitionName: name },
+        children: viewChildren,
+      },
+      children: normalizeContent(viewChildren),
+    };
+    return renderElement(wrapperElement);
+  }
+
   if (isActivityElement(element)) {
     const mode = readReactive(props.mode) ?? "visible";
     const activityChildren = (props as any).children as SinwanNode;
-    if (mode === "hidden") {
-      return renderElement({
-        tag: "div",
-        props: {
-          hidden: true,
-          "data-sinwan-activity": "hidden",
-          children: activityChildren,
-        },
-        children: normalizeContent(activityChildren),
-      });
-    }
-    return renderToString(activityChildren);
+    const tag = (element.props as any).as ?? "div";
+    const hidden = mode === "hidden";
+
+    return renderElement({
+      tag,
+      props: {
+        "data-sinwan-activity": hidden ? "hidden" : "visible",
+        ...(hidden ? { hidden: true } : {}),
+        children: activityChildren,
+      },
+      children: normalizeContent(activityChildren),
+    });
   }
 
   // Handle functional components

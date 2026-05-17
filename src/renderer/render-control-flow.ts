@@ -159,7 +159,7 @@ export function renderControlFlowToDOM(
   return block;
 }
 
-const errorBoundaryStack: MountedReactiveBlock[] = [];
+export const errorBoundaryStack: MountedReactiveBlock[] = [];
 
 export function hasActiveErrorBoundary(): boolean {
   return errorBoundaryStack.length > 0;
@@ -1182,7 +1182,7 @@ function createDynamicElement(
   };
 }
 
-function renderBlockContent(
+export function renderBlockContent(
   content: SinwanNode,
   parent: Node,
   anchor: Node | null,
@@ -1205,7 +1205,7 @@ function renderBlockContent(
   });
 }
 
-function clearChildren(block: MountedReactiveBlock): void {
+export function clearChildren(block: MountedReactiveBlock): void {
   // Fast path: remove all DOM nodes between anchors in one sweep,
   // avoiding the expensive getMountedDomNodes recursive traversal.
   if (block.startAnchor.parentNode) {
@@ -1295,7 +1295,7 @@ function syncPortalOrder(mounted: MountedNode): void {
   }
 }
 
-function fireMountedAndQueueUpdated(owner: ComponentInstance | null): void {
+export function fireMountedAndQueueUpdated(owner: ComponentInstance | null): void {
   if (owner) {
     fireMountedHooks(owner);
   }
@@ -1596,7 +1596,7 @@ function renderViewTransitionBlock(
   return () => removeMountedNode(mounted);
 }
 
-function softHideMountedTree(node: MountedNode): void {
+export function softHideMountedTree(node: MountedNode): void {
   switch (node.type) {
     case "component":
       if (node.instance) softHideInstance(node.instance);
@@ -1622,7 +1622,7 @@ function softHideMountedTree(node: MountedNode): void {
   }
 }
 
-function softShowMountedTree(node: MountedNode): void {
+export function softShowMountedTree(node: MountedNode): void {
   switch (node.type) {
     case "component":
       if (node.instance) softShowInstance(node.instance);
