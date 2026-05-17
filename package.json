@@ -19,6 +19,20 @@
       },
       "default": "./dist/component.js"
     },
+    "./hook": {
+      "types": "./dist/hook.d.ts",
+      "import": {
+        "development": "./dist/esm/hook/index.development.js",
+        "production": "./dist/esm/hook/index.production.min.js",
+        "default": "./dist/esm/hook/index.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/hook/index.development.js",
+        "production": "./dist/cjs/hook/index.production.min.js",
+        "default": "./dist/hook.js"
+      },
+      "default": "./dist/hook.js"
+    },
     "./hydration": {
       "types": "./dist/hydration.d.ts",
       "import": {

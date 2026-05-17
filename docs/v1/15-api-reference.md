@@ -7,6 +7,7 @@ Alphabetical list of every public export from `sinwan` (root) and its subpaths. 
 > - `sinwan` — the default entry; everything except SSR helpers.
 > - `sinwan/react-server` — server rendering, streaming, page registry, hydration markers.
 > - `sinwan/renderer` — client renderer and DOM operation customization.
+> - `sinwan/hook` — reactive utility hooks such as `useFetch` and `createFetch`.
 > - `sinwan/jsx-runtime` — JSX production runtime (auto-imported by TS).
 > - `sinwan/jsx-dev-runtime` — JSX dev runtime.
 
@@ -219,6 +220,80 @@ function Virtual<T>(props: {
 ```
 
 Virtualized list rendering — mounts only the visible slice of a large array inside a scrollable container. See [`04-components.md`](./04-components.md#virtual-scrolling).
+
+---
+
+## Hooks (`sinwan/hook`)
+
+### `useFetch(url, options?)`
+
+```ts
+function useFetch<T>(
+  url: MaybeReactive<string>,
+): UseFetchReturn<T> & PromiseLike<UseFetchReturn<T>>;
+
+function useFetch<T>(
+  url: MaybeReactive<string>,
+  useFetchOptions: UseFetchOptions,
+): UseFetchReturn<T> & PromiseLike<UseFetchReturn<T>>;
+
+function useFetch<T>(
+  url: MaybeReactive<string>,
+  options: RequestInit,
+  useFetchOptions?: UseFetchOptions,
+): UseFetchReturn<T> & PromiseLike<UseFetchReturn<T>>;
+```
+
+Reactive fetch helper with signals for `data`, `error`, `response`, `statusCode`, loading state, aborting, refetching, and response parsing. See [`29-use-fetch.md`](./29-use-fetch.md).
+
+### `createFetch(config?)`
+
+```ts
+function createFetch(config?: CreateFetchOptions): typeof useFetch;
+```
+
+Create a preconfigured `useFetch` factory with `baseUrl`, default request options, default hook options, and callback combination behavior. See [`29-use-fetch.md`](./29-use-fetch.md#createfetch).
+
+### Hook types
+
+```ts
+type Fn = () => void;
+type MaybeReactive<T> = T | Signal<T> | Computed<T> | (() => T);
+type EventHookOn<T = unknown> = (fn: (param: T) => void) => Fn;
+type Stoppable = { stop: Fn; start: Fn; isPending: Signal<boolean> };
+```
+
+```ts
+interface UseFetchOptions {
+  fetch?: typeof globalThis.fetch;
+  immediate?: boolean;
+  refetch?: MaybeReactive<boolean>;
+  initialData?: any;
+  timeout?: number;
+  updateDataOnError?: boolean;
+  beforeFetch?: (
+    ctx: BeforeFetchContext,
+  ) =>
+    | Promise<Partial<BeforeFetchContext> | void>
+    | Partial<BeforeFetchContext>
+    | void;
+  afterFetch?: (
+    ctx: AfterFetchContext,
+  ) => Promise<Partial<AfterFetchContext>> | Partial<AfterFetchContext>;
+  onFetchError?: (
+    ctx: OnFetchErrorContext,
+  ) => Promise<Partial<OnFetchErrorContext>> | Partial<OnFetchErrorContext>;
+}
+
+interface CreateFetchOptions {
+  baseUrl?: MaybeReactive<string>;
+  combination?: "overwrite" | "chain";
+  options?: UseFetchOptions;
+  fetchOptions?: RequestInit;
+}
+```
+
+Full return type and callback context details are documented in [`29-use-fetch.md`](./29-use-fetch.md#type-reference).
 
 ---
 

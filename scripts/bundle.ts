@@ -31,6 +31,7 @@ const OUTDIR = `${ROOT}/dist/${format}`;
 
 const ENTRYPOINTS = [
   `${SRC}/component/index.ts`,
+  `${SRC}/hook/index.ts`,
   `${SRC}/hydration/index.ts`,
   `${SRC}/integrations/react/_client.ts`,
   `${SRC}/integrations/react/_server.ts`,
