@@ -173,10 +173,18 @@ function renderShowBlock(
   owner: ComponentInstance | null,
 ): () => void {
   let initialized = false;
+  let prevWhen: unknown = undefined;
 
   return effect(() => {
-    clearChildren(block);
     const when = readReactive((element.props as any).when);
+
+    // Skip re-rendering if 'when' hasn't changed (optimization for large lists)
+    if (initialized && Object.is(when, prevWhen)) {
+      return;
+    }
+    prevWhen = when;
+
+    clearChildren(block);
     block.children = withOptionalInstance(owner, () => {
       const content = when
         ? resolveShowChildren(element, when)
@@ -1206,6 +1214,14 @@ export function renderBlockContent(
 }
 
 export function clearChildren(block: MountedReactiveBlock): void {
+  if (block.children.length <= 4) {
+    for (const child of block.children) {
+      removeMountedNode(child);
+    }
+    block.children = [];
+    return;
+  }
+
   // Fast path: use native Range to delete all nodes between anchors in one
   // optimized C++ operation, avoiding the expensive per-node remove() overhead.
   const parent = block.startAnchor.parentNode;

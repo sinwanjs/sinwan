@@ -555,16 +555,39 @@ function hydrateControlFlow(
 
     const children: MountedNode[] = [];
     for (let i = startIndex; i < endIndex; i++) {
+      const index = i;
+      const child = renderChild(list[i], () => index);
       children.push(
         hydrateNode(
-          renderChild(list[i], () => i),
+          {
+            tag: "div",
+            props: {
+              style: `position:absolute;top:${i * itemHeight}px;left:0;right:0`,
+            },
+            children: normalizeContent(child),
+          },
           itemCursor,
         ),
       );
     }
 
-    const anchor = document.createComment("Sinwan-f");
-    return { type: "fragment", children, anchor };
+    const contentMounted: MountedElement = {
+      type: "element",
+      node: contentDiv,
+      children,
+      eventCleanups: null,
+      attrDisposers: null,
+      refCleanup: null,
+    };
+
+    return {
+      type: "element",
+      node: containerDiv,
+      children: [contentMounted],
+      eventCleanups: null,
+      attrDisposers: null,
+      refCleanup: null,
+    };
   }
 
   if (isErrorBoundaryElement(element)) {

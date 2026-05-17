@@ -714,16 +714,9 @@ async function renderVirtualElementH(
       const top = i * itemHeight;
       // Wrap each item in a div with absolute positioning at the correct top
       promises.push(
-        renderNodeH(
-          {
-            tag: "div",
-            props: {
-              style: `position:absolute;top:${top}px;left:0;right:0`,
-              children: renderChild(list[i], () => index),
-            },
-            children: [],
-          },
-          ctx,
+        renderNodeH(renderChild(list[i], () => index), ctx).then(
+          (html) =>
+            `<div style="position:absolute;top:${top}px;left:0;right:0">${html}</div>`,
         ),
       );
     }
