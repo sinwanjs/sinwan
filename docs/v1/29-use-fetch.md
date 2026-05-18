@@ -177,16 +177,16 @@ await result.execute(true);
 
 `useFetch` returns a stable object with reactive fields.
 
-| Field        | Type                | Meaning                                                |
-| ------------ | ------------------- | ------------------------------------------------------ |
-| `data`       | `Signal<T | null>`  | Parsed response body or `initialData`                  |
-| `error`      | `Signal<any>`       | Last error message or transformed error                |
-| `response`   | `Signal<Response | null>` | Raw response object                             |
-| `statusCode` | `Signal<number | null>`   | HTTP status code                                |
-| `aborted`    | `Signal<boolean>`   | Whether the active request was aborted                 |
-| `isFetching` | `Computed<boolean>` | `true` while a request is active                       |
-| `isFinished` | `Computed<boolean>` | `true` when no request is active                       |
-| `canAbort`   | `Computed<boolean>` | `true` when abort is supported and a request is active |
+| Field        | Type                       | Meaning                                                |
+| ------------ | -------------------------- | ------------------------------------------------------ |
+| `data`       | `Signal<T / null>`         | Parsed response body or `initialData`                  |
+| `error`      | `Signal<any>`              | Last error message or transformed error                |
+| `response`   | `Signal<Response /  null>` | Raw response object                                    |
+| `statusCode` | `Signal<number / null>`    | HTTP status code                                       |
+| `aborted`    | `Signal<boolean>`          | Whether the active request was aborted                 |
+| `isFetching` | `Computed<boolean>`        | `true` while a request is active                       |
+| `isFinished` | `Computed<boolean>`        | `true` when no request is active                       |
+| `canAbort`   | `Computed<boolean>`        | `true` when abort is supported and a request is active |
 
 Example:
 
