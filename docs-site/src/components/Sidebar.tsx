@@ -20,6 +20,13 @@ const DOCS = [
   { id: "15-api-reference.md", title: "API Reference" },
   { id: "16-types.md", title: "Types" },
   { id: "17-troubleshooting.md", title: "Troubleshooting" },
+  { id: "18-react-interop.md", title: "React Interop (SHARED)" },
+  { id: "19-react-hooks.md", title: "React Hooks" },
+  { id: "20-react-components.md", title: "React Components" },
+  { id: "21-react-server-apis.md", title: "React Server APIs" },
+  { id: "22-react-static-apis.md", title: "React Static APIs" },
+  { id: "23-react-unstable.md", title: "React Unstable APIs" },
+  { id: "24-state-getters.md", title: "State Getters" },
   { id: "CHANGELOG.md", title: "Changelog" },
 ];
 
@@ -30,13 +37,14 @@ export const Sidebar = createComponent(() => {
   return (
     <aside class={() => `sidebar ${sidebarOpen.value ? "is-open" : ""}`}>
       <div class="sidebar-header">
-        <div>
-          <img
-            src="https://avatars.githubusercontent.com/u/252437356?s=400&v=4"
-            alt="Sinwan Logo"
-            width="150"
-          />
-          <p class="sidebar-eyebrow">Documentation atlas</p>
+        <img
+          class="sidebar-logo-img"
+          src="https://avatars.githubusercontent.com/u/252437356?s=400&v=4"
+          alt="Sinwan Logo"
+          width="40"
+          height="40"
+        />
+        <div class="sidebar-header-text">
           <div class="logo">Sinwan</div>
         </div>
         <span class="version-pill">v1.1.2</span>

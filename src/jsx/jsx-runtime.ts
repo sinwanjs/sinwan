@@ -8,6 +8,26 @@
 import type { SinwanElement, SinwanNode } from "../types.ts";
 import type { SinwanIntrinsicElements } from "./jsx-types";
 
+/**
+ * React-compatible `Fragment` — `[SHARED]`.
+ *
+ * SSR: safe (pure symbol).
+ * Reactivity: pass-through — Sinwan's existing Fragment symbol (from the
+ * JSX runtime) is the source of truth. Re-exporting it ensures
+ * `<>...</>` and `<Fragment>...</Fragment>` resolve to the same node.
+ *
+ * @example
+ * ```tsx
+ * import { Fragment } from "sinwan/react-client";
+ *
+ * const Group = () => (
+ *   <Fragment>
+ *     <span>a</span>
+ *     <span>b</span>
+ *   </Fragment>
+ * );
+ * ```
+ */
 export const Fragment = Symbol("Fragment");
 
 /**
@@ -52,6 +72,20 @@ function normalizeChildren(children: any): SinwanNode[] {
   return [children];
 }
 
+const EMPTY_PROPS: Record<string, unknown> = {};
+
+function stripChildrenProp(props: any): Record<string, unknown> {
+  if (!props) return EMPTY_PROPS;
+  if (!Object.prototype.hasOwnProperty.call(props, "children")) return props;
+  const next: Record<string, unknown> = {};
+  for (const key in props) {
+    if (!Object.prototype.hasOwnProperty.call(props, key)) continue;
+    if (key === "children") continue;
+    next[key] = props[key];
+  }
+  return next;
+}
+
 /**
  * Build an SinwanElement from a component/tag invocation.
  * Shared logic for jsx, jsxs, and jsxDEV.
@@ -71,12 +105,17 @@ function buildElement(
   // single owner of component-instance creation and lifecycle dispatch.
   // Calling the function eagerly here would bypass instance management
   // and break `onMounted`, `provide`/`inject`, and the parent/child tree.
-  if (typeof type === "function" || typeof type === "string") {
+  if (typeof type === "function") {
     const finalProps = props ?? {};
-    // Mirror children into props.children so component setup can read it.
+    // Only mirror children into props for components (not intrinsic tags).
     if (children.length > 0 && finalProps.children === undefined) {
       finalProps.children = children.length === 1 ? children[0] : children;
     }
+    return { tag: type, props: finalProps, children };
+  }
+
+  if (typeof type === "string") {
+    const finalProps = stripChildrenProp(props);
     return { tag: type, props: finalProps, children };
   }
 
@@ -146,10 +185,8 @@ export function jsxDEV(
 }
 
 export namespace JSX {
-  export type Element = SinwanElement | Promise<SinwanElement>;
-  export interface IntrinsicAttributes {
-    key?: string | number;
-  }
+  export type Element = SinwanNode;
+  export interface IntrinsicAttributes {}
   export interface ElementChildrenAttribute {
     children: {};
   }
@@ -158,10 +195,8 @@ export namespace JSX {
 
 declare global {
   namespace JSX {
-    type Element = SinwanElement | Promise<SinwanElement>;
-    interface IntrinsicAttributes {
-      key?: string | number;
-    }
+    type Element = SinwanNode;
+    interface IntrinsicAttributes {}
     interface ElementChildrenAttribute {
       children: {};
     }

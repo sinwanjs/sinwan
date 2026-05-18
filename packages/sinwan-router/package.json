@@ -1,0 +1,60 @@
+{
+  "name": "sinwan-router",
+  "version": "0.1.1",
+  "description": "Sinwan Router — Reactive Router for Sinwan UI",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": {
+        "development": "./dist/esm/index.development.js",
+        "production": "./dist/esm/index.production.min.js",
+        "default": "./dist/esm/index.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/index.development.js",
+        "production": "./dist/cjs/index.production.min.js",
+        "default": "./dist/index.js"
+      },
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "sinwan",
+    "sinwan-router",
+    "reactive",
+    "ui",
+    "ssr",
+    "hydration",
+    "jsx",
+    "signals",
+    "components",
+    "framework",
+    "bun"
+  ],
+  "author": "Mohammed Ben Cheikh",
+  "license": "MIT",
+  "bugs": "https://github.com/sinwanjs/sinwan/issues",
+  "homepage": "https://router.sinwanjs.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sinwanjs/sinwan",
+    "directory": "packages/sinwan-router"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

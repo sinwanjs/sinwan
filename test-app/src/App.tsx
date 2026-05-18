@@ -1,28 +1,27 @@
 import {
-  signal,
-  computed,
-  createComponent,
+  cc,
   onMounted,
   onUnmounted,
   provide,
   inject,
   type InjectionKey,
-  type Signal,
-} from "sinwan";
+} from "sinwan/component";
+import { signal, computed } from "sinwan/reactivity";
 
-import { Counter as Counter1 } from "./components/counter-1"
+// import { Counter as Counter1 } from "./components/counter-1";
 import { Counter } from "./components/Counter";
 import { Clock } from "./components/Clock";
 import { TodoList } from "./components/TodoList";
 import { TempConverter } from "./components/TempConverter";
 import { LifecycleLog } from "./components/LifecycleLog";
+import { Signal } from "sinwan/reactivity";
 
 // ─── Theme via provide / inject ────────────────────────────
 
 export type Theme = "light" | "dark";
 export const ThemeKey: InjectionKey<Signal<Theme>> = Symbol("theme");
 
-const ThemeProvider = createComponent(({ children }) => {
+const ThemeProvider = cc(({ children }) => {
   const theme = signal<Theme>("dark");
   provide(ThemeKey, theme);
   let stop: (() => void) | null = null;
@@ -41,9 +40,11 @@ const ThemeProvider = createComponent(({ children }) => {
   return <>{children}</>;
 });
 
-const ThemeToggle = createComponent(() => {
+const ThemeToggle = cc(() => {
   const theme = inject(ThemeKey)!;
-  const label = computed(() => (theme.value === "dark" ? "🌙 Dark" : "☀️ Light"));
+  const label = computed(() =>
+    theme.value === "dark" ? "🌙 Dark" : "☀️ Light",
+  );
   return (
     <button
       class="secondary"
@@ -56,7 +57,7 @@ const ThemeToggle = createComponent(() => {
 
 // ─── App ───────────────────────────────────────────────────
 
-export const App = createComponent(() => (
+export const App = cc(() => (
   <ThemeProvider>
     <main>
       <header>
@@ -116,7 +117,7 @@ export const App = createComponent(() => (
         <p class="subtitle">
           Single signal, reactive text + reactive disabled attribute.
         </p>
-        <Counter1 />
+        {/* <Counter1 /> */}
       </section>
 
       <footer>

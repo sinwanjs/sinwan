@@ -235,3 +235,69 @@ footer a {
   height: 12px;
   border-radius: 50%;
 }
+
+/* ─── Benchmark: Create 1K Rows ─────────────────────────── */
+
+.bench-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.bench-result {
+  font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--accent);
+  min-height: 20px;
+  margin-bottom: 12px;
+}
+
+.bench-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.bench-table tbody tr {
+  border-bottom: 1px solid var(--border);
+}
+
+.bench-table tbody tr:last-child {
+  border-bottom: 0;
+}
+
+.bench-table td {
+  padding: 4px 8px;
+}
+
+.bench-col-id {
+  width: 60px;
+  color: var(--muted);
+}
+
+.bench-col-label a {
+  color: var(--fg);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.bench-col-label a:hover {
+  color: var(--accent);
+}
+
+.bench-col-action {
+  width: 40px;
+  text-align: center;
+}
+
+.bench-col-action .remove {
+  color: var(--danger);
+  cursor: pointer;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bench-col-spacer {
+  width: auto;
+}

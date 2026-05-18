@@ -17,9 +17,10 @@ import {
 import { mount, render, unmountNode } from "../src/renderer/mount.ts";
 import { renderNodeToDOM } from "../src/renderer/render-children.ts";
 import { renderElementToDOM } from "../src/renderer/render-element.ts";
+import { removeMountedNode } from "../src/renderer/unmount.ts";
 import { isEventProp, toEventName } from "../src/renderer/events.ts";
 import type { SinwanElement, SinwanComponent } from "../src/types.ts";
-import { createComponent } from "../src/component/create.ts";
+import { cc } from "../src/component/create.ts";
 
 // ─── DOM setup ─────────────────────────────────────────────
 
@@ -34,6 +35,7 @@ beforeEach(() => {
   // Patch globals so domOps uses happy-dom
   (globalThis as any).document = doc;
   (globalThis as any).window = win;
+  (win as any).SyntaxError = SyntaxError;
 
   container = doc.createElement("div");
   container.setAttribute("id", "root");
@@ -126,6 +128,62 @@ describe("renderNodeToDOM", () => {
   it("renders arrays as fragments", () => {
     renderNodeToDOM(["Hello", " ", "World"], container);
     expect(container.textContent).toBe("Hello World");
+  });
+
+  it("renders a resolved promise as an async node", async () => {
+    const promise = Promise.resolve("async text");
+    const mounted = renderNodeToDOM(promise as any, container);
+    expect(mounted.type).toBe("async");
+    expect(container.textContent).toBe("");
+
+    await new Promise((r) => queueMicrotask(r));
+    expect(container.textContent).toBe("async text");
+  });
+
+  it("renders a resolved promise to an element", async () => {
+    const promise = Promise.resolve(el("span", {}, "async span"));
+    const mounted = renderNodeToDOM(promise as any, container);
+    expect(mounted.type).toBe("async");
+
+    await new Promise((r) => queueMicrotask(r));
+    const span = container.querySelector("span");
+    expect(span).toBeTruthy();
+    expect(span!.textContent).toBe("async span");
+  });
+
+  it("renders a resolved promise to a fragment", async () => {
+    const promise = Promise.resolve(["a", "b", "c"]);
+    const mounted = renderNodeToDOM(promise as any, container);
+    expect(mounted.type).toBe("async");
+
+    await new Promise((r) => queueMicrotask(r));
+    expect(container.textContent).toBe("abc");
+  });
+
+  it("unmounts async node before resolution safely", async () => {
+    let resolve!: (v: string) => void;
+    const promise = new Promise<string>((r) => {
+      resolve = r;
+    });
+    const mounted = renderNodeToDOM(promise as any, container);
+    expect(mounted.type).toBe("async");
+
+    removeMountedNode(mounted);
+    expect(container.innerHTML).toBe("");
+
+    resolve("should not appear");
+    await new Promise((r) => queueMicrotask(r));
+    expect(container.textContent).toBe("");
+  });
+
+  it("unmounts async node after resolution safely", async () => {
+    const promise = Promise.resolve(el("div", {}, "resolved"));
+    const mounted = renderNodeToDOM(promise as any, container);
+    await new Promise((r) => queueMicrotask(r));
+
+    expect(container.textContent).toBe("resolved");
+    removeMountedNode(mounted);
+    expect(container.innerHTML).toBe("");
   });
 });
 
@@ -289,7 +347,7 @@ describe("reactive children", () => {
 
 describe("mount", () => {
   it("mounts a component and renders to DOM", () => {
-    const Greeting = createComponent<{ name: string }>(({ name }) => {
+    const Greeting = cc<{ name: string }>(({ name }) => {
       return el("h1", {}, "Hello ", name, "!");
     });
 
@@ -300,7 +358,7 @@ describe("mount", () => {
   });
 
   it("unmount cleans the container", () => {
-    const Simple = createComponent(() => el("div", {}, "content"));
+    const Simple = cc(() => el("div", {}, "content"));
     const app = mount(Simple, container);
 
     expect(byTag(container, "div").length).toBe(1);
@@ -310,7 +368,7 @@ describe("mount", () => {
   });
 
   it("interactive counter scenario", async () => {
-    const Counter = createComponent<{ initial?: number }>(({ initial = 0 }) => {
+    const Counter = cc<{ initial?: number }>(({ initial = 0 }) => {
       const count = signal(initial as number);
       return el(
         "div",
@@ -363,7 +421,7 @@ describe("mount", () => {
   });
 
   it("computed + signal reactive scenario", async () => {
-    const App = createComponent(() => {
+    const App = cc(() => {
       const price = signal(100);
       const qty = signal(2);
       const total = computed(() => price.value * qty.value);
@@ -396,6 +454,109 @@ describe("mount", () => {
   });
 });
 
+// ─── mount() edge cases ──────────────────────────────────
+
+describe("mount edge cases", () => {
+  it("mounts an async component and swaps placeholder on resolve", async () => {
+    const AsyncComp = cc(async () => {
+      await Promise.resolve();
+      return el("span", {}, "async content");
+    });
+
+    const app = mount(AsyncComp, container);
+    expect(container.textContent).toBe("");
+
+    await new Promise((r) => queueMicrotask(r));
+    expect(container.textContent).toBe("async content");
+    expect(container.querySelector("span")).toBeTruthy();
+
+    app.unmount();
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("handles rejected async components", async () => {
+    let consoleErrors: any[] = [];
+    const originalConsoleError = console.error;
+    console.error = (...args: any[]) => consoleErrors.push(args);
+
+    const AsyncComp = cc(async () => {
+      throw new Error("async boom");
+    });
+
+    const app = mount(AsyncComp, container);
+    expect(container.textContent).toBe("");
+
+    await new Promise((r) => queueMicrotask(r));
+    expect(container.innerHTML).toBe("");
+
+    console.error = originalConsoleError;
+    expect(
+      consoleErrors.some((args) =>
+        args.some(
+          (a: any) =>
+            (typeof a === "string" && a.includes("async boom")) ||
+            (a instanceof Error && a.message.includes("async boom")),
+        ),
+      ),
+    ).toBe(true);
+
+    app.unmount();
+  });
+
+  it("handles sync component errors and returns empty root", () => {
+    let consoleErrors: any[] = [];
+    const originalConsoleError = console.error;
+    console.error = (...args: any[]) => consoleErrors.push(args);
+
+    const ErrorComp = cc(() => {
+      throw new Error("sync boom");
+    });
+
+    const app = mount(ErrorComp, container);
+    expect(container.innerHTML).toBe("");
+
+    console.error = originalConsoleError;
+    expect(
+      consoleErrors.some((args) =>
+        args.some(
+          (a: any) =>
+            (typeof a === "string" && a.includes("sync boom")) ||
+            (a instanceof Error && a.message.includes("sync boom")),
+        ),
+      ),
+    ).toBe(true);
+
+    app.unmount();
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("supports identifierPrefix option", () => {
+    const IdComp = cc(() => {
+      return el("div", {}, "hello");
+    });
+
+    const app = mount(IdComp, container, {}, { identifierPrefix: "myApp" });
+    expect(app.root).toBeDefined();
+  });
+});
+
+// ─── render() ──────────────────────────────────────────────
+
+describe("render", () => {
+  it("renders a raw node tree into a container", () => {
+    const app = render(el("p", {}, "raw node"), container);
+    expect(container.textContent).toBe("raw node");
+    expect(app.root).toBeDefined();
+  });
+
+  it("unmount cleans the container", () => {
+    const app = render(["a", "b", "c"], container);
+    expect(container.textContent).toBe("abc");
+    app.unmount();
+    expect(container.innerHTML).toBe("");
+  });
+});
+
 // ─── unmount cleanup ───────────────────────────────────────
 
 describe("unmount cleanup", () => {
@@ -403,7 +564,7 @@ describe("unmount cleanup", () => {
     const count = signal(0);
     let effectRunCount = 0;
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       const tracked = computed(() => {
         effectRunCount++;
         return count.value;

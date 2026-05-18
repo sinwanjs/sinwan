@@ -1,5 +1,5 @@
 /**
- * Sinwan — HTML Escaping
+ * SinwanJS — HTML Escaping
  *
  * Security utilities for sanitizing interpolated values.
  * Runtime-agnostic: prefers `Bun.escapeHTML` when running on Bun (native

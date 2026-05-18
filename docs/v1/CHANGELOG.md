@@ -82,7 +82,7 @@ Sinwan 1.0.0 is the first stable public release. It includes the original v1 run
 - **Pluggable DOM operations**: `domOps`, `setDOMOps()`, and `resetDOMOps()` are exported from `sinwan` and `sinwan/renderer`.
 - **Hydration-aware streaming SSR**: `streamHydratablePage()` and `streamHydratableNode()` stream the same marker protocol used by `renderToHydratableString()`.
 - **Reactivity**: `signal`, `computed`, `effect`, `batch`, `nextTick`, type guards `isSignal`/`isComputed`, and the microtask scheduler.
-- **Component model**: `createComponent`, `createPage`, `createLayout`, component instances, parent/child trees, and JSX-declared component ownership.
+- **Component model**: `cc` (alias for `cc`), component instances, parent/child trees, and JSX-declared component ownership.
 - **Lifecycle**: `onMounted`, `onUnmounted`, `onUpdated`, `onError`, and `getCurrentInstance`.
 - **Provide / inject**: prototype-chained dependency injection and typed `InjectionKey<T>` symbols.
 - **JSX runtime**: `sinwan/jsx-runtime`, `sinwan/jsx-dev-runtime`, `Fragment`, `raw`, `safeHtml`, and `HtmlEscapedString`.

@@ -12,7 +12,7 @@ import { getCurrentInstance, withInstance } from "./instance.ts";
  * Register a callback that fires after the component is mounted to the DOM.
  *
  * @example
- * const Timer = createComponent(() => {
+ * const Timer = cc(() => {
  *   onMounted(() => {
  *     console.log("Timer mounted!");
  *   });
@@ -55,6 +55,59 @@ export function onUpdated(fn: () => void): void {
     throw new Error("onUpdated() called outside of component setup.");
   }
   instance._updatedHooks.push(() => withInstance(instance, fn));
+}
+
+/**
+ * Register a callback that fires when the component's effects are disposed.
+ * Unlike onUnmounted, this also fires during Activity soft-hide when effects
+ * are cleaned up but the DOM is preserved.
+ */
+export function onDispose(fn: () => void): void {
+  const instance = getCurrentInstance();
+  if (!instance) {
+    throw new Error("onDispose() called outside of component setup.");
+  }
+  instance._disposeHooks.push(() => withInstance(instance, fn));
+}
+
+/**
+ * Register a callback that fires after the component is hydrated.
+ * Only runs during hydration; never fires on a fresh client mount.
+ */
+export function onHydrated(fn: () => void): void {
+  const instance = getCurrentInstance();
+  if (!instance) {
+    throw new Error("onHydrated() called outside of component setup.");
+  }
+  instance._hydratedHooks.push(() => withInstance(instance, fn));
+}
+
+/**
+ * Register a callback that fires immediately during setup if running on the
+ * server. No-op on the client. Useful for server-only initialization.
+ */
+export function onServer(fn: () => void): void {
+  const instance = getCurrentInstance();
+  if (!instance) {
+    throw new Error("onServer() called outside of component setup.");
+  }
+  if (typeof window === "undefined") {
+    withInstance(instance, fn);
+  }
+}
+
+/**
+ * Register a callback that fires immediately during setup if running on the
+ * client. No-op on the server. Useful for client-only initialization.
+ */
+export function onClient(fn: () => void): void {
+  const instance = getCurrentInstance();
+  if (!instance) {
+    throw new Error("onClient() called outside of component setup.");
+  }
+  if (typeof window !== "undefined") {
+    withInstance(instance, fn);
+  }
 }
 
 /**

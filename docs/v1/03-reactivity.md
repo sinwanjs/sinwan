@@ -243,7 +243,7 @@ When `effect()` is called during component setup, it is **not** automatically ti
 ```ts
 import { effect, onUnmounted } from "sinwan";
 
-createComponent(() => {
+cc(() => {
   const dispose = effect(() => { /* ... */ });
   onUnmounted(dispose);
   return <div>...</div>;
@@ -440,6 +440,343 @@ SinwanJS treats these as **Reactive Blocks**. It uses hidden comment anchors in 
 
 ---
 
+## `untrack<T>(fn: () => T): T`
+
+Run a function **without tracking** any signal reads. Any `signal.value` access inside `fn` will NOT subscribe the current effect to that signal.
+
+```ts
+function untrack<T>(fn: () => T): T;
+```
+
+### How it works
+
+Internally, `untrack` temporarily sets the active effect to `null`, executes `fn`, then restores it:
+
+```ts
+export function untrack<T>(fn: () => T): T {
+  const prevEffect = activeEffect;
+  activeEffect = null;
+  try {
+    return fn();
+  } finally {
+    activeEffect = prevEffect;
+  }
+}
+```
+
+This means any signal reads inside `fn` see no active subscriber — the signal's `.subscribers` set is not modified.
+
+### When to use
+
+1. **Avoid unnecessary re-runs** — read a signal you need for a calculation but don't want to subscribe to:
+
+```ts
+const name = signal("Alice");
+const count = signal(0);
+
+effect(() => {
+  // Only re-runs when `count` changes, NOT when `name` changes
+  const n = untrack(() => name.value);
+  console.log(`${n}: ${count.value}`);
+});
+```
+
+2. **Break circular dependencies** — prevent an effect from subscribing to a signal it also writes:
+
+```ts
+const a = signal(1);
+const b = signal(2);
+
+effect(() => {
+  // Reads `a` reactively, but reads `b` without subscribing
+  const sum = a.value + untrack(() => b.value);
+  b.value = sum; // Safe — no infinite loop
+});
+```
+
+3. **Logging / debugging** — read multiple signals for logging without widening subscriptions:
+
+```ts
+effect(() => {
+  // Only track `important.value`
+  doWork(important.value);
+
+  // Log everything without subscribing
+  untrack(() => {
+    console.log("debug:", other.value, another.value);
+  });
+});
+```
+
+### Caveats
+
+- `untrack` only affects the **current call stack**. If `fn` schedules a microtask that reads a signal later, that read happens outside `untrack`'s scope.
+- Nested `untrack` calls are safe — they stack and restore correctly.
+
+---
+
+## `on(deps, fn, options?)`
+
+Explicitly declare which signals an effect depends on. The `fn` body runs inside `untrack()` automatically — only the declared `deps` trigger re-execution.
+
+```ts
+function on<T, U>(
+  deps: (() => T) | Array<() => T>,
+  fn: (input: T, prevInput: T, prevValue?: U) => U,
+  options?: { defer?: boolean },
+): (prevValue?: U) => U | undefined;
+```
+
+### How it works
+
+1. `deps` is evaluated — each accessor function is called to read the signal (this creates the subscription).
+2. The results are compared with previous values using `Object.is`.
+3. If changed (or first run), `fn` is called with `(newValues, prevValues, prevReturn)` **inside `untrack()`** — so reads inside `fn` do NOT create additional subscriptions.
+4. If `defer: true`, the first execution is skipped (returns `undefined`).
+
+```ts
+// Internal simplified logic:
+return (prevValue?: U): U | undefined => {
+  const inputs = depArray.map((dep) => dep()); // ← tracked
+
+  if (initial && options?.defer) return undefined;
+  if (!initial && depsAreEqual(inputs, prevInputs)) return prevValue;
+
+  return untrack(() => fn(currentInput, previousInput, prevValue)); // ← NOT tracked
+};
+```
+
+### Single dependency
+
+```ts
+const count = signal(0);
+
+effect(
+  on(
+    () => count.value,
+    (value, prev) => {
+      console.log(`count: ${prev} → ${value}`);
+    },
+  ),
+);
+
+count.value = 1; // logs: "count: 0 → 1"
+count.value = 5; // logs: "count: 1 → 5"
+```
+
+### Multiple dependencies (array)
+
+```ts
+const a = signal(1);
+const b = signal(2);
+
+effect(
+  on([() => a.value, () => b.value], ([aVal, bVal], [prevA, prevB]) => {
+    console.log(`a: ${prevA}→${aVal}, b: ${prevB}→${bVal}`);
+  }),
+);
+```
+
+### Deferred execution
+
+Skip the initial run — only react to **changes**:
+
+```ts
+const search = signal("");
+
+effect(
+  on(
+    () => search.value,
+    (query) => {
+      // Won't run on mount — only when `search` actually changes
+      fetchResults(query);
+    },
+    { defer: true },
+  ),
+);
+```
+
+### Comparison with plain `effect`
+
+| Feature         | `effect(fn)`                 | `effect(on(deps, fn))`         |
+| --------------- | ---------------------------- | ------------------------------ |
+| Tracking        | Automatic (all reads)        | Explicit (only `deps`)         |
+| Body isolation  | No — reads inside subscribe  | Yes — body runs in `untrack()` |
+| Previous values | Not provided                 | `fn(current, prev)`            |
+| Defer initial   | Not possible                 | `{ defer: true }`              |
+| Use case        | Simple reactive side-effects | Controlled, explicit watchers  |
+
+### Combining `on` with `computed`
+
+```ts
+const firstName = signal("John");
+const lastName = signal("Doe");
+const fullName = computed(() => `${firstName.value} ${lastName.value}`);
+
+// Only fires when fullName output actually changes
+effect(
+  on(
+    () => fullName.value,
+    (name, prevName) => {
+      document.title = name;
+    },
+  ),
+);
+```
+
+---
+
+## `observable<T>(input: () => T): Observable<T>`
+
+Convert a reactive getter into an **Observable-compatible** object — enabling interop with RxJS, zen-observable, or any library that supports `Symbol.observable`.
+
+```ts
+function observable<T>(input: () => T): Observable<T>;
+
+interface Observable<T> {
+  subscribe(observer: Observer<T> | ((value: T) => void)): Subscription;
+  [Symbol.observable](): Observable<T>;
+}
+
+interface Observer<T> {
+  next?(value: T): void;
+  error?(err: any): void;
+  complete?(): void;
+}
+
+interface Subscription {
+  unsubscribe(): void;
+}
+```
+
+### How it works
+
+Each call to `.subscribe()` creates an internal `effect()` over the `input` getter. Whenever the tracked signals change, the effect re-runs and calls `observer.next(value)`:
+
+```ts
+export function observable<T>(input: () => T): Observable<T> {
+  return {
+    subscribe(observer) {
+      const handler =
+        typeof observer === "function" ? { next: observer } : observer;
+
+      const dispose = effect(() => {
+        const value = input(); // ← tracked read
+        handler.next?.(value); // ← push to subscriber
+      });
+
+      return { unsubscribe: () => dispose() };
+    },
+
+    [Symbol.observable]() {
+      return this;
+    },
+  };
+}
+```
+
+Key behavior:
+
+- The first value is emitted **synchronously** (effect runs immediately).
+- Subsequent values are emitted on the next microtask (standard scheduling).
+- `unsubscribe()` disposes the underlying effect — signal stops being tracked.
+
+### Basic usage
+
+```ts
+const count = signal(0);
+const count$ = observable(() => count.value);
+
+const sub = count$.subscribe((value) => {
+  console.log("count:", value);
+});
+// Immediately logs: "count: 0"
+
+count.value = 1;
+// On next tick: "count: 1"
+
+sub.unsubscribe(); // stops tracking
+count.value = 2; // no log
+```
+
+### With RxJS
+
+```ts
+import { from, map, filter, debounceTime } from "rxjs";
+
+const search = signal("");
+const search$ = from(observable(() => search.value));
+
+search$
+  .pipe(
+    debounceTime(300),
+    filter((q) => q.length >= 3),
+    map((q) => q.toLowerCase()),
+  )
+  .subscribe((query) => {
+    fetchSearchResults(query);
+  });
+```
+
+### With observer object
+
+```ts
+const temperature = signal(20);
+
+observable(() => temperature.value).subscribe({
+  next(val) {
+    console.log(`Temperature: ${val}°C`);
+  },
+  error(err) {
+    console.error(err);
+  },
+  complete() {
+    console.log("done");
+  },
+});
+```
+
+> **Note:** Sinwan's observable never calls `error()` or `complete()` automatically — it is a live stream of values. Call `unsubscribe()` to stop.
+
+### Multiple subscriptions
+
+Each `.subscribe()` call creates an independent effect:
+
+```ts
+const x = signal(0);
+const x$ = observable(() => x.value);
+
+const sub1 = x$.subscribe((v) => console.log("A:", v));
+const sub2 = x$.subscribe((v) => console.log("B:", v));
+
+x.value = 1;
+// A: 1
+// B: 1
+
+sub1.unsubscribe();
+x.value = 2;
+// B: 2  (A is unsubscribed)
+```
+
+### Derived observables
+
+Compose with computed signals or any getter:
+
+```ts
+const width = signal(100);
+const height = signal(50);
+
+const area$ = observable(() => width.value * height.value);
+
+area$.subscribe((a) => console.log("area:", a));
+// "area: 5000"
+
+width.value = 200;
+// "area: 10000"
+```
+
+---
+
 ## What reactivity does **not** do (in v1)
 
 - **No async tracking.** If your getter awaits a promise, dependencies read after the `await` are not tracked. Read everything you depend on synchronously, then await.
@@ -450,11 +787,14 @@ SinwanJS treats these as **Reactive Blocks**. It uses hidden comment anchors in 
 
 ## Reference summary
 
-| Function                  | Signature                            | Notes                           |
-| ------------------------- | ------------------------------------ | ------------------------------- |
-| `signal`                  | `<T>(v: T) => Signal<T>`             | Reactive cell                   |
-| `computed`                | `<T>(g: () => T) => Computed<T>`     | Lazy, cached                    |
-| `effect`                  | `(fn: EffectFn) => CleanupFn`        | First run sync; returns dispose |
-| `batch`                   | `(fn: () => void) => void`           | Sync flush at end               |
-| `nextTick`                | `(fn?: () => void) => Promise<void>` | Resolves after flush            |
-| `isSignal` / `isComputed` | `(v: unknown) => v is …`             | Type guards                     |
+| Function                  | Signature                              | Notes                                 |
+| ------------------------- | -------------------------------------- | ------------------------------------- |
+| `signal`                  | `<T>(v: T) => Signal<T>`               | Reactive cell                         |
+| `computed`                | `<T>(g: () => T) => Computed<T>`       | Lazy, cached                          |
+| `effect`                  | `(fn: EffectFn) => CleanupFn`          | First run sync; returns dispose       |
+| `batch`                   | `(fn: () => void) => void`             | Sync flush at end                     |
+| `nextTick`                | `(fn?: () => void) => Promise<void>`   | Resolves after flush                  |
+| `untrack`                 | `<T>(fn: () => T) => T`                | Read without subscribing              |
+| `on`                      | `(deps, fn, opts?) => EffectFn`        | Explicit deps, previous values, defer |
+| `observable`              | `<T>(input: () => T) => Observable<T>` | RxJS/Observable interop               |
+| `isSignal` / `isComputed` | `(v: unknown) => v is …`               | Type guards                           |

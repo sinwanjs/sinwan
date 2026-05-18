@@ -30,11 +30,18 @@ const SRC = `${ROOT}/src`;
 const OUTDIR = `${ROOT}/dist/${format}`;
 
 const ENTRYPOINTS = [
-  `${SRC}/index.ts`,
+  `${SRC}/component/index.ts`,
+  `${SRC}/hydration/index.ts`,
+  `${SRC}/integrations/react/_client.ts`,
+  `${SRC}/integrations/react/_server.ts`,
+  `${SRC}/integrations/react/_shared.ts`,
+  `${SRC}/integrations/react/_static.ts`,
   `${SRC}/jsx/jsx-runtime.ts`,
   `${SRC}/jsx/jsx-dev-runtime.ts`,
-  `${SRC}/server/index.ts`,
+  `${SRC}/reactivity/index.ts`,
   `${SRC}/renderer/index.ts`,
+  `${SRC}/server/index.ts`,
+  `${SRC}/store/index.ts`,
 ];
 
 const result = await Bun.build({
@@ -43,11 +50,11 @@ const result = await Bun.build({
   outdir: OUTDIR,
   target: format === "cjs" ? "node" : "bun",
   format,
-  splitting: false,
+  splitting: format === "esm",
   packages: "external",
-  sourcemap: isProd ? "external" : "linked",
+  // sourcemap: isProd ? "external" : "linked",
   minify: isProd
-    ? { whitespace: true, syntax: true, identifiers: true }
+    ? { whitespace: true, syntax: true, identifiers: format === "cjs" }
     : false,
   define: {
     "process.env.NODE_ENV": JSON.stringify(mode),

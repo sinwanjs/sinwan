@@ -19,7 +19,7 @@ export type InjectionKey<T> = symbol & { __type?: T };
  * @example
  * const ThemeKey: InjectionKey<string> = Symbol("theme");
  *
- * const App = createComponent(() => {
+ * const App = cc(() => {
  *   provide(ThemeKey, "dark");
  *   return <Child />;
  * });
@@ -47,7 +47,7 @@ export function provide<T>(key: string | symbol, value: T): void {
  *  - `inject<T>(key, default?)` — string/symbol key, T must be specified
  *
  * @example
- * const Child = createComponent(() => {
+ * const Child = cc(() => {
  *   const theme = inject(ThemeKey, "light");
  *   return <div class={theme}>Hello</div>;
  * });

@@ -3,17 +3,111 @@
 Sinwan exposes Vue-style lifecycle hooks that register on the **current component instance**. They must be called synchronously while a component instance is active: inside a component’s setup function, or inside another lifecycle hook owned by that component.
 
 ```ts
-import { onMounted, onUnmounted, onUpdated, onError } from "sinwan";
+import {
+  onMounted,
+  onUnmounted,
+  onUpdated,
+  onDispose,
+  onHydrated,
+  onServer,
+  onClient,
+  onError,
+} from "sinwan";
 ```
 
 | Hook          | Fires when                                   | Order                             |
 | ------------- | -------------------------------------------- | --------------------------------- |
-| `onMounted`   | After the component’s DOM is in the document | Bottom-up (children → parent)     |
+| `onMounted`   | After the component's DOM is in the document | Bottom-up (children → parent)     |
 | `onUnmounted` | When the component is removed                | Bottom-up (children → parent)     |
 | `onUpdated`   | After a reactive update inside the component | Per-component, in scheduler order |
+| `onDispose`   | When the component's effects are disposed    | Bottom-up (children → parent)     |
+| `onHydrated`  | After hydration completes (not fresh mount)  | Bottom-up (children → parent)     |
+| `onServer`    | Immediately during setup, **server only**    | Synchronous                       |
+| `onClient`    | Immediately during setup, **client only**    | Synchronous                       |
 | `onError`     | When this component or a descendant throws   | Bubbles up the tree               |
 
-All four follow the same rule: **register synchronously while a component instance is active**. Calling them from module scope, event handlers, timers, promise continuations, or other code with no active component instance throws synchronously.
+All hooks follow the same rule: **register synchronously while a component instance is active**. Calling them from module scope, event handlers, timers, promise continuations, or other code with no active component instance throws synchronously.
+
+---
+
+## Async Components and Lifecycle Hooks
+
+Sinwan supports async components as first-class rendering primitives — you can make a component async and return a `Promise<SinwanNode>`. However, lifecycle hooks have specific requirements in async contexts:
+
+### Lifecycle hooks must be called before `await`
+
+Lifecycle hooks (`onMounted`, `onUpdated`, `onUnmounted`, etc.) must be called **synchronously before any `await`** in an async component. After an `await`, the component instance context is lost and calling lifecycle hooks will throw:
+
+```tsx
+// ❌ WRONG - onUpdated called after await
+const Counter = cc(async () => {
+  const count = signal(0);
+
+  const data = await fetch("/api/data"); // context lost here
+
+  onUpdated(() => {
+    console.log("updated", count.value); // Error: onUpdated() called outside of component setup
+  });
+
+  return <div>{count}</div>;
+});
+
+// ✅ CORRECT - onUpdated called before await
+const Counter = cc(async () => {
+  const count = signal(0);
+
+  onUpdated(() => {
+    console.log("updated", count.value); // registered while context is active
+  });
+
+  const data = await fetch("/api/data"); // safe to await after hooks are registered
+
+  return <div>{count}</div>;
+});
+```
+
+### React hooks in async components
+
+React-compatible hooks from `sinwan/react-client` (e.g., `useState`, `useEffect`) **do not work in async components** for the same reason — they rely on the component instance context which is lost after `await`. Use Sinwan's native signals instead:
+
+```tsx
+// ❌ WRONG - React hooks in async component
+import { useState } from "sinwan/react-client";
+
+const Counter = cc(async () => {
+  const [count, setCount] = useState(0); // Error: Hook called outside of component setup
+  const data = await fetch("/api/data");
+  return <div>{count()}</div>;
+});
+
+// ✅ CORRECT - Use Sinwan signals
+import { signal } from "sinwan";
+
+const Counter = cc(async () => {
+  const count = signal(0); // signals work fine in async components
+  const data = await fetch("/api/data");
+  return <div>{count}</div>;
+});
+```
+
+### Signals work in async components
+
+Sinwan's native `signal()`, `computed()`, and `effect()` work correctly in async components because they don't depend on the component instance context:
+
+```tsx
+const AsyncComponent = cc(async () => {
+  const count = signal(0);
+  const doubled = computed(() => count.value * 2);
+
+  const data = await fetch("/api/data"); // await is safe
+
+  effect(() => {
+    console.log("count changed:", count.value);
+  });
+
+  return <div>{doubled}</div>;
+});
+```
 
 ---
 
@@ -31,7 +125,7 @@ Runs after the component is fully mounted to the DOM. Useful for:
 - Logging analytics page views
 
 ```tsx
-const Card = createComponent(() => {
+const Card = cc(() => {
   const ref = signal<HTMLElement | null>(null);
 
   onMounted(() => {
@@ -47,7 +141,7 @@ const Card = createComponent(() => {
 You can call `onMounted` multiple times in the same setup. The hooks fire in **registration order**:
 
 ```tsx
-createComponent(() => {
+cc(() => {
   onMounted(() => console.log("first"));
   onMounted(() => console.log("second"));
   return <div />;
@@ -88,7 +182,7 @@ function onUnmounted(fn: () => void): void;
 Runs when the component is removed from the DOM (via `app.unmount()` or by being replaced in a parent). Use it to clean up:
 
 ```tsx
-const Clock = createComponent(() => {
+const Clock = cc(() => {
   const now = signal(new Date());
   const id = setInterval(() => (now.value = new Date()), 1000);
 
@@ -106,7 +200,7 @@ const Clock = createComponent(() => {
 ```tsx
 import { effect, onUnmounted } from "sinwan";
 
-createComponent(() => {
+cc(() => {
   const dispose = effect(() => {
     document.title = `App (${count.value})`;
   });
@@ -141,6 +235,109 @@ effect(() => {
 
 ---
 
+## `onDispose(fn)`
+
+```ts
+function onDispose(fn: () => void): void;
+```
+
+Runs when the component's reactive effects are disposed. Unlike `onUnmounted`, this also fires during **Activity soft-hide** — when `<Activity mode="hidden">` hides a subtree but keeps the DOM mounted. Use it to clean up anything tied to the reactive scope rather than just DOM presence:
+
+```tsx
+const Widget = cc(() => {
+  onDispose(() => {
+    console.log("reactive scope disposed");
+  });
+  return <div>...</div>;
+});
+```
+
+### `onDispose` vs `onUnmounted`
+
+| Scenario             | `onUnmounted`        | `onDispose`          |
+| -------------------- | -------------------- | -------------------- |
+| Component unmounted  | Fires                | Fires                |
+| Activity hidden      | Fires                | Fires                |
+| Activity shown again | Re-register in setup | Re-register in setup |
+
+---
+
+## `onHydrated(fn)`
+
+```ts
+function onHydrated(fn: () => void): void;
+```
+
+Runs after the component is **hydrated** from server-rendered HTML. Only fires during hydration; it does **not** fire on a fresh client-side `mount()`. Useful for:
+
+- Starting animations that should only play on hydrated pages
+- Measuring hydration time
+- Initialising client-only libraries that need the pre-existing DOM
+
+```tsx
+const Page = cc(() => {
+  onHydrated(() => {
+    console.log("hydrated, DOM preserved from server");
+  });
+  return <div>...</div>;
+});
+```
+
+---
+
+## `onServer(fn)`
+
+```ts
+function onServer(fn: () => void): void;
+```
+
+Executes **immediately during setup** if running on the server (`typeof window === "undefined"`). No-op on the client. Useful for:
+
+- Server-only data fetching
+- Logging on the server
+- Generating server-specific metadata
+
+```tsx
+const Article = cc(({ id }) => {
+  let data: ArticleData;
+
+  onServer(() => {
+    data = fetchArticleOnServer(id);
+  });
+
+  onClient(() => {
+    data = fetchArticleOnClient(id);
+  });
+
+  return <article>{data.title}</article>;
+});
+```
+
+---
+
+## `onClient(fn)`
+
+```ts
+function onClient(fn: () => void): void;
+```
+
+Executes **immediately during setup** if running on the client (`typeof window !== "undefined"`). No-op on the server. Use it for:
+
+- Client-only libraries (browser APIs, `localStorage`, `IntersectionObserver`)
+- Lazy-loading client-side features
+- Analytics or tracking that only makes sense in a browser
+
+```tsx
+const Analytics = cc(() => {
+  onClient(() => {
+    import("analytics-lib").then(({ track }) => track("page"));
+  });
+  return <div />;
+});
+```
+
+---
+
 ## `onError(fn)`
 
 ```ts
@@ -150,7 +347,7 @@ function onError(fn: (err: Error) => void): void;
 Register a handler that catches errors thrown during the **setup** of this component or any descendant.
 
 ```tsx
-const Boundary = createComponent(({ children }) => {
+const Boundary = cc(({ children }) => {
   onError((err) => {
     console.error("Boundary caught:", err);
     // optionally surface in UI by writing to a signal
@@ -204,7 +401,14 @@ interface ComponentInstance {
   effects: CleanupFn[];
   isMounted: boolean;
   isUnmounted: boolean;
-  // ...lifecycle queues, provides, element ref...
+  _mountedHooks: (() => void)[];
+  _unmountedHooks: (() => void)[];
+  _updatedHooks: (() => void)[];
+  _disposeHooks: (() => void)[];
+  _hydratedHooks: (() => void)[];
+  _errorHooks: ((err: Error) => void)[];
+  provides: Record<string | symbol, unknown>;
+  // ...element ref...
 }
 ```
 
@@ -244,14 +448,19 @@ import {
   effect,
   batch,
   nextTick,
-  createComponent,
+  cc,
   onMounted,
   onUnmounted,
+  onUpdated,
+  onDispose,
+  onHydrated,
+  onServer,
+  onClient,
   onError,
   getCurrentInstance,
 } from "sinwan";
 
-const Widget = createComponent(() => {
+const Widget = cc(() => {
   // 1. State
   const count = signal(0);
 
@@ -261,16 +470,26 @@ const Widget = createComponent(() => {
     onUnmounted(() => clearInterval(id));
   });
 
-  // 3. Errors
+  // 3. Dispose fires on both unmount AND Activity soft-hide
+  onDispose(() => console.log("reactive scope cleaned up"));
+
+  // 4. Hydration-only setup
+  onHydrated(() => console.log("hydrated from server HTML"));
+
+  // 5. Environment-aware setup
+  onServer(() => console.log("runs during SSR"));
+  onClient(() => console.log("runs in the browser"));
+
+  // 6. Errors
   onError((err) => console.error("[Widget]", err));
 
-  // 4. Reactive effect outside the renderer
+  // 7. Reactive effect outside the renderer
   const stopTitleSync = effect(() => {
     document.title = `count: ${count.value}`;
   });
   onUnmounted(stopTitleSync);
 
-  // 5. Wait for the next flush
+  // 8. Wait for the next flush
   count.value++;
   nextTick(() => console.log("count is now", count.peek()));
 

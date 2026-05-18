@@ -1,4 +1,4 @@
-import { mount } from "sinwan";
+import { mount } from "sinwan/renderer";
 import { App } from "./App";
 
 const root = document.getElementById("app");

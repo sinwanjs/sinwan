@@ -1,6 +1,7 @@
-import { signal, computed, createComponent } from "sinwan";
+import { signal, computed } from "sinwan/reactivity";
+import { cc } from "sinwan/component";
 
-export const TempConverter = createComponent(() => {
+export const TempConverter = cc(() => {
   const celsius = signal(20);
   const fahrenheit = computed(() => (celsius.value * 9) / 5 + 32);
   const kelvin = computed(() => celsius.value + 273.15);

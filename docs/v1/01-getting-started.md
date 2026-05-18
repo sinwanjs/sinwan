@@ -72,9 +72,9 @@ This pulls `sinwan/jsx-dev-runtime` instead. See [`07-jsx.md`](./07-jsx.md) for 
 Create `src/Counter.tsx`:
 
 ```tsx
-import { signal, createComponent, onMounted } from "sinwan";
+import { signal, cc, onMounted } from "sinwan";
 
-export const Counter = createComponent(() => {
+export const Counter = cc(() => {
   const count = signal(0);
 
   onMounted(() => {
@@ -128,7 +128,7 @@ Calling `unmount()` fires `onUnmounted` hooks bottom-up, disposes every effect, 
 
 ```ts
 // server.ts
-import { renderToString } from "sinwan/server";
+import { renderToString } from "sinwan/react-server";
 import { Counter } from "./Counter";
 
 const html = await renderToString(<Counter />);

@@ -124,7 +124,7 @@ Children may be:
 - `string`, `number` — rendered as text (escaped on the server)
 - `boolean`, `null`, `undefined` — rendered as nothing
 - `SinwanElement` — recurse
-- `Promise<SinwanElement>` — async component, awaited on the server, placeholder + swap on the client
+- `Promise<SinwanNode>` — async component, awaited on the server, placeholder + swap on the client
 - `Signal<T>` / `Computed<T>` / `Function` — **reactive node** (renderer creates an effect). Can resolve to any node type, including elements and arrays (Dynamic Content).
 - `Array<SinwanNode>` — flattened into siblings
 - `HtmlEscapedString` — pre-trusted HTML, inserted verbatim on the server (treated as text on the client)
@@ -188,7 +188,7 @@ Handlers are removed automatically when the element is unmounted.
 Use `ref` when you need direct access to a DOM element. Sinwan supports callback refs and object refs:
 
 ```tsx
-const Card = createComponent(() => {
+const Card = cc(() => {
   let el: HTMLDivElement | null = null;
 
   onMounted(() => {

@@ -1,0 +1,46 @@
+{
+  "name": "eslint-plugin-sinwan",
+  "version": "0.1.0",
+  "description": "ESLint plugin enforcing Sinwan state getter standards",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "sinwan",
+    "eslint",
+    "eslintplugin",
+    "state-getter",
+    "jsx",
+    "signals",
+    "reactive"
+  ],
+  "author": "Mohammed Ben Cheikh",
+  "license": "MIT",
+  "bugs": "https://github.com/sinwanjs/sinwan/issues",
+  "homepage": "https://sinwanjs.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sinwanjs/sinwan",
+    "directory": "packages/eslint-plugin-sinwan"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/eslint": "^8.56.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.0"
+  },
+  "peerDependencies": {
+    "eslint": ">=8.0.0"
+  },
+  "dependencies": {
+    "@types/estree": "^1.0.9",
+    "@types/estree-jsx": "^1.0.5"
+  }
+}

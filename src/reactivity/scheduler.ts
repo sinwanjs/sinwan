@@ -49,16 +49,37 @@ function scheduleFlush(): void {
  * Flush all pending effects. Effects added during flush are
  * processed in the same pass (convergence loop with a safety limit).
  */
+function extractEffects(): EffectNode[] {
+  const size = pendingEffects.size;
+  if (size <= 1) {
+    const out: EffectNode[] = new Array(size);
+    let i = 0;
+    for (const effect of pendingEffects) {
+      out[i++] = effect;
+    }
+    return out;
+  }
+  const out: EffectNode[] = new Array(size);
+  let i = 0;
+  for (const effect of pendingEffects) {
+    out[i++] = effect;
+  }
+  return out.sort((a, b) => a.id - b.id);
+}
+
 function flush(): void {
   isFlushing = true;
 
-  // Sort by id to guarantee parent-before-child execution order
-  const sorted = [...pendingEffects].sort((a, b) => a.id - b.id);
+  let effects = extractEffects();
   pendingEffects.clear();
 
-  for (const effect of sorted) {
+  for (const effect of effects) {
     if (effect.active) {
-      effect.run();
+      try {
+        effect.run();
+      } catch (err) {
+        console.error("[Sinwan] Effect flush error:", err);
+      }
     }
   }
 
@@ -66,11 +87,15 @@ function flush(): void {
   // (safety limit to prevent infinite loops)
   let safety = 10;
   while (pendingEffects.size > 0 && safety-- > 0) {
-    const next = [...pendingEffects].sort((a, b) => a.id - b.id);
+    effects = extractEffects();
     pendingEffects.clear();
-    for (const effect of next) {
+    for (const effect of effects) {
       if (effect.active) {
-        effect.run();
+        try {
+          effect.run();
+        } catch (err) {
+          console.error("[Sinwan] Effect flush error:", err);
+        }
       }
     }
   }

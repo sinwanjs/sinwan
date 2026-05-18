@@ -17,22 +17,33 @@ import { renderChildrenToDOM, renderNodeToDOM } from "./render-children.ts";
 import { Fragment } from "../jsx/jsx-runtime.ts";
 import {
   Dynamic,
+  ErrorBoundary,
   For,
   Index,
   Key,
   Portal,
   Switch,
   Visible,
+  Virtual,
   isDynamicElement,
+  isErrorBoundaryElement,
   isForElement,
   isIndexElement,
   isKeyElement,
   isPortalElement,
   isShowElement,
+  isSuspenseElement,
   isSwitchElement,
+  isActivityElement,
+  isViewTransitionElement,
+  isVirtualElement,
   Show,
+  SUSPENSE_TYPE,
 } from "../component/control-flow.ts";
-import { renderControlFlowToDOM } from "./render-control-flow.ts";
+import {
+  renderControlFlowToDOM,
+  hasActiveErrorBoundary,
+} from "./render-control-flow.ts";
 import {
   createComponentInstance,
   getCurrentInstance,
@@ -40,6 +51,7 @@ import {
   handleComponentError,
   type ComponentInstance,
 } from "../component/instance.ts";
+import { getActiveSuspenseBoundary } from "./suspense-boundary.ts";
 
 // Void elements — no children, self-closing
 const VOID_ELEMENTS = new Set([
@@ -73,58 +85,8 @@ export function renderElementToDOM(
 ): MountedNode {
   const { tag, props, children } = element;
 
-  // Fragment — render children directly into parent
-  if (tag === "" || (tag as any) === Fragment) {
-    return renderFragmentToDOM(children, parent, anchor, namespace);
-  }
-
-  // Built-in control-flow components should belong to the current owner,
-  // not create their own component instance.
-  if (
-    tag === Show ||
-    tag === For ||
-    tag === Switch ||
-    tag === Index ||
-    tag === Key ||
-    tag === Dynamic ||
-    tag === Portal
-  ) {
-    return renderElementToDOM(
-      (tag as Function)(props),
-      parent,
-      anchor,
-      namespace,
-    );
-  }
-
-  if (tag === Visible) {
-    return renderElementToDOM(
-      (tag as Function)(props),
-      parent,
-      anchor,
-      namespace,
-    );
-  }
-
-  if (
-    isShowElement(element) ||
-    isForElement(element) ||
-    isSwitchElement(element) ||
-    isIndexElement(element) ||
-    isKeyElement(element) ||
-    isDynamicElement(element) ||
-    isPortalElement(element)
-  ) {
-    return renderControlFlowToDOM(element, parent, anchor, namespace);
-  }
-
-  // Functional component — call it and render the result
-  if (typeof tag === "function") {
-    return renderComponentToDOM(tag, props, parent, anchor, namespace);
-  }
-
-  // Intrinsic HTML element
-  if (typeof tag === "string") {
+  // Fast path: intrinsic HTML elements (most common in real apps)
+  if (typeof tag === "string" && tag !== "") {
     return renderIntrinsicToDOM(
       tag,
       props,
@@ -133,6 +95,56 @@ export function renderElementToDOM(
       anchor,
       namespace,
     );
+  }
+
+  // Fragment — render children directly into parent
+  if (tag === "" || (tag as any) === Fragment) {
+    return renderFragmentToDOM(children, parent, anchor, namespace);
+  }
+
+  // Functional component — call it and render the result
+  if (typeof tag === "function") {
+    // Built-in control-flow wrappers should belong to the current owner,
+    // not create their own component instance.
+    if (
+      tag === Show ||
+      tag === For ||
+      tag === Switch ||
+      tag === Index ||
+      tag === Key ||
+      tag === Dynamic ||
+      tag === Portal ||
+      tag === Visible ||
+      tag === ErrorBoundary ||
+      tag === Virtual
+    ) {
+      return renderElementToDOM(
+        (tag as Function)(props),
+        parent,
+        anchor,
+        namespace,
+      );
+    }
+
+    return renderComponentToDOM(tag, props, parent, anchor, namespace);
+  }
+
+  // Built-in control-flow elements (symbol tags)
+  if (
+    isShowElement(element) ||
+    isForElement(element) ||
+    isSwitchElement(element) ||
+    isIndexElement(element) ||
+    isKeyElement(element) ||
+    isDynamicElement(element) ||
+    isPortalElement(element) ||
+    isSuspenseElement(element) ||
+    isActivityElement(element) ||
+    isViewTransitionElement(element) ||
+    isErrorBoundaryElement(element) ||
+    isVirtualElement(element)
+  ) {
+    return renderControlFlowToDOM(element, parent, anchor, namespace);
   }
 
   // Fallback — render children
@@ -155,11 +167,14 @@ function renderIntrinsicToDOM(
     ? domOps.createElementNS(namespace, tag)
     : domOps.createElement(tag);
 
-  // Apply attributes (returns disposers for reactive attrs)
-  const attrDisposers = applyAttributes(el, props);
+  // Apply attributes + detect events in a single prop loop
+  const { disposers: attrDisposers, hasEventProps } = applyAttributes(
+    el,
+    props,
+  );
 
   // Bind event handlers
-  const eventCleanups = bindEvents(el, props);
+  const eventCleanups = hasEventProps ? bindEvents(el, props) : null;
 
   // Render children (unless void element)
   let mountedChildren: MountedNode[] = [];
@@ -169,6 +184,9 @@ function renderIntrinsicToDOM(
       | { __html?: string }
       | undefined;
     if (dangerous && typeof dangerous.__html === "string") {
+      console.warn(
+        "[Sinwan] dangerouslySetInnerHTML used — ensure content is trusted",
+      );
       (el as HTMLElement).innerHTML = dangerous.__html;
     } else {
       mountedChildren = renderChildrenToDOM(
@@ -214,7 +232,7 @@ function renderComponentToDOM(
 ): MountedComponent {
   // Create instance with parent context
   const parentInstance = getCurrentInstance();
-  const instance = createComponentInstance(
+  const instance: ComponentInstance = createComponentInstance(
     component as any,
     props,
     parentInstance,
@@ -249,7 +267,28 @@ function renderComponentToDOM(
   } catch (err) {
     // Restore parent before error handling
     setCurrentInstance(prevInstance);
-    handleComponentError(instance, err as Error);
+
+    const boundary = getActiveSuspenseBoundary();
+    if (
+      boundary &&
+      err &&
+      typeof err === "object" &&
+      typeof (err as any).then === "function"
+    ) {
+      // A promise was thrown inside an active Suspense boundary.
+      // Register it with the boundary and re-throw so the boundary
+      // catch block can show fallback and clean up partial renders.
+      boundary.promises.add(err as PromiseLike<unknown>);
+      throw err;
+    }
+
+    if (!handleComponentError(instance, err as Error)) {
+      // Only propagate if an ErrorBoundary is active; otherwise render
+      // a placeholder so Suspense and other boundaries keep working.
+      if (hasActiveErrorBoundary()) {
+        throw err;
+      }
+    }
     // Return empty placeholder on error
     const text = domOps.createTextNode("");
     if (anchor) {

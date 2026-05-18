@@ -4,7 +4,7 @@ Hydration is the process of attaching reactivity and event handlers to **server-
 
 ```ts
 import { hydrate } from "sinwan";
-import { renderToHydratableString } from "sinwan/server";
+import { renderToHydratableString } from "sinwan/react-server";
 ```
 
 ---
@@ -28,7 +28,7 @@ Both calls receive the **same component and the same props**. If they don’t ma
 ### 1. Server: emit markers
 
 ```tsx
-import { renderToHydratableString } from "sinwan/server";
+import { renderToHydratableString } from "sinwan/react-server";
 
 const html = await renderToHydratableString(App, { initialCount: 5 });
 // '<div data-sinwan-id="c0"><button>Count: <!--sinwan-t:0-->5<!--/sinwan-t--></button></div>'
@@ -173,7 +173,7 @@ Server-side, `data-sinwan-ev="click:0"` is informational only in v1 — useful f
 
 ## Async components and hydration
 
-`renderToHydratableString` awaits the **top-level** call. Nested `Promise<SinwanElement>` children are skipped (rendered as empty) by the marker pass — async data should be resolved **before** SSR and passed in as props.
+`renderToHydratableString` awaits the **top-level** call. Nested `Promise<SinwanNode>` children are skipped (rendered as empty) by the marker pass — async data should be resolved **before** SSR and passed in as props.
 
 The corresponding `hydrate()` call sees the resolved data and produces a matching tree.
 
@@ -189,7 +189,7 @@ function hydrate(
   props?: Record<string, unknown>,
 ): AppInstance;
 
-// from "sinwan/server"
+// from "sinwan/react-server"
 function renderToHydratableString<P>(
   component: SinwanComponent<P>,
   props?: P,
@@ -228,9 +228,9 @@ interface HydrationCursor {
 
 ```tsx
 // shared/App.tsx
-import { signal, createComponent } from "sinwan";
+import { signal, cc } from "sinwan";
 
-export const App = createComponent<{ initial: number }>(({ initial }) => {
+export const App = cc<{ initial: number }>(({ initial }) => {
   const count = signal(initial);
   return (
     <button onClick={() => (count.value += 1)}>Clicked {count} times</button>
@@ -240,7 +240,7 @@ export const App = createComponent<{ initial: number }>(({ initial }) => {
 
 ```ts
 // server.ts (Bun)
-import { renderToHydratableString } from "sinwan/server";
+import { renderToHydratableString } from "sinwan/react-server";
 import { App } from "./shared/App";
 
 Bun.serve({

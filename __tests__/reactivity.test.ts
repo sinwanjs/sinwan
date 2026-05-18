@@ -9,7 +9,7 @@ import { describe, it, expect } from "bun:test";
 import { signal, isSignal } from "../src/reactivity/signal.ts";
 import { computed, isComputed } from "../src/reactivity/computed.ts";
 import { effect } from "../src/reactivity/effect.ts";
-import { batch } from "../src/reactivity/batch.ts";
+import { batch, isBatching } from "../src/reactivity/batch.ts";
 import { nextTick } from "../src/reactivity/scheduler.ts";
 
 // ─── Signal ────────────────────────────────────────────────
@@ -291,6 +291,18 @@ describe("computed", () => {
 
     expect(doubled.peek()).toBe(10);
   });
+
+  it("toString() returns string representation", () => {
+    const count = signal(7);
+    const doubled = computed(() => count.value * 2);
+    expect(`${doubled}`).toBe("14");
+  });
+
+  it("valueOf() returns numeric value", () => {
+    const count = signal(3);
+    const doubled = computed(() => count.value * 2);
+    expect(Number(doubled)).toBe(6);
+  });
 });
 
 // ─── Batch ─────────────────────────────────────────────────
@@ -338,6 +350,23 @@ describe("batch", () => {
     });
 
     expect(runCount).toBe(2); // only one extra flush at outer batch end
+  });
+
+  it("re-throws errors from the callback", () => {
+    expect(() =>
+      batch(() => {
+        throw new Error("batch boom");
+      }),
+    ).toThrow("batch boom");
+  });
+
+  it("isBatching() returns true inside batch", () => {
+    let wasBatching = false;
+    batch(() => {
+      wasBatching = isBatching();
+    });
+    expect(wasBatching).toBe(true);
+    expect(isBatching()).toBe(false);
   });
 });
 

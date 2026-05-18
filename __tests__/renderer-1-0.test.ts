@@ -7,11 +7,8 @@ import { Window } from "happy-dom";
 import { signal, nextTick } from "../src/reactivity/index.ts";
 import { mount } from "../src/renderer/mount.ts";
 import { renderElementToDOM } from "../src/renderer/render-element.ts";
-import {
-  resetDOMOps,
-  setDOMOps,
-} from "../src/renderer/dom-ops.ts";
-import { createComponent } from "../src/component/create.ts";
+import { resetDOMOps, setDOMOps } from "../src/renderer/dom-ops.ts";
+import { cc } from "../src/component/create.ts";
 import { onUpdated } from "../src/component/lifecycle.ts";
 import { Show } from "../src/component/control-flow.ts";
 import type { SinwanElement } from "../src/types.ts";
@@ -58,7 +55,7 @@ describe("public refs", () => {
     const calls: Array<Element | null> = [];
     const objectRef: { current: Element | null } = { current: null };
 
-    const App = createComponent(() =>
+    const App = cc(() =>
       el(
         "section",
         { ref: objectRef },
@@ -130,7 +127,7 @@ describe("onUpdated scheduling", () => {
     const visible = signal(false);
     let updates = 0;
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       onUpdated(() => {
         updates++;
       });

@@ -13,10 +13,18 @@ import { domOps } from "./dom-ops.ts";
 import type { CleanupFn } from "../reactivity/index.ts";
 
 /**
+ * React-to-DOM event name overrides.
+ */
+const EVENT_NAME_MAP: Record<string, string> = {
+  doubleclick: "dblclick",
+};
+
+/**
  * Check if a prop key is an event handler (starts with "on").
+ * Note: this will match any prop beginning with "on", but bindEvents()
+ * guards against false positives by requiring the value to be a function.
  */
 export function isEventProp(key: string): boolean {
-  // Matches onClick, onclick, onMouseMove, onmousemove, etc.
   return key.length > 2 && key.startsWith("on");
 }
 
@@ -25,7 +33,8 @@ export function isEventProp(key: string): boolean {
  * e.g., "onClick" → "click", "onMouseEnter" → "mouseenter"
  */
 export function toEventName(key: string): string {
-  return key.slice(2).toLowerCase();
+  const raw = key.slice(2).toLowerCase();
+  return EVENT_NAME_MAP[raw] ?? raw;
 }
 
 /**
@@ -50,14 +59,16 @@ export function bindEvent(
 export function bindEvents(
   el: Element,
   props: Record<string, unknown>,
-): CleanupFn[] {
-  const cleanups: CleanupFn[] = [];
+): CleanupFn[] | null {
+  let cleanups: CleanupFn[] | null = null;
 
-  for (const key of Object.keys(props)) {
+  for (const key in props) {
+    if (!Object.prototype.hasOwnProperty.call(props, key)) continue;
     if (isEventProp(key)) {
       const handler = props[key];
       if (typeof handler === "function") {
         const eventName = toEventName(key);
+        if (!cleanups) cleanups = [];
         cleanups.push(bindEvent(el, eventName, handler as EventListener));
       }
     }

@@ -12,8 +12,13 @@ export type { Signal } from "./signal.ts";
 export { computed, isComputed } from "./computed.ts";
 export type { Computed } from "./computed.ts";
 
-export { effect } from "./effect.ts";
+export { effect, untrack } from "./effect.ts";
 export type { CleanupFn, EffectFn } from "./effect.ts";
+
+// Explicit deps & Observable interop
+export { on } from "./on.ts";
+export { observable } from "./observable.ts";
+export type { Observer, Subscription, Observable } from "./observable.ts";
 
 // Batching & scheduling
 export { batch } from "./batch.ts";

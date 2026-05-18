@@ -7,18 +7,30 @@
  * elements, arrays, signals, and fragments.
  */
 
-import type { SinwanNode } from "../types.ts";
-import type { MountedNode, MountedReactiveBlock } from "./types.ts";
+import type { SinwanElement, SinwanNode } from "../types.ts";
+import type {
+  MountedNode,
+  MountedReactiveBlock,
+  MountedAsync,
+} from "./types.ts";
 import { domOps } from "./dom-ops.ts";
-import { isReactive, resolve, effect, type Signal, type Computed } from "../reactivity/index.ts";
+import {
+  isReactive,
+  resolve,
+  effect,
+  type Signal,
+  type Computed,
+} from "../reactivity/index.ts";
 import { renderElementToDOM } from "./render-element.ts";
 import { HtmlEscapedString } from "../jsx/jsx-runtime.ts";
 import {
   getCurrentInstance,
   queueUpdatedHooks,
   fireMountedHooks,
+  withInstance,
 } from "../component/instance.ts";
 import { removeMountedNode } from "./unmount.ts";
+import { isTemplateResult, type SinwanTemplateResult } from "./template.ts";
 
 /**
  * Render a single SinwanNode to DOM and append to parent.
@@ -58,6 +70,16 @@ export function renderNodeToDOM(
     return { type: "text", node: text };
   }
 
+  // Compiler-generated template result
+  if (isTemplateResult(node)) {
+    return renderTemplateResultToDOM(node, parent, anchor);
+  }
+
+  // SinwanElement (common case)
+  if (typeof node === "object" && node !== null && "tag" in node) {
+    return renderElementToDOM(node as SinwanElement, parent, anchor, namespace);
+  }
+
   // Reactive Node (Signal, Computed, or Function Getter)
   if (isReactive(node)) {
     return renderReactiveNodeToDOM(node as any, parent, anchor, namespace);
@@ -68,27 +90,85 @@ export function renderNodeToDOM(
     return renderArrayToDOM(node, parent, anchor, namespace);
   }
 
-  // Promise → placeholder (resolved async)
+  // Promise → async node (placeholder + swap when resolved)
   if (node instanceof Promise) {
+    const startAnchor = domOps.createComment("Sinwan-a");
+    const endAnchor = domOps.createComment("/Sinwan-a");
     const placeholder = domOps.createTextNode("");
+    insertNode(parent, startAnchor, anchor);
     insertNode(parent, placeholder, anchor);
-    // TODO: async component support (Phase 3+)
-    node.then((resolved) => {
-      const mounted = renderNodeToDOM(resolved, parent, placeholder, namespace);
-      domOps.remove(placeholder);
-    });
-    return { type: "text", node: placeholder };
-  }
+    insertNode(parent, endAnchor, anchor);
 
-  // SinwanElement
-  if (typeof node === "object" && "tag" in node) {
-    return renderElementToDOM(node, parent, anchor, namespace);
+    const mounted: MountedAsync = {
+      type: "async",
+      startAnchor,
+      endAnchor,
+      placeholder,
+      children: [],
+      disposed: false,
+    };
+
+    const owner = getCurrentInstance();
+
+    node.then((resolved) => {
+      if (mounted.disposed) return;
+      const resolvedNode = owner
+        ? withInstance(owner, () =>
+            renderNodeToDOM(resolved, parent, endAnchor, namespace),
+          )
+        : renderNodeToDOM(resolved, parent, endAnchor, namespace);
+      mounted.children = [resolvedNode];
+      domOps.remove(placeholder);
+      if (owner) fireMountedHooks(owner);
+      queueUpdatedHooks(owner);
+    });
+
+    return mounted;
   }
 
   // Fallback — coerce to string
   const text = domOps.createTextNode(String(node));
   insertNode(parent, text, anchor);
   return { type: "text", node: text };
+}
+
+/**
+ * Render a compiler-generated template result to DOM.
+ */
+function renderTemplateResultToDOM(
+  result: SinwanTemplateResult,
+  parent: Node,
+  anchor: Node | null,
+): MountedNode {
+  const anchorComment = domOps.createComment("Sinwan-t");
+  insertNode(parent, anchorComment, anchor);
+
+  const children: MountedNode[] = [];
+  const fragment = result.fragment;
+  // Move all child nodes from fragment into parent (fragment is empty after this)
+  while (fragment.firstChild) {
+    const child = fragment.firstChild;
+    parent.insertBefore(child, anchor);
+    if (child instanceof Element) {
+      children.push({
+        type: "element",
+        node: child,
+        children: [],
+        eventCleanups: null,
+        attrDisposers: null,
+        refCleanup: null,
+      });
+    } else {
+      children.push({ type: "text", node: child as any });
+    }
+  }
+
+  return {
+    type: "fragment",
+    children,
+    anchor: anchorComment,
+    disposers: result.disposers,
+  };
 }
 
 /**
@@ -100,12 +180,14 @@ function renderArrayToDOM(
   anchor: Node | null,
   namespace: string | null,
 ): MountedNode {
-  const anchorComment = domOps.createComment("Sinwan-f");
-  insertNode(parent, anchorComment, anchor);
+  const anchorComment = anchor ? domOps.createComment("Sinwan-f") : null;
+  if (anchorComment) {
+    insertNode(parent, anchorComment, anchor);
+  }
 
-  const children: MountedNode[] = [];
-  for (const child of nodes) {
-    children.push(renderNodeToDOM(child, parent, anchor, namespace));
+  const children: MountedNode[] = new Array(nodes.length);
+  for (let i = 0; i < nodes.length; i++) {
+    children[i] = renderNodeToDOM(nodes[i]!, parent, anchor, namespace);
   }
 
   return { type: "fragment", children, anchor: anchorComment };
@@ -120,9 +202,9 @@ export function renderChildrenToDOM(
   parent: Node,
   namespace: string | null = null,
 ): MountedNode[] {
-  const mounted: MountedNode[] = [];
-  for (const child of children) {
-    mounted.push(renderNodeToDOM(child, parent, null, namespace));
+  const mounted: MountedNode[] = new Array(children.length);
+  for (let i = 0; i < children.length; i++) {
+    mounted[i] = renderNodeToDOM(children[i]!, parent, null, namespace);
   }
   return mounted;
 }
@@ -162,7 +244,12 @@ function renderReactiveNodeToDOM(
 
     // 2. Resolve and render new content
     const value = resolve(reactive);
-    mountedContent = renderNodeToDOM(value as SinwanNode, parent, endAnchor, namespace);
+    mountedContent = renderNodeToDOM(
+      value as SinwanNode,
+      parent,
+      endAnchor,
+      namespace,
+    );
     block.children = [mountedContent];
 
     // 3. Trigger lifecycle hooks

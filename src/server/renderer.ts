@@ -9,7 +9,6 @@ import type {
   SinwanNode,
   SinwanElement,
   SinwanComponent,
-  SinwanPage,
   SinwanSlots,
 } from "../types.ts";
 import { HtmlEscapedString, escapeHtml } from "../escaper.ts";
@@ -19,6 +18,7 @@ import { isComputed } from "../reactivity/computed.ts";
 import { isEventProp } from "../renderer/events.ts";
 import {
   Dynamic,
+  ErrorBoundary,
   For,
   Index,
   Key,
@@ -27,7 +27,9 @@ import {
   Switch,
   Visible,
   Show,
+  Virtual,
   isDynamicElement,
+  isErrorBoundaryElement,
   isForElement,
   isIndexElement,
   isKeyElement,
@@ -35,34 +37,44 @@ import {
   isPortalElement,
   isShowElement,
   isSwitchElement,
+  isVirtualElement,
+  isActivityElement,
   resolveKeyChildren,
   resolveMatchChildren,
   resolveShowChildren,
   resolveSwitchContent,
 } from "../component/control-flow.ts";
+import {
+  ISLAND_TAG,
+  ISLAND_ATTR,
+  ISLAND_PROPS_ATTR,
+  isIslandElement,
+  escapeIslandPropsJson,
+  type IslandElement,
+} from "../component/island.ts";
+import { renderToHydratableString as renderHydratableComponent } from "./hydration-markers.ts";
+
+const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
 
 // Component cache - maps component identity to render function
 const componentCache = new WeakMap<SinwanComponent<any>, boolean>();
 
 // Page registry
-const pageRegistry = new Map<string, SinwanPage<any>>();
+const pageRegistry = new Map<string, SinwanComponent<any>>();
 
 /**
  * Register a page renderer by name.
  */
 export function registerPage<D extends object = {}>(
   name: string,
-  page: SinwanPage<D>,
+  page: SinwanComponent<D>,
 ): void {
   pageRegistry.set(name, page);
 }
 
-/**
- * Get a registered page by name.
- */
 export function getPage<D extends object = {}>(
   name: string,
-): SinwanPage<D> | undefined {
+): SinwanComponent<D> | undefined {
   return pageRegistry.get(name);
 }
 
@@ -119,17 +131,29 @@ export async function renderToString(node: SinwanNode): Promise<string> {
     return escapeHtml(String((node as any).value));
   }
 
+  // Handle React-compatible state getters (useState / useReducer)
+  if (typeof node === "function" && (node as any)[STATE_GETTER_MARKER]) {
+    return escapeHtml(String((node as any)()));
+  }
+
   // Handle arrays - render each child and concatenate
   if (Array.isArray(node)) {
-    const results = await Promise.all(
-      node.map((child) => renderToString(child)),
-    );
-    return results.join("");
+    // replace map/Promise.all with for loop to avoid creating an intermediate array
+    const promises: Promise<string>[] = [];
+    for (let i = 0; i < node.length; i++) {
+      promises.push(renderToString(node[i]));
+    }
+    const results = await Promise.all(promises);
+    let output = "";
+    for (let i = 0; i < results.length; i++) {
+      output += results[i];
+    }
+    return output;
   }
 
   // Handle promises (async components)
   if (node instanceof Promise) {
-    return renderElement(await node);
+    return renderToString(await node);
   }
 
   // Handle elements
@@ -142,6 +166,10 @@ export async function renderToString(node: SinwanNode): Promise<string> {
 async function renderElement(element: SinwanElement): Promise<string> {
   const { tag, props, children } = element;
 
+  if (tag === ISLAND_TAG || isIslandElement(element)) {
+    return renderIsland(element as IslandElement);
+  }
+
   if (
     tag === Show ||
     tag === For ||
@@ -149,7 +177,9 @@ async function renderElement(element: SinwanElement): Promise<string> {
     tag === Index ||
     tag === Key ||
     tag === Dynamic ||
-    tag === Portal
+    tag === Portal ||
+    tag === ErrorBoundary ||
+    tag === Virtual
   ) {
     return renderElement((tag as Function)(props));
   }
@@ -161,7 +191,9 @@ async function renderElement(element: SinwanElement): Promise<string> {
   if (isShowElement(element)) {
     const when = readReactive(props.when);
     return renderToString(
-      when ? resolveShowChildren(element, when) : props.fallback as SinwanNode,
+      when
+        ? resolveShowChildren(element, when)
+        : (props.fallback as SinwanNode),
     );
   }
 
@@ -195,6 +227,44 @@ async function renderElement(element: SinwanElement): Promise<string> {
 
   if (isPortalElement(element)) {
     return "";
+  }
+
+  if (isErrorBoundaryElement(element)) {
+    try {
+      return await renderToString(props.children as SinwanNode);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      const fallback = props.fallback;
+      const fallbackContent =
+        typeof fallback === "function"
+          ? (fallback as (error: Error, reset: () => void) => SinwanNode)(
+              error,
+              () => {},
+            )
+          : fallback;
+      return renderToString(fallbackContent as SinwanNode);
+    }
+  }
+
+  if (isVirtualElement(element)) {
+    return renderVirtualElement(element);
+  }
+
+  if (isActivityElement(element)) {
+    const mode = readReactive(props.mode) ?? "visible";
+    const activityChildren = (props as any).children as SinwanNode;
+    if (mode === "hidden") {
+      return renderElement({
+        tag: "div",
+        props: {
+          hidden: true,
+          "data-sinwan-activity": "hidden",
+          children: activityChildren,
+        },
+        children: normalizeContent(activityChildren),
+      });
+    }
+    return renderToString(activityChildren);
   }
 
   // Handle functional components
@@ -331,10 +401,17 @@ async function renderForElement(element: SinwanElement): Promise<string> {
     return props.fallback ? renderToString(props.fallback) : "";
   }
 
-  const rendered = await Promise.all(
-    each.map((item, index) => renderToString(props.children!(item, () => index))),
-  );
-  return rendered.join("");
+  // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
+  const promises: Promise<string>[] = [];
+  for (let i = 0; i < each.length; i++) {
+    promises.push(renderToString(props.children!(each[i], () => i)));
+  }
+  const rendered = await Promise.all(promises);
+  let output = "";
+  for (let i = 0; i < rendered.length; i++) {
+    output += rendered[i];
+  }
+  return output;
 }
 
 async function renderIndexElement(element: SinwanElement): Promise<string> {
@@ -352,13 +429,93 @@ async function renderIndexElement(element: SinwanElement): Promise<string> {
     return props.fallback ? renderToString(props.fallback) : "";
   }
 
-  const rendered = await Promise.all(
-    each.map((item, index) => renderToString(props.children!(() => item, index))),
-  );
-  return rendered.join("");
+  // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
+  const promises: Promise<string>[] = [];
+  for (let i = 0; i < each.length; i++) {
+    promises.push(renderToString(props.children!(() => each[i], i)));
+  }
+  const rendered = await Promise.all(promises);
+  let output = "";
+  for (let i = 0; i < rendered.length; i++) {
+    output += rendered[i];
+  }
+  return output;
 }
 
-function createDynamicElement(element: SinwanElement, tag: unknown): SinwanElement | null {
+async function renderVirtualElement(element: SinwanElement): Promise<string> {
+  const props = element.props as {
+    each?: unknown;
+    key?: (item: unknown, index: number) => string | number | symbol;
+    itemHeight: number;
+    containerHeight: number;
+    overscan?: number;
+    minRendered?: number;
+    fallback?: SinwanNode;
+    children?: (item: unknown, index: () => number) => SinwanNode;
+  };
+
+  const items = readReactive(props.each);
+  const list = Array.isArray(items) ? items : [];
+
+  if (list.length === 0) {
+    return props.fallback ? renderToString(props.fallback) : "";
+  }
+
+  const itemHeight = props.itemHeight;
+  const containerHeight = props.containerHeight;
+  const overscan = props.overscan ?? 3;
+  const minRendered = props.minRendered ?? 0;
+
+  // Compute initial visible window at scrollTop=0
+  let startIndex = 0;
+  let endIndex = Math.ceil(containerHeight / itemHeight);
+  startIndex = Math.max(0, startIndex - overscan);
+  endIndex = Math.min(list.length, endIndex + overscan);
+
+  if (minRendered > 0) {
+    const visibleCount = endIndex - startIndex;
+    if (visibleCount < minRendered) {
+      const deficit = minRendered - visibleCount;
+      const expandStart = Math.min(startIndex, Math.floor(deficit / 2));
+      const expandEnd = Math.min(
+        list.length - endIndex,
+        Math.ceil(deficit / 2),
+      );
+      let remaining = deficit - expandStart - expandEnd;
+      startIndex -= expandStart;
+      endIndex += expandEnd;
+      if (remaining > 0) {
+        if (endIndex < list.length) {
+          endIndex = Math.min(list.length, endIndex + remaining);
+        } else if (startIndex > 0) {
+          startIndex = Math.max(0, startIndex - remaining);
+        }
+      }
+    }
+  }
+
+  const totalHeight = list.length * itemHeight;
+  const renderChild = props.children;
+
+  let itemsHtml = "";
+  if (typeof renderChild === "function") {
+    const promises: Promise<string>[] = [];
+    for (let i = startIndex; i < endIndex; i++) {
+      promises.push(renderToString(renderChild(list[i], () => i)));
+    }
+    const results = await Promise.all(promises);
+    for (let i = 0; i < results.length; i++) {
+      itemsHtml += results[i];
+    }
+  }
+
+  return `<div style="overflow:auto;height:${containerHeight}px"><div style="position:relative;height:${totalHeight}px">${itemsHtml}</div></div>`;
+}
+
+function createDynamicElement(
+  element: SinwanElement,
+  tag: unknown,
+): SinwanElement | null {
   if (typeof tag !== "string" && typeof tag !== "function") {
     return null;
   }
@@ -373,8 +530,36 @@ function createDynamicElement(element: SinwanElement, tag: unknown): SinwanEleme
   };
 }
 
+/**
+ * Render an island element: produce a static wrapper with hydration markers
+ * inside, plus the embedded props JSON the client needs to hydrate it.
+ */
+async function renderIsland(element: IslandElement): Promise<string> {
+  const { __island, __props } = element.props;
+  const inner = await renderHydratableComponent(__island.component, __props);
+
+  let json: string;
+  try {
+    json = __island.serializeProps(__props);
+  } catch (err) {
+    throw new Error(
+      `island(${__island.name}): failed to serialise props — ${(err as Error).message}`,
+    );
+  }
+
+  const safeName = escapeHtml(__island.name);
+  const safeProps = escapeIslandPropsJson(json);
+  return `<${__island.tag} ${ISLAND_ATTR}="${safeName}" ${ISLAND_PROPS_ATTR}="${safeProps}">${inner}</${__island.tag}>`;
+}
+
 function readReactive(value: unknown): unknown {
-  return isSignal(value) || isComputed(value) ? (value as any).value : value;
+  if (isSignal(value) || isComputed(value)) {
+    return (value as any).value;
+  }
+  if (typeof value === "function" && (value as any)[STATE_GETTER_MARKER]) {
+    return (value as any)();
+  }
+  return value;
 }
 
 function normalizeContent(content: unknown): SinwanNode[] {

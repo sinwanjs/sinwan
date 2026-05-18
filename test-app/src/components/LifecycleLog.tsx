@@ -1,11 +1,6 @@
-import {
-  signal,
-  createComponent,
-  onMounted,
-  onUnmounted,
-  render,
-  type Signal,
-} from "sinwan";
+import { cc, onMounted, onUnmounted } from "sinwan/component";
+import { signal } from "sinwan/reactivity";
+import { render } from "sinwan/renderer";
 
 const log = signal<string[]>([]);
 
@@ -15,14 +10,14 @@ const push = (line: string) => {
 };
 
 // Inner component that announces itself in the log on mount/unmount.
-const Greeting = createComponent<{ name: string }>(({ name }) => {
+const Greeting = cc<{ name: string }>(({ name }) => {
   push(`<Greeting name="${name}"> setup`);
   onMounted(() => push(`<Greeting name="${name}"> mounted`));
   onUnmounted(() => push(`<Greeting name="${name}"> unmounted`));
   return <p>Hello, {name}!</p>;
 });
 
-export const LifecycleLog = createComponent(() => {
+export const LifecycleLog = cc(() => {
   const visible = signal(false);
 
   let host: HTMLDivElement | null = null;
@@ -43,10 +38,7 @@ export const LifecycleLog = createComponent(() => {
   const renderLog = () => {
     if (!logHost) return;
     logApp?.unmount();
-    logApp = render(
-      <>{log.value.map((l) => l + "\n")}</>,
-      logHost,
-    );
+    logApp = render(<>{log.value.map((l) => l + "\n")}</>, logHost);
   };
 
   onMounted(() => {

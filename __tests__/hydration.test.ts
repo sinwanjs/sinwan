@@ -20,11 +20,8 @@ import {
 } from "../src/component/index.ts";
 import { hydrate } from "../src/hydration/hydrate.ts";
 import { renderToHydratableString } from "../src/server/hydration-markers.ts";
-import {
-  streamHydratablePage,
-  streamPage,
-} from "../src/server/stream.ts";
-import { createComponent } from "../src/component/create.ts";
+import { streamHydratablePage, streamPage } from "../src/server/stream.ts";
+import { cc } from "../src/component/create.ts";
 import { Visible } from "../src/component/control-flow.ts";
 import type { SinwanElement } from "../src/types.ts";
 import {
@@ -32,6 +29,7 @@ import {
   isTextCloseMarker,
   parseEventAttr,
   parseCompId,
+  eventAttrValue,
 } from "../src/hydration/markers.ts";
 
 // ─── DOM setup ─────────────────────────────────────────────
@@ -99,13 +97,18 @@ describe("marker helpers", () => {
       ["input", 1],
     ]);
   });
+
+  it("eventAttrValue builds event attribute strings", () => {
+    expect(eventAttrValue("click", 0)).toBe("click:0");
+    expect(eventAttrValue("input", 3)).toBe("input:3");
+  });
 });
 
 // ─── renderToHydratableString ──────────────────────────────
 
 describe("renderToHydratableString", () => {
   it("injects component boundary marker", async () => {
-    const App = createComponent(() => el("div", {}, "hello"));
+    const App = cc(() => el("div", {}, "hello"));
     const html = await renderToHydratableString(App);
 
     expect(html).toContain('data-sinwan-id="c0"');
@@ -113,7 +116,7 @@ describe("renderToHydratableString", () => {
   });
 
   it("wraps signal values with text markers", async () => {
-    const App = createComponent(() => {
+    const App = cc(() => {
       const count = signal(5);
       return el("p", {}, "Count: ", count as any);
     });
@@ -124,7 +127,7 @@ describe("renderToHydratableString", () => {
   });
 
   it("adds event markers", async () => {
-    const App = createComponent(() => {
+    const App = cc(() => {
       return el("button", { onClick: () => {} }, "Click");
     });
 
@@ -133,9 +136,9 @@ describe("renderToHydratableString", () => {
   });
 
   it("handles nested components", async () => {
-    const Child = createComponent(() => el("span", {}, "child"));
+    const Child = cc(() => el("span", {}, "child"));
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       return el("div", {}, { tag: Child, props: {}, children: [] } as any);
     });
 
@@ -146,7 +149,7 @@ describe("renderToHydratableString", () => {
   });
 
   it("renders static + reactive children correctly", async () => {
-    const App = createComponent(() => {
+    const App = cc(() => {
       const name = signal("World");
       return el("h1", {}, "Hello ", name as any, "!");
     });
@@ -158,7 +161,7 @@ describe("renderToHydratableString", () => {
   });
 
   it("serializes helper style and class objects for hydration", async () => {
-    const App = createComponent(() => {
+    const App = cc(() => {
       const open = signal(false);
       return el(
         Visible,
@@ -183,7 +186,7 @@ describe("renderToHydratableString", () => {
 
 describe("hydrate", () => {
   it("hydrates static HTML without errors", async () => {
-    const App = createComponent(() => el("div", {}, "Hello"));
+    const App = cc(() => el("div", {}, "Hello"));
 
     const html = await renderToHydratableString(App);
     container.innerHTML = html;
@@ -194,7 +197,7 @@ describe("hydrate", () => {
   });
 
   it("reactive text updates after hydration", async () => {
-    const App = createComponent(() => {
+    const App = cc(() => {
       const count = signal(5);
       return el(
         "div",
@@ -233,7 +236,7 @@ describe("hydrate", () => {
   });
 
   it("computed values update after hydration", async () => {
-    const App = createComponent(() => {
+    const App = cc(() => {
       const price = signal(10);
       const qty = signal(3);
       const total = computed(() => price.value * qty.value);
@@ -269,7 +272,7 @@ describe("hydrate", () => {
   });
 
   it("keeps reactive form properties in sync after hydration", async () => {
-    const App = createComponent(() => {
+    const App = cc(() => {
       const text = signal("hello");
       const checked = signal(false);
       const disabled = signal(true);
@@ -277,7 +280,11 @@ describe("hydrate", () => {
       return el(
         "form",
         {},
-        el("input", { id: "name", value: text as any, disabled: disabled as any }),
+        el("input", {
+          id: "name",
+          value: text as any,
+          disabled: disabled as any,
+        }),
         el("input", { id: "flag", type: "checkbox", checked: checked as any }),
         el(
           "button",
@@ -320,7 +327,7 @@ describe("hydrate", () => {
   it("onMounted fires during hydration", async () => {
     let mounted = false;
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       onMounted(() => {
         mounted = true;
       });
@@ -338,7 +345,7 @@ describe("hydrate", () => {
   it("onUnmounted fires on app.unmount()", async () => {
     let unmounted = false;
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       onUnmounted(() => {
         unmounted = true;
       });
@@ -356,7 +363,7 @@ describe("hydrate", () => {
   });
 
   it("reuses existing DOM nodes (no recreation)", async () => {
-    const App = createComponent(() => {
+    const App = cc(() => {
       return el(
         "div",
         { class: "root" },
@@ -382,7 +389,7 @@ describe("hydrate", () => {
   it("event handlers are attached during hydration", async () => {
     let clicked = false;
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       return el(
         "button",
         {
@@ -404,8 +411,41 @@ describe("hydrate", () => {
     expect(clicked).toBe(true);
   });
 
+  it("handles errors during hydration gracefully", async () => {
+    const consoleErrors: any[] = [];
+    const originalConsoleError = console.error;
+    console.error = (...args: any[]) => consoleErrors.push(args);
+
+    let callCount = 0;
+    const BadApp = cc(() => {
+      callCount++;
+      if (callCount > 1) {
+        throw new Error("hydration boom");
+      }
+      return el("div", {}, "ok");
+    });
+
+    const html = await renderToHydratableString(BadApp);
+    container.innerHTML = html;
+
+    const app = hydrate(BadApp, container);
+    expect(app.root).toBeDefined();
+    app.unmount();
+
+    console.error = originalConsoleError;
+    expect(
+      consoleErrors.some((args) =>
+        args.some(
+          (a: any) =>
+            (typeof a === "string" && a.includes("hydration boom")) ||
+            (a instanceof Error && a.message.includes("hydration boom")),
+        ),
+      ),
+    ).toBe(true);
+  });
+
   it("interactive counter: full SSR → hydrate → click flow", async () => {
-    const Counter = createComponent<{ initial?: number }>(({ initial = 0 }) => {
+    const Counter = cc<{ initial?: number }>(({ initial = 0 }) => {
       const count = signal(initial as number);
       return el(
         "div",
@@ -465,7 +505,7 @@ describe("hydrate", () => {
 
 describe("hydratable streaming", () => {
   it("streamHydratablePage emits component, reactive text, and event markers", async () => {
-    const App = createComponent(() => {
+    const App = cc(() => {
       const count = signal(7);
       return el("button", { onClick: () => {} }, "Count ", count as any);
     });
@@ -477,7 +517,7 @@ describe("hydratable streaming", () => {
   });
 
   it("streamed hydratable HTML can be inserted and hydrated", async () => {
-    const App = createComponent(() => {
+    const App = cc(() => {
       const count = signal(0);
       return el(
         "button",

@@ -3,6 +3,12 @@
  */
 
 export { hydrate } from "./hydrate.ts";
+export { hydrateIslands } from "./islands.ts";
+export type {
+  IslandRegistry,
+  HydrateIslandsOptions,
+  HydratedIsland,
+} from "./islands.ts";
 
 export {
   COMP_ID_ATTR,

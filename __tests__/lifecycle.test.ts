@@ -11,11 +11,16 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { signal, nextTick } from "../src/reactivity/index.ts";
 import { mount } from "../src/renderer/mount.ts";
-import { createComponent } from "../src/component/create.ts";
+import { hydrate } from "../src/hydration/hydrate.ts";
+import { cc } from "../src/component/create.ts";
 import {
   onMounted,
   onUnmounted,
   onUpdated,
+  onDispose,
+  onHydrated,
+  onServer,
+  onClient,
   onError,
 } from "../src/component/lifecycle.ts";
 import { provide, inject } from "../src/component/provide-inject.ts";
@@ -60,7 +65,7 @@ describe("onMounted", () => {
   it("fires after component is mounted", () => {
     let mounted = false;
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       onMounted(() => {
         mounted = true;
       });
@@ -75,7 +80,7 @@ describe("onMounted", () => {
   it("fires multiple onMounted hooks in order", () => {
     const order: number[] = [];
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       onMounted(() => order.push(1));
       onMounted(() => order.push(2));
       onMounted(() => order.push(3));
@@ -89,12 +94,12 @@ describe("onMounted", () => {
   it("child onMounted fires before parent (bottom-up)", () => {
     const order: string[] = [];
 
-    const Child = createComponent(() => {
+    const Child = cc(() => {
       onMounted(() => order.push("child"));
       return el("span", {}, "child");
     });
 
-    const Parent = createComponent(() => {
+    const Parent = cc(() => {
       onMounted(() => order.push("parent"));
       return el("div", {}, { tag: Child, props: {}, children: [] } as any);
     });
@@ -110,7 +115,7 @@ describe("onUnmounted", () => {
   it("fires when component is unmounted", () => {
     let unmounted = false;
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       onUnmounted(() => {
         unmounted = true;
       });
@@ -127,12 +132,12 @@ describe("onUnmounted", () => {
   it("fires child onUnmounted before parent (bottom-up)", () => {
     const order: string[] = [];
 
-    const Child = createComponent(() => {
+    const Child = cc(() => {
       onUnmounted(() => order.push("child"));
       return el("span");
     });
 
-    const Parent = createComponent(() => {
+    const Parent = cc(() => {
       onUnmounted(() => order.push("parent"));
       return el("div", {}, { tag: Child, props: {}, children: [] } as any);
     });
@@ -145,7 +150,7 @@ describe("onUnmounted", () => {
   it("can be registered synchronously from onMounted", () => {
     const order: string[] = [];
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       onMounted(() => {
         order.push("mounted");
         onUnmounted(() => order.push("cleanup"));
@@ -163,7 +168,7 @@ describe("onUnmounted", () => {
   it("does not fire onUnmounted if never mounted", () => {
     // This is a design confirmation: unmount without mount should be safe
     let unmounted = false;
-    const App = createComponent(() => {
+    const App = cc(() => {
       onUnmounted(() => {
         unmounted = true;
       });
@@ -183,7 +188,7 @@ describe("mount/unmount lifecycle", () => {
   it("full lifecycle: mount → interact → unmount", async () => {
     const log: string[] = [];
 
-    const Counter = createComponent(() => {
+    const Counter = cc(() => {
       const count = signal(0);
 
       onMounted(() => log.push("mounted"));
@@ -226,7 +231,7 @@ describe("getCurrentInstance", () => {
   it("returns the current instance during setup", () => {
     let instance: any = null;
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       instance = getCurrentInstance();
       return el("div");
     });
@@ -248,11 +253,11 @@ describe("onError", () => {
   it("catches errors in child components", () => {
     const errors: Error[] = [];
 
-    const Broken = createComponent(() => {
+    const Broken = cc(() => {
       throw new Error("Oops!");
     });
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       onError((err) => errors.push(err));
       return el("div", {}, { tag: Broken, props: {}, children: [] } as any);
     });
@@ -270,12 +275,12 @@ describe("provide/inject", () => {
     const THEME = Symbol("theme");
     let injected: string | undefined;
 
-    const Child = createComponent(() => {
+    const Child = cc(() => {
       injected = inject(THEME, "default");
       return el("span", {}, injected!);
     });
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       provide(THEME, "dark");
       return el("div", {}, { tag: Child, props: {}, children: [] } as any);
     });
@@ -288,7 +293,7 @@ describe("provide/inject", () => {
     const KEY = Symbol("missing");
     let injected: string | undefined;
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       injected = inject(KEY, "fallback");
       return el("div");
     });
@@ -301,23 +306,43 @@ describe("provide/inject", () => {
     const THEME = Symbol("theme");
     let deepInjected: string | undefined;
 
-    const DeepChild = createComponent(() => {
+    const DeepChild = cc(() => {
       deepInjected = inject(THEME, "none");
       return el("span");
     });
 
-    const Middle = createComponent(() => {
+    const Middle = cc(() => {
       provide(THEME, "override");
       return el("div", {}, { tag: DeepChild, props: {}, children: [] } as any);
     });
 
-    const App = createComponent(() => {
+    const App = cc(() => {
       provide(THEME, "root");
       return el("div", {}, { tag: Middle, props: {}, children: [] } as any);
     });
 
     mount(App, container);
     expect(deepInjected).toBe("override");
+  });
+
+  it("warns and returns undefined when key is missing and no default", () => {
+    const KEY = Symbol("missing");
+    let injected: string | undefined;
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (msg: string) => warnings.push(msg);
+
+    const App = cc(() => {
+      injected = inject(KEY) as string | undefined;
+      return el("div");
+    });
+
+    mount(App, container);
+    expect(injected).toBeUndefined();
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toContain("not found and no default provided");
+
+    console.warn = originalWarn;
   });
 
   it("throws when called outside setup", () => {
@@ -356,14 +381,14 @@ describe("JSX runtime + lifecycle integration", () => {
   it("tagged children get their own ComponentInstance and lifecycle hooks", () => {
     const order: string[] = [];
 
-    const Child = createComponent(() => {
+    const Child = cc(() => {
       order.push("Child setup");
       onMounted(() => order.push("Child mounted"));
       onUnmounted(() => order.push("Child unmounted"));
       return jsx("span", { children: "child" });
     });
 
-    const Parent = createComponent(() => {
+    const Parent = cc(() => {
       order.push("Parent setup");
       onMounted(() => order.push("Parent mounted"));
       onUnmounted(() => order.push("Parent unmounted"));
@@ -395,12 +420,12 @@ describe("JSX runtime + lifecycle integration", () => {
   it("provide() in parent is visible to children declared via JSX", () => {
     let injected: string | undefined;
 
-    const Child = createComponent(() => {
+    const Child = cc(() => {
       injected = inject<string>("greeting", "fallback");
       return jsx("span", { children: injected });
     });
 
-    const Parent = createComponent(() => {
+    const Parent = cc(() => {
       provide("greeting", "hello-from-parent");
       return jsx("div", { children: jsx(Child, {}) });
     });
@@ -413,12 +438,12 @@ describe("JSX runtime + lifecycle integration", () => {
     let parentInstance: any = null;
     let childInstance: any = null;
 
-    const Child = createComponent(() => {
+    const Child = cc(() => {
       childInstance = getCurrentInstance();
       return jsx("span", {});
     });
 
-    const Parent = createComponent(() => {
+    const Parent = cc(() => {
       parentInstance = getCurrentInstance();
       return jsx("div", { children: jsx(Child, {}) });
     });
@@ -435,12 +460,12 @@ describe("JSX runtime + lifecycle integration", () => {
     const setups: number[] = [];
     let nextId = 0;
 
-    const Item = createComponent(() => {
+    const Item = cc(() => {
       setups.push(nextId++);
       return jsx("li", {});
     });
 
-    const List = createComponent(() =>
+    const List = cc(() =>
       jsxs("ul", {
         children: [jsx(Item, {}), jsx(Item, {}), jsx(Item, {})],
       }),
@@ -448,5 +473,203 @@ describe("JSX runtime + lifecycle integration", () => {
 
     mount(List, container);
     expect(setups.length).toBe(3);
+  });
+});
+
+// ─── onDispose ───────────────────────────────────────────────
+
+describe("onDispose", () => {
+  it("fires when component is unmounted", () => {
+    let disposed = false;
+
+    const App = cc(() => {
+      onDispose(() => {
+        disposed = true;
+      });
+      return el("div", {}, "hello");
+    });
+
+    const app = mount(App, container);
+    expect(disposed).toBe(false);
+
+    app.unmount();
+    expect(disposed).toBe(true);
+  });
+
+  it("fires child onDispose before parent (bottom-up)", () => {
+    const order: string[] = [];
+
+    const Child = cc(() => {
+      onDispose(() => order.push("child"));
+      return el("span");
+    });
+
+    const Parent = cc(() => {
+      onDispose(() => order.push("parent"));
+      return el("div", {}, { tag: Child, props: {}, children: [] } as any);
+    });
+
+    const app = mount(Parent, container);
+    app.unmount();
+    expect(order).toEqual(["child", "parent"]);
+  });
+
+  it("fires alongside onUnmounted during unmount", () => {
+    const order: string[] = [];
+
+    const App = cc(() => {
+      onUnmounted(() => order.push("unmounted"));
+      onDispose(() => order.push("disposed"));
+      return el("div");
+    });
+
+    const app = mount(App, container);
+    app.unmount();
+    expect(order).toEqual(["unmounted", "disposed"]);
+  });
+});
+
+// ─── onHydrated ────────────────────────────────────────────
+
+describe("onHydrated", () => {
+  it("fires after hydration completes", () => {
+    let hydrated = false;
+
+    const App = cc(() => {
+      onHydrated(() => {
+        hydrated = true;
+      });
+      return el("div", {}, "hello");
+    });
+
+    container.innerHTML = "<div>hello</div>";
+    hydrate(App, container);
+    expect(hydrated).toBe(true);
+  });
+
+  it("fires child onHydrated before parent (bottom-up)", () => {
+    const order: string[] = [];
+
+    const Child = cc(() => {
+      onHydrated(() => order.push("child"));
+      return el("span", {}, "child");
+    });
+
+    const Parent = cc(() => {
+      onHydrated(() => order.push("parent"));
+      return el("div", {}, { tag: Child, props: {}, children: [] } as any);
+    });
+
+    container.innerHTML = "<div><span>child</span></div>";
+    hydrate(Parent, container);
+    expect(order).toEqual(["child", "parent"]);
+  });
+
+  it("does not fire on a fresh client mount", () => {
+    let hydrated = false;
+
+    const App = cc(() => {
+      onHydrated(() => {
+        hydrated = true;
+      });
+      return el("div", {}, "hello");
+    });
+
+    mount(App, container);
+    expect(hydrated).toBe(false);
+  });
+});
+
+// ─── onServer ──────────────────────────────────────────────
+
+describe("onServer", () => {
+  it("executes immediately when window is undefined", () => {
+    const originalWindow = (globalThis as any).window;
+    try {
+      delete (globalThis as any).window;
+
+      let serverRan = false;
+      const App = cc(() => {
+        onServer(() => {
+          serverRan = true;
+        });
+        return el("div");
+      });
+
+      mount(App, container);
+      expect(serverRan).toBe(true);
+    } finally {
+      (globalThis as any).window = originalWindow;
+    }
+  });
+
+  it("is a no-op when window exists", () => {
+    let serverRan = false;
+    const App = cc(() => {
+      onServer(() => {
+        serverRan = true;
+      });
+      return el("div");
+    });
+
+    mount(App, container);
+    expect(serverRan).toBe(false);
+  });
+});
+
+// ─── onClient ──────────────────────────────────────────────
+
+describe("onClient", () => {
+  it("executes immediately when window exists", () => {
+    let clientRan = false;
+    const App = cc(() => {
+      onClient(() => {
+        clientRan = true;
+      });
+      return el("div");
+    });
+
+    mount(App, container);
+    expect(clientRan).toBe(true);
+  });
+
+  it("is a no-op when window is undefined", () => {
+    const originalWindow = (globalThis as any).window;
+    try {
+      delete (globalThis as any).window;
+
+      let clientRan = false;
+      const App = cc(() => {
+        onClient(() => {
+          clientRan = true;
+        });
+        return el("div");
+      });
+
+      mount(App, container);
+      expect(clientRan).toBe(false);
+    } finally {
+      (globalThis as any).window = originalWindow;
+    }
+  });
+});
+
+// ─── New hooks throw outside setup ─────────────────────────
+
+describe("new lifecycle hooks outside setup", () => {
+  it("onDispose throws outside setup", () => {
+    expect(() => onDispose(() => {})).toThrow("outside of component setup");
+  });
+
+  it("onHydrated throws outside setup", () => {
+    expect(() => onHydrated(() => {})).toThrow("outside of component setup");
+  });
+
+  it("onServer throws outside setup", () => {
+    expect(() => onServer(() => {})).toThrow("outside of component setup");
+  });
+
+  it("onClient throws outside setup", () => {
+    expect(() => onClient(() => {})).toThrow("outside of component setup");
   });
 });

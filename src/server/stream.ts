@@ -8,8 +8,8 @@
 import type {
   SinwanNode,
   SinwanElement,
-  SinwanPage,
   SinwanComponent,
+  SinwanSlots,
 } from "../types.ts";
 import { HtmlEscapedString, escapeHtml } from "../escaper.ts";
 import { renderServerAttribute } from "./attribute-utils.ts";
@@ -18,6 +18,7 @@ import { isComputed } from "../reactivity/computed.ts";
 import { isEventProp, toEventName } from "../renderer/events.ts";
 import {
   Dynamic,
+  ErrorBoundary,
   For,
   Index,
   Key,
@@ -27,6 +28,7 @@ import {
   Visible,
   Show,
   isDynamicElement,
+  isErrorBoundaryElement,
   isForElement,
   isIndexElement,
   isKeyElement,
@@ -47,6 +49,17 @@ import {
   COMP_ID_ATTR,
   EVENT_ATTR,
 } from "../hydration/markers.ts";
+import {
+  ISLAND_TAG,
+  ISLAND_ATTR,
+  ISLAND_PROPS_ATTR,
+  isIslandElement,
+  escapeIslandPropsJson,
+  type IslandElement,
+} from "../component/island.ts";
+import { renderToHydratableString as renderHydratableComponent } from "./hydration-markers.ts";
+
+const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
 
 interface HydratableStreamContext {
   componentIndex: number;
@@ -80,7 +93,7 @@ const VOID_ELEMENTS = new Set([
  * Stream a page to a ReadableStream.
  */
 export function streamPage<D extends object = {}>(
-  page: SinwanPage<D>,
+  page: SinwanComponent<D>,
   data: D,
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -109,9 +122,11 @@ export function streamPage<D extends object = {}>(
 export function streamHydratablePage(
   component: SinwanComponent<any>,
   props?: Record<string, unknown>,
+  options?: { identifierPrefix?: string },
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const ctx = createHydratableStreamContext();
+  const prefix = options?.identifierPrefix ?? "";
 
   return new ReadableStream({
     async start(controller) {
@@ -123,6 +138,7 @@ export function streamHydratablePage(
           encoder,
           ctx,
           true,
+          prefix,
         );
         controller.close();
       } catch (error) {
@@ -137,14 +153,41 @@ export function streamHydratablePage(
  */
 export function streamHydratableNode(
   node: SinwanNode,
+  options?: { identifierPrefix?: string },
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const ctx = createHydratableStreamContext();
+  const prefix = options?.identifierPrefix ?? "";
 
   return new ReadableStream({
     async start(controller) {
       try {
-        await streamHydratableNodeToController(node, controller, encoder, ctx);
+        if (prefix) {
+          const dummy = createComponentInstance(
+            (() => null) as unknown as SinwanComponent<any>,
+            {},
+            null,
+          );
+          dummy.identifierPrefix = prefix;
+          const prev = setCurrentInstance(dummy);
+          try {
+            await streamHydratableNodeToController(
+              node,
+              controller,
+              encoder,
+              ctx,
+            );
+          } finally {
+            setCurrentInstance(prev);
+          }
+        } else {
+          await streamHydratableNodeToController(
+            node,
+            controller,
+            encoder,
+            ctx,
+          );
+        }
         controller.close();
       } catch (error) {
         controller.error(error);
@@ -190,6 +233,12 @@ async function streamNode(
     return;
   }
 
+  // Handle React-compatible state getters (useState / useReducer)
+  if (typeof node === "function" && (node as any)[STATE_GETTER_MARKER]) {
+    controller.enqueue(encoder.encode(escapeHtml(String((node as any)()))));
+    return;
+  }
+
   // Handle arrays - stream each child
   if (Array.isArray(node)) {
     for (const child of node) {
@@ -198,10 +247,10 @@ async function streamNode(
     return;
   }
 
-  // Handle async elements (Promise<SinwanElement>)
+  // Handle async nodes (Promise<SinwanNode>)
   if (node instanceof Promise) {
-    const resolved = await node;
-    await streamElement(resolved, controller, encoder);
+    const resolved = await Promise.resolve(node as unknown);
+    await streamNode(resolved as SinwanNode, controller, encoder);
     return;
   }
 
@@ -219,6 +268,18 @@ async function streamElement(
 ): Promise<void> {
   const { tag, props, children } = element;
 
+  if (tag === ISLAND_TAG || isIslandElement(element)) {
+    await streamIsland(element as IslandElement, controller, encoder);
+    return;
+  }
+
+  if (tag === "") {
+    for (const child of children) {
+      await streamNode(child, controller, encoder);
+    }
+    return;
+  }
+
   if (
     tag === Show ||
     tag === For ||
@@ -226,7 +287,8 @@ async function streamElement(
     tag === Index ||
     tag === Key ||
     tag === Dynamic ||
-    tag === Portal
+    tag === Portal ||
+    tag === ErrorBoundary
   ) {
     await streamElement((tag as Function)(props), controller, encoder);
     return;
@@ -240,7 +302,9 @@ async function streamElement(
   if (isShowElement(element)) {
     const when = readReactive(props.when);
     await streamNode(
-      when ? resolveShowChildren(element, when) : (props.fallback as SinwanNode),
+      when
+        ? resolveShowChildren(element, when)
+        : (props.fallback as SinwanNode),
       controller,
       encoder,
     );
@@ -288,6 +352,24 @@ async function streamElement(
   }
 
   if (isPortalElement(element)) {
+    return;
+  }
+
+  if (isErrorBoundaryElement(element)) {
+    try {
+      await streamNode(props.children as SinwanNode, controller, encoder);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      const fallback = props.fallback;
+      const fallbackContent =
+        typeof fallback === "function"
+          ? (fallback as (error: Error, reset: () => void) => SinwanNode)(
+              error,
+              () => {},
+            )
+          : fallback;
+      await streamNode(fallbackContent as SinwanNode, controller, encoder);
+    }
     return;
   }
 
@@ -409,6 +491,16 @@ async function streamHydratableNodeToController(
     return;
   }
 
+  if (typeof node === "function" && (node as any)[STATE_GETTER_MARKER]) {
+    const idx = ctx.textIndex++;
+    enqueue(
+      controller,
+      encoder,
+      `${textMarkerOpen(idx)}${escapeHtml(String((node as any)()))}${textMarkerCloseStr()}`,
+    );
+    return;
+  }
+
   if (Array.isArray(node)) {
     for (const child of node) {
       await streamHydratableNodeToController(child, controller, encoder, ctx);
@@ -417,8 +509,9 @@ async function streamHydratableNodeToController(
   }
 
   if (node instanceof Promise) {
-    await streamHydratableElement(
-      await node,
+    const resolved = await Promise.resolve(node as unknown);
+    await streamHydratableNodeToController(
+      resolved as SinwanNode,
       controller,
       encoder,
       ctx,
@@ -445,6 +538,11 @@ async function streamHydratableElement(
 ): Promise<void> {
   const { tag, props, children } = element;
 
+  if (tag === ISLAND_TAG || isIslandElement(element)) {
+    await streamIsland(element as IslandElement, controller, encoder);
+    return;
+  }
+
   if (tag === "") {
     for (const child of children) {
       await streamHydratableNodeToController(child, controller, encoder, ctx);
@@ -459,7 +557,8 @@ async function streamHydratableElement(
     tag === Index ||
     tag === Key ||
     tag === Dynamic ||
-    tag === Portal
+    tag === Portal ||
+    tag === ErrorBoundary
   ) {
     await streamHydratableElement(
       (tag as Function)(props),
@@ -485,7 +584,9 @@ async function streamHydratableElement(
   if (isShowElement(element)) {
     const when = readReactive(props.when);
     await streamHydratableNodeToController(
-      when ? resolveShowChildren(element, when) : (props.fallback as SinwanNode),
+      when
+        ? resolveShowChildren(element, when)
+        : (props.fallback as SinwanNode),
       controller,
       encoder,
       ctx,
@@ -558,6 +659,36 @@ async function streamHydratableElement(
     return;
   }
 
+  if (isErrorBoundaryElement(element)) {
+    try {
+      await streamHydratableNodeToController(
+        props.children as SinwanNode,
+        controller,
+        encoder,
+        ctx,
+        isComponentRoot,
+      );
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      const fallback = props.fallback;
+      const fallbackContent =
+        typeof fallback === "function"
+          ? (fallback as (error: Error, reset: () => void) => SinwanNode)(
+              error,
+              () => {},
+            )
+          : fallback;
+      await streamHydratableNodeToController(
+        fallbackContent as SinwanNode,
+        controller,
+        encoder,
+        ctx,
+        isComponentRoot,
+      );
+    }
+    return;
+  }
+
   if (typeof tag === "function") {
     await streamHydratableComponent(
       tag as SinwanComponent<any>,
@@ -565,7 +696,7 @@ async function streamHydratableElement(
       controller,
       encoder,
       ctx,
-      true,
+      false,
     );
     return;
   }
@@ -593,11 +724,15 @@ async function streamHydratableComponent(
   encoder: TextEncoder,
   ctx: HydratableStreamContext,
   isComponentRoot: boolean,
+  identifierPrefix?: string,
 ): Promise<void> {
   const parentInstance = getCurrentInstance();
   const instance = createComponentInstance(component, props, parentInstance);
   if (parentInstance) {
     parentInstance.children.push(instance);
+  }
+  if (identifierPrefix !== undefined) {
+    instance.identifierPrefix = identifierPrefix;
   }
 
   const prev = setCurrentInstance(instance);
@@ -813,7 +948,11 @@ async function streamForElement(
   }
 
   for (let index = 0; index < each.length; index++) {
-    await streamNode(props.children(each[index], () => index), controller, encoder);
+    await streamNode(
+      props.children(each[index], () => index),
+      controller,
+      encoder,
+    );
   }
 }
 
@@ -843,11 +982,18 @@ async function streamIndexElement(
   }
 
   for (let index = 0; index < each.length; index++) {
-    await streamNode(props.children(() => each[index], index), controller, encoder);
+    await streamNode(
+      props.children(() => each[index], index),
+      controller,
+      encoder,
+    );
   }
 }
 
-function resolveShowChildren(element: SinwanElement, value: unknown): SinwanNode {
+function resolveShowChildren(
+  element: SinwanElement,
+  value: unknown,
+): SinwanNode {
   const children = (element.props as any).children ?? element.children;
   if (typeof children === "function") {
     return children(value);
@@ -856,7 +1002,10 @@ function resolveShowChildren(element: SinwanElement, value: unknown): SinwanNode
 }
 
 function resolveSwitchContent(element: SinwanElement): SinwanNode {
-  const props = element.props as { fallback?: SinwanNode; children?: SinwanNode };
+  const props = element.props as {
+    fallback?: SinwanNode;
+    children?: SinwanNode;
+  };
   const children = normalizeContent(props.children ?? element.children);
 
   for (const child of children) {
@@ -874,7 +1023,10 @@ function resolveSwitchContent(element: SinwanElement): SinwanNode {
   return props.fallback;
 }
 
-function resolveMatchChildren(element: SinwanElement, value: unknown): SinwanNode {
+function resolveMatchChildren(
+  element: SinwanElement,
+  value: unknown,
+): SinwanNode {
   const children = (element.props as any).children ?? element.children;
   if (typeof children === "function") {
     return children(value);
@@ -882,7 +1034,10 @@ function resolveMatchChildren(element: SinwanElement, value: unknown): SinwanNod
   return children as SinwanNode;
 }
 
-function resolveKeyChildren(element: SinwanElement, value: unknown): SinwanNode {
+function resolveKeyChildren(
+  element: SinwanElement,
+  value: unknown,
+): SinwanNode {
   const children = (element.props as any).children ?? element.children;
   if (typeof children === "function") {
     return children(value);
@@ -890,7 +1045,10 @@ function resolveKeyChildren(element: SinwanElement, value: unknown): SinwanNode 
   return children as SinwanNode;
 }
 
-function createDynamicElement(element: SinwanElement, tag: unknown): SinwanElement | null {
+function createDynamicElement(
+  element: SinwanElement,
+  tag: unknown,
+): SinwanElement | null {
   if (typeof tag !== "string" && typeof tag !== "function") {
     return null;
   }
@@ -905,8 +1063,48 @@ function createDynamicElement(element: SinwanElement, tag: unknown): SinwanEleme
   };
 }
 
+/**
+ * Stream an island element: emit the static wrapper tag with hydration
+ * markers inside, plus the embedded props JSON the client needs to hydrate.
+ *
+ * Islands always render to a single `renderToHydratableString` call so each
+ * island has an independent marker counter starting at 0 — this is what
+ * makes them safe to hydrate individually on the client.
+ */
+async function streamIsland(
+  element: IslandElement,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  encoder: TextEncoder,
+): Promise<void> {
+  const { __island, __props } = element.props;
+  const inner = await renderHydratableComponent(__island.component, __props);
+
+  let json: string;
+  try {
+    json = __island.serializeProps(__props);
+  } catch (err) {
+    throw new Error(
+      `island(${__island.name}): failed to serialise props — ${(err as Error).message}`,
+    );
+  }
+
+  const safeName = escapeHtml(__island.name);
+  const safeProps = escapeIslandPropsJson(json);
+  controller.enqueue(
+    encoder.encode(
+      `<${__island.tag} ${ISLAND_ATTR}="${safeName}" ${ISLAND_PROPS_ATTR}="${safeProps}">${inner}</${__island.tag}>`,
+    ),
+  );
+}
+
 function readReactive(value: unknown): unknown {
-  return isSignal(value) || isComputed(value) ? (value as any).value : value;
+  if (isSignal(value) || isComputed(value)) {
+    return (value as any).value;
+  }
+  if (typeof value === "function" && (value as any)[STATE_GETTER_MARKER]) {
+    return (value as any)();
+  }
+  return value;
 }
 
 function normalizeContent(content: unknown): SinwanNode[] {

@@ -8,7 +8,7 @@ SinwanJS is designed to be a high-performance, predictable, and lightweight UI f
 
 In many frameworks (like React), your component function is a "render function" that runs over and over again. In Sinwan, your component function is a **"setup function"**.
 
-1.  **Run Once**: The code inside `createComponent(() => { ... })` runs exactly once when the component is created.
+1.  **Run Once**: The code inside `cc(() => { ... })` runs exactly once when the component is created.
 2.  **Initialize**: You create your signals, computeds, and effects in this single run.
 3.  **Return a Template**: You return a JSX structure that describes the UI.
 4.  **Live Forever**: The renderer looks at your JSX and creates **live bindings** between your signals and the DOM. The component function never needs to run again.

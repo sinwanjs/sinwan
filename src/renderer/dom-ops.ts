@@ -10,6 +10,7 @@
 export interface DOMOps {
   createElement(tag: string): Element;
   createElementNS(namespace: string, tag: string): Element;
+  createDocumentFragment(): DocumentFragment;
   createTextNode(text: string): Text;
   createComment(text: string): Comment;
   setAttribute(el: Element, key: string, value: string): void;
@@ -33,6 +34,10 @@ function createDefaultDOMOps(): DOMOps {
 
     createElementNS(namespace: string, tag: string): Element {
       return document.createElementNS(namespace, tag);
+    },
+
+    createDocumentFragment(): DocumentFragment {
+      return document.createDocumentFragment();
     },
 
     createTextNode(text: string): Text {
@@ -75,7 +80,11 @@ function createDefaultDOMOps(): DOMOps {
       el.addEventListener(event, handler);
     },
 
-    removeEventListener(el: Element, event: string, handler: EventListener): void {
+    removeEventListener(
+      el: Element,
+      event: string,
+      handler: EventListener,
+    ): void {
       el.removeEventListener(event, handler);
     },
 

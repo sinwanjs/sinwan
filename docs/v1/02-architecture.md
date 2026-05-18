@@ -1,261 +1,582 @@
-# Architecture
+# Sinwan Architecture: A DOM-First, Promise-Native UI Runtime
 
-This document explains how Sinwan works internally. It’s the mental model you need to use the framework effectively and to debug it when something behaves unexpectedly.
+This document is a technical manifesto for Sinwan. It is not a tutorial, nor marketing copy. It is an explanation of why Sinwan exists, what architectural bets it makes, what the code actually does, and what this enables next.
 
-## High-level layers
+---
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         Public API                          │
-│       (src/index.ts — re-exports of every layer below)      │
-└───────┬───────────────┬───────────────┬───────────────┬─────┘
-        │               │               │               │
-┌───────▼──────┐  ┌─────▼──────┐  ┌─────▼──────┐  ┌─────▼─────┐
-│  Reactivity  │  │ Components │  │   JSX      │  │  Escaper  │
-│  signals,    │  │ instance,  │  │ runtime +  │  │  HTML     │
-│  computed,   │  │ lifecycle, │  │ dev runtime│  │  escaping │
-│  effects,    │  │ provide/   │  │ Fragment,  │  │  raw,     │
-│  scheduler   │  │ inject     │  │ raw        │  │  safeHtml │
-└──────────────┘  └────────────┘  └────────────┘  └───────────┘
-        ▲               ▲               ▲               ▲
-        │               │               │               │
-┌───────┴───────────────┴───────────────┴───────────────┴─────┐
-│                          Renderers                          │
-├──────────────────────┬──────────────────────┬───────────────┤
-│  Client renderer     │  Server renderer     │   Hydration   │
-│  (DOM, real nodes)   │  (string / stream)   │  (walk DOM)   │
-└──────────────────────┴──────────────────────┴───────────────┘
-```
+## 1. Introduction
 
-Each layer has a single, well-defined responsibility and only depends on the layers strictly required to do its job.
+Sinwan is a UI runtime that treats the DOM as the ground truth and asynchrony as a first-class rendering primitive. Components do not “re-render” in the traditional VDOM sense. They run once to register reactive effects and lifecycle hooks. Fine‑grained reactivity mutates the DOM directly, under the control of an explicit scheduler.
 
-## Module layout
+Why another framework? Because the web’s central problem today is asynchrony interacting with rendering. Most systems bolt async onto an architecture designed for synchronous VDOM diffing, causing waterfalls, opaque re-render storms, and hydration edge cases. Sinwan instead bakes promises, signals, and DOM anchors into the renderer. The result is fewer incidental abstractions: the commit is literal DOM changes, scheduled with intent and bounded by anchors.
 
-```
-src/
-├── index.ts                  ← public re-exports
-├── types.ts                  ← SinwanNode, SinwanElement, SinwanComponent…
-├── escaper.ts                ← runtime-agnostic HTML escaping
-├── reactivity/
-│   ├── signal.ts             ← Signal<T>
-│   ├── computed.ts           ← Computed<T>
-│   ├── effect.ts             ← effect(), ReactiveEffect, track/trigger
-│   ├── batch.ts              ← batch()
-│   ├── scheduler.ts          ← microtask flush queue, nextTick()
-│   └── index.ts
-├── component/
-│   ├── instance.ts           ← ComponentInstance, current-instance stack
-│   ├── lifecycle.ts          ← onMounted / onUnmounted / onUpdated / onError
-│   ├── provide-inject.ts     ← provide() / inject()
-│   ├── create.ts             ← createComponent / createPage / createLayout
-│   └── index.ts
-├── jsx/
-│   ├── jsx-runtime.ts        ← jsx, jsxs, Fragment, raw, HtmlEscapedString
-│   ├── jsx-dev-runtime.ts    ← jsxDEV
-│   └── jsx-types.ts          ← SinwanIntrinsicElements
-├── renderer/
-│   ├── mount.ts              ← mount(), render(), unmountNode()
-│   ├── render-element.ts     ← element / component / fragment to DOM
-│   ├── render-children.ts    ← children + reactive text
-│   ├── attributes.ts         ← class/style/boolean/reactive attrs
-│   ├── events.ts             ← onXxx event binding
-│   ├── dom-ops.ts            ← thin wrapper over DOM APIs
-│   ├── types.ts              ← MountedNode, AppInstance
-│   └── index.ts
-├── server/
-│   ├── renderer.ts           ← renderToString, renderPage, page registry
-│   ├── stream.ts             ← streamPage (ReadableStream<Uint8Array>)
-│   ├── hydration-markers.ts  ← renderToHydratableString
-│   └── index.ts
-└── hydration/
-    ├── hydrate.ts            ← hydrate()
-    ├── walk.ts               ← DOM cursor walker
-    ├── markers.ts            ← marker constants + parsers
-    └── index.ts
-```
+---
 
-## The element model
+## 2. Rendering Philosophy
 
-JSX in Sinwan is **not** a virtual DOM. The runtime functions return a small, plain object:
+Sinwan’s JSX factory builds a declarative description (`SinwanElement`) that the renderer owns. Crucially, it does not call function components during element creation; this preserves instance/lifecycle control:
 
 ```ts
-interface SinwanElement {
-  tag: string | SinwanComponent<any>; // "div" or a function
-  props: Record<string, unknown>;
-  children: SinwanNode[];
+// src/jsx/jsx-runtime.ts (excerpt)
+function buildElement(
+  type: any,
+  props: any,
+  children: SinwanNode[],
+): SinwanElement {
+  // ...
+  // The renderer (client / server / hydration) is the single owner of
+  // component-instance creation and lifecycle dispatch.
+  // Calling the function eagerly here would bypass instance management.
+  if (typeof type === "function" || typeof type === "string") {
+    const finalProps = props ?? {};
+    if (children.length > 0 && finalProps.children === undefined) {
+      finalProps.children = children.length === 1 ? children[0] : children;
+    }
+    return { tag: type, props: finalProps, children };
+  }
+  return { tag: "", props: {}, children };
 }
 ```
 
-`SinwanNode` is the recursive type accepted anywhere a child can appear:
+The component return value is not a VDOM that must be diffed later. Instead, Sinwan treats the returned structure as a one-time description of where to place anchors and which reactive computations to register. Subsequent updates are produced by effects, not by re-running components.
+
+Two design choices are central:
+
+- The node model explicitly encodes asynchrony and reactivity:
 
 ```ts
-type SinwanNode =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
+// src/types.ts (excerpt)
+export type SinwanNode =
+  | SinwanPrimitive
   | SinwanElement
-  | Promise<SinwanElement>
+  | Promise<SinwanNode> // async nodes are first-class
   | HtmlEscapedString
+  | Signal<unknown> // fine-grained reactive values
+  | Computed<unknown>
+  | (() => unknown) // getter as reactive node
   | SinwanNode[];
 ```
 
-A renderer (client, server, hydrator) walks this tree and produces output. The object is **not retained** between renders — there is no diffing.
+- The renderer is DOM-first. It mutates the DOM in place, using comment anchors to delimit reactive regions. There is no global virtual tree to diff.
 
-## Fine-grained reactivity (no diffing)
+Why Promise-based rendering matters: Promises are not an afterthought hidden behind hooks. They are accepted input to the renderer, which installs anchors, placeholders, and swap logic that cooperate with Suspense boundaries and memory management. This eliminates much of the incidental complexity that VDOM diffing must shoulder around async.
 
-Most React-like libraries re-run the component function and diff a virtual tree. Sinwan instead binds reactivity directly to the DOM at construction time:
+---
 
-| Where a `Signal` / `Computed` appears | What the renderer does                                              |
-| ------------------------------------- | ------------------------------------------------------------------- |
-| As a child node `{count}`             | Creates a `Text` node + `effect(() => text.data = String(s.value))` |
-| As an attribute `class={c}`           | Creates an `effect(() => el.setAttribute("class", c.value))`        |
-| As a property `value={input}`         | Same idea, mapped to DOM property when applicable                   |
+## 3. Async Components as First-Class Rendering Primitives
 
-The component function runs **once** per mount/hydrate. After that, only effects fire, each updating exactly one node or one attribute. No diffs, no scheduler walks of a virtual tree, no per-update re-execution of user code.
-
-This is the same model used by SolidJS and Preact Signals, plus a Vue-style component instance for lifecycle and DI.
-
-## The scheduler (microtask flush)
-
-Signals don’t trigger effects synchronously. They schedule them on the **microtask queue**, deduplicated by effect identity:
-
-```text
-counter.value = 1;       ─┐
-counter.value = 2;        ├──> single microtask flush, effects run once
-otherSignal.value = 99;  ─┘
-```
-
-Effects within a flush are sorted by their **creation id** (a monotonic counter), guaranteeing parent effects run before child effects. New effects scheduled during the flush are drained in the same pass with a safety limit (10) to prevent runaway loops.
-
-Two functions let you control the timing:
-
-- `batch(fn)` — collects writes, flushes synchronously when the outermost `batch` exits.
-- `nextTick(fn?)` — returns a `Promise<void>` that resolves **after** the next flush; perfect for tests and post-update DOM measurements.
-
-See [`03-reactivity.md`](./03-reactivity.md) for the deep dive.
-
-## Component instance & lifecycle
-
-Each component call creates a `ComponentInstance` (similar to Vue’s):
+Sinwan accepts `Promise<SinwanNode>` anywhere a node is expected. The client renderer recognizes promises and creates an explicit async block with start/end anchors and a placeholder:
 
 ```ts
-interface ComponentInstance {
-  uid: number;
-  component: SinwanComponent<any>;
-  props: Record<string, any>;
-  parent: ComponentInstance | null;
-  children: ComponentInstance[];
-  effects: CleanupFn[]; // every effect created during setup
-  _mountedHooks: (() => void)[];
-  _unmountedHooks: (() => void)[];
-  _updatedHooks: (() => void)[];
-  _errorHooks: ((err: Error) => void)[];
-  provides: Record<string | symbol, unknown>; // prototype-chained
-  isMounted: boolean;
-  isUnmounted: boolean;
-  // ...
+// src/renderer/render-children.ts (excerpt)
+if (node instanceof Promise) {
+  const startAnchor = domOps.createComment("Sinwan-a");
+  const endAnchor = domOps.createComment("/Sinwan-a");
+  const placeholder = domOps.createTextNode("");
+  insertNode(parent, startAnchor, anchor);
+  insertNode(parent, placeholder, anchor);
+  insertNode(parent, endAnchor, anchor);
+
+  const mounted: MountedAsync = {
+    type: "async",
+    startAnchor,
+    endAnchor,
+    placeholder,
+    children: [],
+    disposed: false,
+  };
+
+  const owner = getCurrentInstance();
+
+  node.then((resolved) => {
+    if (mounted.disposed) return; // disposal protection
+    const resolvedNode = renderNodeToDOM(
+      resolved,
+      parent,
+      endAnchor,
+      namespace,
+    );
+    mounted.children = [resolvedNode];
+    domOps.remove(placeholder); // swap
+    if (owner) fireMountedHooks(owner);
+    queueUpdatedHooks(owner);
+  });
+  return mounted;
 }
 ```
 
-A global `currentInstance` stack lets `onMounted`, `provide`, `inject`, etc. register on the right instance during the synchronous component call. After setup the stack is restored to its previous value; lifecycle callbacks temporarily reactivate their owning instance while they run, so synchronous cleanup registration like `onMounted(() => onUnmounted(cleanup))` still targets the same component.
+At the application root, `mount()` also handles async components without synthetic “loading” state in userland:
 
-**Lifecycle order** (matches Vue):
+```ts
+// src/renderer/mount.ts (excerpt)
+if (result instanceof Promise) {
+  const placeholder = domOps.createTextNode("");
+  domOps.appendChild(container, placeholder);
+  root = { type: "text", node: placeholder };
+  const rootRef: { current: MountedNode } = { current: root };
 
-- `onMounted`: bottom-up — children first, then parent.
-- `onUnmounted`: bottom-up — children first, then parent. Effects of the instance are disposed here.
-- `onError`: bubbles up the parent chain until a handler is found, then logs to `console.error` if none.
-
-## Rendering pipelines
-
-### Client (`mount`)
-
-```text
-mount(Counter, container)
-  ├─ create root ComponentInstance
-  ├─ setCurrentInstance(instance)
-  ├─ result = Counter(props)
-  │     └─ during this call:
-  │           - signals are created
-  │           - onMounted/onUnmounted register on `instance`
-  │           - provide() writes to instance.provides
-  ├─ renderElementToDOM(result, container)
-  │     - intrinsic <div> → real Element + attrs + events
-  │     - signal child   → Text + effect()
-  │     - sub-component  → recurse, push child instance
-  ├─ setCurrentInstance(null)
-  └─ fireMountedHooks(instance)   // bottom-up; each hook runs with its owner active
+  result.then(
+    (resolved) => {
+      container.innerHTML = "";
+      setCurrentInstance(instance);
+      rootRef.current = renderElementToDOM(resolved, container);
+      setCurrentInstance(null);
+      instance.element = rootRef.current;
+      fireMountedHooks(instance);
+    },
+    (err) => {
+      container.innerHTML = "";
+      handleComponentError(instance, err as Error);
+    },
+  );
+  // returns AppInstance with unmount() that marks async nodes disposed
+}
 ```
 
-### Server (`renderToString`)
+This differs from hook-based async models in two ways:
 
-The server renderer is `async` because components and the JSX they return can be `Promise<SinwanElement>` (async components). It walks the same `SinwanElement` tree and produces an HTML string. Every text value (and every attribute value) is escaped via [`escapeHtml`](./11-escaping.md).
+- The renderer owns the lifecycle of async placeholders and swaps. There is an explicit `disposed` flag on `MountedAsync`, and the unmount path sets it to prevent post-unmount insertion. This is a correctness property, not a convention.
+- Suspense is implemented as a renderer boundary that intercepts thrown promises and schedules a retry when they resolve, instead of re-rendering a whole component tree speculatively.
 
-`streamPage` does the same, but pushes `Uint8Array` chunks into a `ReadableStream` as it walks the tree, using a `TextEncoder`. Both APIs are runtime-agnostic — they only depend on Web Streams and `TextEncoder` (available in Bun, Node ≥ 18, Deno, Cloudflare Workers, browsers).
+Implications for streaming and concurrency:
 
-### Hydration (`hydrate`)
+- On the server, `renderToString()` and hydratable rendering recognize promises and can sequence output without warping the component model. Async is payload-driven, not re-render-driven.
+- In the client, async swaps are bounded by anchors, so partial tree availability and concurrent chunks are tractable without diffing.
 
-`renderToHydratableString` adds three kinds of markers:
+---
 
-| Marker                                   | Where                       | Purpose                            |
-| ---------------------------------------- | --------------------------- | ---------------------------------- |
-| `data-sinwan-id="cN"`                    | Component root element      | Identify component boundaries      |
-| `<!--sinwan-t:N-->value<!--/sinwan-t-->` | Reactive text slot          | Locate reactive text on the client |
-| `data-sinwan-ev="click:N"`               | Element with event handlers | Optional event-binding hints       |
+## 4. DOM Architecture
 
-On the client, `hydrate(Component, container, props)`:
+Sinwan’s DOM renderer is explicit about what is inserted, where, and how it is later updated or removed. There is no implicit reconciliation; everything is bounded by anchors and effects.
 
-1. Runs **the component once** to recreate signals, register hooks, etc. — no DOM is created.
-2. Walks the existing DOM with a `HydrationCursor`, pairing each `SinwanNode` with the matching real node.
-3. For each signal child, finds the `<!--sinwan-t:N-->…<!--/sinwan-t-->` pair and attaches an `effect` to update the inner text node.
-4. For each event handler in JSX, calls `addEventListener` on the live element.
-5. Reactive attributes get effects; static attributes are left alone (they are already correct in the SSR output).
-6. Fires `onMounted` bottom-up.
+- Intrinsic elements are created and wired once:
 
-See [`10-hydration.md`](./10-hydration.md) for the full protocol.
+```ts
+// src/renderer/render-element.ts (excerpt)
+const el = namespace
+  ? domOps.createElementNS(namespace, tag)
+  : domOps.createElement(tag);
 
-## Build pipeline
+const attrDisposers = applyAttributes(el, props); // per-attr reactive effects
+const eventCleanups = bindEvents(el, props); // direct listeners
 
-The Sinwan build produces React-style dual artefacts:
-
-```
-dist/
-├── index.js                      ← CJS shim (NODE_ENV branch)
-├── index.mjs                     ← ESM fallback (re-exports prod ESM)
-├── index.d.ts                    ← types
-├── jsx-runtime.{js,mjs,d.ts}
-├── jsx-dev-runtime.{js,mjs,d.ts}
-├── server.{js,mjs,d.ts}
-├── cjs/
-│   ├── package.json              ← {"type":"commonjs"}
-│   ├── index.development.js
-│   ├── index.production.min.js
-│   └── (jsx, jsx-dev, server, …)
-└── esm/
-    ├── package.json              ← {"type":"module"}
-    └── (same tree)
+if (!VOID_ELEMENTS.has(tag)) {
+  const dangerous = props.dangerouslySetInnerHTML as
+    | { __html?: string }
+    | undefined;
+  if (dangerous && typeof dangerous.__html === "string") {
+    (el as HTMLElement).innerHTML = dangerous.__html;
+  } else {
+    if ((el as HTMLElement).innerHTML !== "")
+      (el as HTMLElement).innerHTML = "";
+    mountedChildren = renderChildrenToDOM(
+      children,
+      el,
+      getChildNamespace(tag, namespace),
+    );
+  }
+}
 ```
 
-The package’s `exports` field combines `import` / `require` × `development` / `production` conditions so any modern bundler picks the optimal file automatically. See [`13-build-and-deploy.md`](./13-build-and-deploy.md).
+- Reactive blocks use comment anchors to delimit swappable content. When a dependent signal changes, the previous mounted subtree is removed and the new one is inserted between the anchors:
 
-## Why no virtual DOM?
+```ts
+// src/renderer/render-children.ts (excerpt)
+function renderReactiveNodeToDOM(
+  reactive,
+  parent,
+  anchor,
+  namespace,
+): MountedNode {
+  const startAnchor = domOps.createComment("Sinwan-r");
+  const endAnchor = domOps.createComment("/Sinwan-r");
+  insertNode(parent, startAnchor, anchor);
+  insertNode(parent, endAnchor, anchor);
+  // ...
+  block.dispose = effect(() => {
+    if (mountedContent) removeMountedNode(mountedContent); // cleanup
+    const value = resolve(reactive);
+    mountedContent = renderNodeToDOM(
+      value as SinwanNode,
+      parent,
+      endAnchor,
+      namespace,
+    );
+    block.children = [mountedContent];
+    if (initialized) {
+      if (owner) fireMountedHooks(owner);
+      queueUpdatedHooks(owner);
+    }
+    initialized = true;
+  });
+  return block;
+}
+```
 
-- **Smaller runtime.** No reconciliation engine, no fiber tree, no key heuristics.
-- **Predictable updates.** A signal change updates exactly one node — you can reason about it node by node.
-- **Streaming-friendly SSR.** No “unbounded children → finite output” mismatch when streaming.
-- **Hydration that doesn’t re-render.** Because there’s no virtual tree to diff, hydration is just “walk and attach”.
+- Control-flow primitives (Show, For, Switch, Index, Key, Dynamic, Portal, Suspense, Activity, ViewTransition, ErrorBoundary) are tagged (`Symbol.for("Sinwan.X")`) and rendered by specialized block renderers in `render-control-flow.ts`. They all install block anchors (`"Sinwan-b"`/`"/Sinwan-b"`) and then manage children within those bounds.
 
-Structural changes use dedicated primitives instead of a virtual-DOM diff. Use `<Show>` for conditional subtrees and `<For>` for keyed reactive lists; both render between stable anchors and clean up removed component trees.
+- Keyed list reconciliation is surgical. Items are tracked in a map by key; existing DOM nodes are moved before the block’s end anchor instead of being recreated:
 
-## Performance characteristics
+```ts
+// src/renderer/render-control-flow.ts (excerpt)
+const oldByKey = new Map<unknown, ForRecord<T>>();
+for (const record of records) oldByKey.set(record.key, record);
+// ... for each next item
+if (old && old.item === item) {
+  old.index = index;
+  moveBeforeEnd(parent, old.mounted, block.endAnchor); // DOM preservation
+  nextRecords.push(old);
+  oldByKey.delete(key);
+  return;
+}
+// ...remove stale, render new, then
+block.children = nextRecords.map((r) => r.mounted);
+```
 
-- **Mount cost**: roughly one DOM operation per node + one effect per reactive binding.
-- **Update cost**: O(1) per changed signal, regardless of tree size. Each signal stores its subscribers in a `Set<ReactiveEffect>`.
-- **Memory**: each instance keeps a `parent`, a `children` array, and a `provides` object whose `[[Prototype]]` is the parent’s — `O(1)` per instance with cheap inherited lookups.
+- Unmounting is precise and leak-averse. Every mounted node type knows how to dispose its effects, events, and refs, then recursively descends:
 
-## Going further
+```ts
+// src/renderer/unmount.ts (excerpt)
+export function unmountNode(node: MountedNode): void {
+  switch (node.type) {
+    case "element":
+      for (const d of node.attrDisposers) d();
+      for (const c of node.eventCleanups) c();
+      node.refCleanup?.();
+      for (const child of node.children) unmountNode(child);
+      break;
+    case "reactive-block":
+      node.dispose();
+      for (const child of node.children) unmountNode(child);
+      break;
+    case "async":
+      node.disposed = true; // prevents late insert
+      for (const child of node.children) unmountNode(child);
+      break;
+    // ...others elided
+  }
+}
+```
 
-- The next document, [`03-reactivity.md`](./03-reactivity.md), gives the precise semantics of every reactive primitive.
-- [`08-renderer.md`](./08-renderer.md) and [`09-ssr.md`](./09-ssr.md) cover the renderers in detail.
-- For the published-package shape and the build script, jump to [`13-build-and-deploy.md`](./13-build-and-deploy.md).
+Batching strategy and lifecycle:
+
+- Attribute and text effects call `queueUpdatedHooks(owner)` on subsequent runs, which defers `onUpdated` callbacks to the next reactive flush (microtask), deduplicated per instance.
+- `fireMountedHooks` is bottom‑up (children first), ensuring effects and DOM are stabilized before parent post-mount work.
+
+---
+
+## 5. Reactivity System
+
+Sinwan’s reactivity is classical but deliberate: signals track dependencies, effects are scheduled (not run synchronously on write), and computeds are lazily evaluated.
+
+- Signals: reads track, writes trigger. They also support push-style manual subscriptions (for interop):
+
+```ts
+// src/reactivity/signal.ts (excerpt)
+get value(): T { track(this); return this._value; }
+set value(newValue: T) {
+  if (Object.is(this._value, newValue)) return;
+  this._value = newValue;
+  trigger(this);                 // schedule subscribers
+  for (const fn of this._manualSubs) fn(newValue);
+}
+```
+
+- Effects: `ReactiveEffect` stores the user cleanup, the dep set, and a `notify()` that delegates to the scheduler:
+
+```ts
+// src/reactivity/effect.ts (excerpt)
+export class ReactiveEffect implements EffectNode {
+  run(): void {
+    if (!this.active) return;
+    if (effectStack.includes(this)) return; // prevent re-entry
+    this.cleanupDeps();
+    if (this.cleanup) {
+      this.cleanup();
+      this.cleanup = undefined;
+    }
+    effectStack.push(this);
+    const prev = activeEffect;
+    activeEffect = this;
+    try {
+      const result = this.fn();
+      if (typeof result === "function") this.cleanup = result;
+    } finally {
+      activeEffect = prev;
+      effectStack.pop();
+    }
+  }
+  notify(): void {
+    scheduleEffect(this);
+  }
+  dispose(): void {
+    /* run cleanup, clear deps, unschedule */
+  }
+}
+```
+
+- Scheduler: microtask-based, effect-queue sorted parent-before-child (by id), convergence loop for effects scheduled during flush, and `nextTick` for post-flush callbacks:
+
+```ts
+// src/reactivity/scheduler.ts (excerpt)
+export function scheduleEffect(effect: EffectNode): void {
+  if (!effect.active) return;
+  pendingEffects.add(effect);
+  if (!flushScheduled) {
+    flushScheduled = true;
+    queueMicrotask(flush);
+  }
+}
+function flush(): void {
+  isFlushing = true;
+  let sorted =
+    pendingEffects.size <= 1
+      ? [...pendingEffects]
+      : [...pendingEffects].sort((a, b) => a.id - b.id);
+  pendingEffects.clear();
+  for (const e of sorted)
+    if (e.active) {
+      try {
+        e.run();
+      } catch (err) {
+        /* log */
+      }
+    }
+  // drain newly queued effects up to safety limit
+  // ...
+  flushScheduled = false;
+  isFlushing = false;
+  const cbs = pendingCallbacks.splice(0);
+  for (const cb of cbs) cb();
+}
+```
+
+- Computed: lazily recomputes and short-circuits scheduler participation by overriding the internal effect’s `notify()` to mark dirty and trigger downstream subscribers:
+
+```ts
+// src/reactivity/computed.ts (excerpt)
+this._effect = new ReactiveEffect(() => {
+  self._value = getter();
+});
+this._effect.notify = function () {
+  if (!self._dirty) {
+    self._dirty = true;
+    trigger(self);
+  }
+};
+```
+
+- Normalization: DOM renderer treats signals, computeds, and 0‑arity getters uniformly. This is why `SinwanNode` includes `(() => unknown)` and why attributes accept `Reactive<T>`.
+
+- Batching: `batch(fn)` suppresses intermediate microtasks and forces a synchronous flush at scope exit via `flushSync()`. This is for deterministic update compaction without opting into synchronous effects globally.
+
+Comparison with SolidJS signals: The fundamental graph semantics are similar (fine-grained signals, lazy memos, scheduled effects). The key difference is that Sinwan integrates async nodes and control-flow boundaries into the core renderer and lifecycle model (anchors + boundary stacks), shaping scheduling and cleanup around those primitives. This reduces the need for userland conventions for async.
+
+Performance implications: No VDOM diffing, minimal object churn (effects and small mounted descriptors), strict cleanup discipline, and microtask scheduling that naturally batches bursts of changes with predictable `nextTick` points.
+
+---
+
+## 6. Lifecycle System
+
+Lifecycle is instance-scoped and explicit. There is a globally shared current instance slot keyed by `Symbol.for("sinwan.currentInstance")` to bridge across multiple bundles.
+
+- Instances capture hooks and own effects:
+
+```ts
+// src/component/instance.ts (excerpt)
+export function ccInstance(component, props, parent) {
+  return {
+    uid: uidCounter++,
+    component,
+    props,
+    element: null,
+    parent,
+    children: [],
+    effects: [],
+    _mountedHooks: [],
+    _unmountedHooks: [],
+    _updatedHooks: [],
+    _disposeHooks: [],
+    _hydratedHooks: [],
+    _errorHooks: [],
+    provides: parent ? Object.create(parent.provides) : Object.create(null),
+    identifierPrefix: parent?.identifierPrefix ?? "",
+    isMounted: false,
+    isUnmounted: false,
+  };
+}
+```
+
+- Hooks are batched and fired with well-defined ordering:
+
+```ts
+// src/component/lifecycle.ts (excerpt)
+export function onMounted(fn: () => void) {
+  instance._mountedHooks.push(() => withInstance(instance, fn));
+}
+export function onUpdated(fn: () => void) {
+  instance._updatedHooks.push(() => withInstance(instance, fn));
+}
+export function onUnmounted(fn: () => void) {
+  instance._unmountedHooks.push(() => withInstance(instance, fn));
+}
+```
+
+- Updated hooks run once per flush, deduplicated:
+
+```ts
+// src/component/instance.ts (excerpt)
+const queuedUpdatedHooks = new Set<ComponentInstance>();
+export function queueUpdatedHooks(instance: ComponentInstance | null): void {
+  if (
+    !instance ||
+    !instance.isMounted ||
+    instance.isUnmounted ||
+    instance._updatedHooks.length === 0 ||
+    queuedUpdatedHooks.has(instance)
+  )
+    return;
+  queuedUpdatedHooks.add(instance);
+  nextTick(() => {
+    queuedUpdatedHooks.delete(instance);
+    if (instance.isMounted && !instance.isUnmounted) {
+      fireUpdatedHooks(instance);
+    }
+  });
+}
+```
+
+- Activity boundaries enable “soft-hide”: dispose effects and fire `onDispose`, but preserve the DOM and instance so it can be soft-shown later (hooks re-register by re-running setup with slot reuse).
+
+Async lifecycle synchronization: Because effects are scheduled by a microtask queue and updated hooks are queued post-flush, user code sees deterministic mount → (reactive updates) → updated ordering, including when async blocks resolve.
+
+---
+
+## 7. Error Handling Philosophy
+
+Sinwan isolates component failures via explicit error boundaries and an instance-walking error handler.
+
+- Errors propagate up the instance chain until an `_errorHooks` handler is found; otherwise they are logged and the renderer inserts a benign placeholder to keep anchors consistent.
+
+- Suspense turns thrown promises into control flow rather than fatal errors. Within `renderComponentToDOM`, promises thrown during child rendering are registered on the active Suspense boundary instead of crashing the render. The boundary then coordinates fallback rendering and retries:
+
+```ts
+// src/renderer/suspense-boundary.ts and render-control-flow.ts (excerpt)
+const boundary = {
+  promises: new Set<PromiseLike<unknown>>(),
+  onResolved: () => {},
+};
+pushSuspenseBoundary(boundary);
+try {
+  // render children; thrown promises bubble to this boundary
+} catch (err) {
+  if (typeof (err as any).then === "function") {
+    boundary.promises.add(err as PromiseLike<unknown>);
+    // show fallback; schedule retry via microtask on resolution
+  } else {
+    throw err;
+  }
+}
+for (const promise of boundary.promises) {
+  promise.then(() => boundary.onResolved());
+}
+boundary.promises.clear();
+```
+
+Runtime resilience: Error paths always preserve anchors and placeholders. That means the DOM shape observed by siblings/parents remains valid, and future retries have a coherent insertion point.
+
+---
+
+## 8. Performance Philosophy
+
+- DOM-first rendering: No VDOM diff tree is built or reconciled. Effects update exactly the nodes that depend on changed state. Intrinsics are created once; attributes are updated individually.
+
+- Avoiding VDOM overhead: Reactive attributes, fragments, and blocks keep node allocation and garbage generation low. Movement uses `insertBefore` across collected node spans.
+
+- Async scheduling: The microtask scheduler naturally batches multiple signal writes. `batch()` groups multi-signal updates into a single pass when determinism is needed.
+
+- Memory efficiency: Every mounted descriptor contains only what is needed for its cleanup. `unmountNode()` centralizes discipline for events, attrs, refs, reactive-blocks, component effects, async disposal, and portals.
+
+- Mount/update costs: Component setup runs once; updates are effects re-running targeted DOM work. This eliminates the cost of re-running component functions and building throwaway VDOMs under load.
+
+- Scalability: Anchors bound subtrees, enabling localized updates even in very large trees. Suspense and portals compose without global coordination.
+
+Direct event binding: Sinwan binds handlers directly to elements, not delegated on the document, simplifying hydration and tracing:
+
+```ts
+// src/renderer/events.ts (excerpt)
+export function bindEvent(
+  el: Element,
+  eventName: string,
+  handler: EventListener,
+): CleanupFn {
+  domOps.addEventListener(el, eventName, handler);
+  return () => domOps.removeEventListener(el, eventName, handler);
+}
+```
+
+---
+
+## 9. Comparison with Other Frameworks
+
+- React (Fiber + VDOM):
+  - React’s mental model is component re-render → diff → commit. Async is largely modeled via hooks (e.g., Suspense with thrown promises, concurrent rendering heuristics) layered on top of Fiber scheduling, with reconciliation of virtual trees.
+  - Sinwan runs component setup once, registers effects, and commits DOM changes driven by signals and promises. No VDOM diff. Suspense and async are boundary-first and anchor-bounded. The “commit phase” is literal DOM operations orchestrated by effects.
+  - React’s `useEffect` runs after render; Sinwan’s React bridge maps no-deps effects to `onMounted` + `onUpdated` and deps-based effects to reactive effects, scheduled via microtasks.
+
+- SolidJS:
+  - Similar fine-grained reactive graph. Solid also avoids VDOM and commits DOM directly.
+  - Sinwan diverges by integrating Promise-based nodes and control-flow into the renderer as a core primitive (MountedAsync, Suspense boundary stack), and by exposing a DOM-anchored reconciliation strategy for control-flow blocks.
+
+- Vue 3:
+  - Shares a microtask scheduler with `nextTick`, effect tracking, and computed lazy evaluation. Vue uses VDOM in the template compiler path; Sinwan does not. Sinwan’s list reconciliation in `For` is explicit DOM move logic instead of VDOM diff keyed patches.
+
+- Svelte:
+  - Compiler-first, turning components into imperative DOM instructions, minimizing runtime. Sinwan is runtime-first with explicit signals/effects and anchors. The cost tradeoff: Sinwan carries a tiny reactive runtime and block renderer; in exchange it gains promise-native rendering and uniform control-flow semantics.
+
+- Qwik:
+  - Resumability shifts work from hydration to lazy-resume of serialized listeners/state. Sinwan instead implements hydratable markers and islands for partial hydration, and an Activity soft-hide/show model. Both target interactivity at scale; Sinwan emphasizes anchor-bounded DOM updating and microtask effects rather than event-driven resumption.
+
+---
+
+## 10. Future Potential
+
+The current architecture directly enables:
+
+- Streaming SSR: The server renderer already accepts promises and can sequence output around them. Hydration markers (`data-sinwan-id`, text markers, event indices) make client hydration precise without rebuilding VDOM.
+
+- Suspense boundaries: Implemented as block renderers with a boundary stack; compatible with server/client parity.
+
+- Partial hydration and islands: `island()` wraps components with name + props JSON, resets hydration indices per-island, and supports `hydrate()` entry on the client for that subtree only.
+
+- Concurrent rendering: Because anchors bound updates and effects are scheduled, concurrent chunking becomes an orchestration problem, not an architectural rewrite. The boundary stack pattern used for Suspense generalizes to other resource gates.
+
+- Fine-grained async scheduling: The scheduler can be extended with priorities or cooperative yielding without changing the component model.
+
+---
+
+## 11. Architectural Tradeoffs
+
+- Complexity of anchors and boundaries: Managing start/end anchors, disposal, and block-local reconciliation is more explicit than VDOM diffing, which can hide these details. The benefit is predictable DOM behavior; the cost is careful invariants.
+
+- Async waterfalls: Promise-native rendering does not prevent waterfalls by itself; it simply makes asynchrony explicit in the renderer. Boundaries (Suspense, islands) and data-fetch orchestration are still design responsibilities.
+
+- Reconciliation challenges: In `For`, mis-specified keys can cause unnecessary DOM churn. The code explicitly removes/moves nodes; this is powerful but sharp. Correct keys are critical.
+
+- Memory risks: If custom block renderers fail to dispose effects or event handlers, leaks can occur. Sinwan centralizes cleanup in `unmountNode()` and instance teardown, but invariants must be respected across integrations.
+
+- Debugging difficulty: Microtask batching and effect graphs can be non-intuitive compared to step-by-step re-renders. `nextTick` and lifecycle ordering help, but tooling (devtools, effect tracing) is essential.
+
+- Scheduling overhead: Deferring effects to microtasks adds latency vs synchronous writes. Sinwan opts into determinism and batching; `batch()`/`flushSync()` are provided for tight loops.
+
+- Developer ergonomics: Signals in attributes and reactive getters are powerful but require mental models different from React’s prop-value snapshots. The React bridge smooths this but doesn’t change core semantics.
+
+---
+
+## 12. Conclusion
+
+Sinwan is a bet: that a DOM-first, promise-native, fine-grained runtime can confront the hard parts of modern UI-async, streaming, partial hydration, concurrency by elevating them into the renderer rather than hiding them behind a VDOM and re-render semantics. The architecture favors explicitness: anchors over diffs, scheduled effects over implicit re-renders, boundaries over global heuristics.
+
+This is not merely a library. It is an argument that the commit should be the DOM, that asynchrony should be modeled where it manifests (in the renderer), and that reactive graphs can give us the granularity the web demands without paying the VDOM tax. The code reflects this thesis: promises and signals are accepted at the type level (`SinwanNode`), anchors are the unit of reconciliation, and lifecycle is synchronized to the scheduler.
+
+The path forward is clear: enrich the scheduler (priorities, spans), push streaming SSR and selective hydration further (islands + markers), and deepen the toolchain (profiling, effect graph introspection). The next frontier isn’t more layers of abstraction; it’s exposing the right ones anchors, effects, and boundaries to build reliable, concurrent, and streamable interfaces.

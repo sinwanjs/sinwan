@@ -11,6 +11,10 @@ import type { Signal, Computed } from "./reactivity/index.ts";
 // Primitive node types that can be rendered
 export type SinwanPrimitive = string | number | boolean | null | undefined;
 
+declare global {
+  var __DEV__: boolean | undefined;
+}
+
 /**
  * A value that may be plain `T` or a reactive container (`Signal<T>` /
  * `Computed<T>`). Used by JSX attribute types so reactive props type-check.
@@ -24,44 +28,33 @@ export interface SinwanElement {
   children: SinwanNode[];
 }
 
-// Recursive node type — accepts primitives, elements, async elements,
-// pre-escaped HTML, reactive containers (signals/computeds), and arrays.
-export type SinwanNode =
+// Sync node type — accepts primitives, elements, pre-escaped HTML,
+// reactive containers (signals/computeds), and arrays.
+export type SinwanSyncNode =
   | SinwanPrimitive
   | SinwanElement
-  | Promise<SinwanElement>
   | HtmlEscapedString
   | Signal<unknown>
   | Computed<unknown>
   | (() => unknown)
   | SinwanNode[];
 
+// Recursive node type — accepts sync nodes and async nodes. Promises resolve to
+// the sync layer to avoid recursive Awaited<>/then inference in async components.
+export type SinwanNode = SinwanSyncNode | Promise<SinwanSyncNode>;
+
 // Named slots for advanced composition
 export type SinwanSlots = Record<string, SinwanNode>;
 
 // Component function type - single props argument with children injected
 export interface SinwanComponent<P extends object = {}> {
-  (
-    props: P & { children?: SinwanNode | SinwanSlots },
-  ): SinwanElement | Promise<SinwanElement>;
+  (props: P & { children?: SinwanNode | SinwanSlots }): SinwanNode;
   _SinwanComponent?: true;
   _displayName?: string;
 }
 
-// Page function type - receives data object, returns element tree
-export interface SinwanPage<D extends object = {}> {
-  (data: D): SinwanElement | Promise<SinwanElement>;
-  _SinwanPage?: true;
-  _displayName?: string;
-}
-
-// Layout is just a component with children
-export type SinwanLayout<P extends object = {}> = SinwanComponent<
-  P & { children: SinwanNode }
->;
-
 // Render result can be sync or async
-export type RenderResult = SinwanElement | Promise<SinwanElement>;
+export type RenderResult = SinwanNode;
 
 // Props with children helper
 export type PropsWithChildren<P = {}> = P & { children?: SinwanNode };
@@ -72,5 +65,5 @@ export type PropsWithSlots<P = {}> = P & { children?: SinwanSlots };
 // Component registry entry
 export interface PageEntry<D extends object = {}> {
   name: string;
-  page: SinwanPage<D>;
+  page: SinwanComponent<D>;
 }

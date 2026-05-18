@@ -21,9 +21,11 @@ import {
   createComponentInstance,
   setCurrentInstance,
   fireMountedHooks,
+  fireHydratedHooks,
   fireUnmountedHooks,
   handleComponentError,
 } from "../component/instance.ts";
+import { domOps } from "../renderer/dom-ops.ts";
 import { hydrateNode, hydrateElement, type HydrationCursor } from "./walk.ts";
 
 /**
@@ -42,11 +44,15 @@ export function hydrate(
   component: SinwanComponent<any>,
   container: Element,
   props?: Record<string, unknown>,
+  options?: { identifierPrefix?: string },
 ): AppInstance {
   const mergedProps = props ?? {};
 
   // Create root component instance
   const instance = createComponentInstance(component, mergedProps, null);
+  if (options?.identifierPrefix) {
+    instance.identifierPrefix = options.identifierPrefix;
+  }
 
   let result: any;
   let root: MountedNode;
@@ -73,7 +79,7 @@ export function hydrate(
     setCurrentInstance(null);
     handleComponentError(instance, err as Error);
     return {
-      root: { type: "text", node: document.createTextNode("") },
+      root: { type: "text", node: domOps.createTextNode("") },
       unmount() {},
     };
   }
@@ -83,8 +89,9 @@ export function hydrate(
 
   instance.element = root;
 
-  // 5. Fire onMounted hooks (bottom-up)
+  // 5. Fire onMounted hooks (bottom-up), then onHydrated hooks
   fireMountedHooks(instance);
+  fireHydratedHooks(instance);
 
   return {
     root,

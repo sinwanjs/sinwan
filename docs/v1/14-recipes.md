@@ -9,9 +9,9 @@ A collection of small, complete examples covering the most common Sinwan pattern
 The hello-world of reactive UI.
 
 ```tsx
-import { signal, mount, createComponent } from "sinwan";
+import { signal, mount, cc } from "sinwan";
 
-const Counter = createComponent(() => {
+const Counter = cc(() => {
   const count = signal(0);
   return (
     <div>
@@ -30,9 +30,9 @@ mount(Counter, document.getElementById("app")!);
 ## Computed values
 
 ```tsx
-import { signal, computed, createComponent } from "sinwan";
+import { signal, computed, cc } from "sinwan";
 
-const TempConverter = createComponent(() => {
+const TempConverter = cc(() => {
   const c = signal(20);
   const f = computed(() => (c.value * 9) / 5 + 32);
 
@@ -58,7 +58,7 @@ const TempConverter = createComponent(() => {
 ## Todo list
 
 ```tsx
-import { signal, createComponent, For } from "sinwan";
+import { signal, cc, For } from "sinwan";
 
 interface Todo {
   id: number;
@@ -68,7 +68,7 @@ interface Todo {
 
 let nextId = 0;
 
-const TodoApp = createComponent(() => {
+const TodoApp = cc(() => {
   const todos = signal<Todo[]>([]);
   const draft = signal("");
 
@@ -131,14 +131,14 @@ const TodoApp = createComponent(() => {
 ## Async data fetching
 
 ```tsx
-import { signal, createComponent, onMounted } from "sinwan";
+import { signal, cc, onMounted } from "sinwan";
 
 interface User {
   id: number;
   name: string;
 }
 
-const UserList = createComponent(() => {
+const UserList = cc(() => {
   const users = signal<User[]>([]);
   const loading = signal(true);
   const error = signal<string | null>(null);
@@ -182,10 +182,10 @@ export const ThemeKey: InjectionKey<Signal<Theme>> = Symbol("theme");
 
 ```tsx
 // App.tsx
-import { signal, computed, provide, createComponent } from "sinwan";
+import { signal, computed, provide, cc } from "sinwan";
 import { ThemeKey } from "./theme";
 
-const App = createComponent(({ children }) => {
+const App = cc(({ children }) => {
   const theme = signal<"light" | "dark">("light");
   const appClass = computed(() => `app theme-${theme.value}`);
   provide(ThemeKey, theme);
@@ -206,10 +206,10 @@ const App = createComponent(({ children }) => {
 
 ```tsx
 // Card.tsx
-import { inject, computed, createComponent } from "sinwan";
+import { inject, computed, cc } from "sinwan";
 import { ThemeKey } from "./theme";
 
-export const Card = createComponent(({ children }) => {
+export const Card = cc(({ children }) => {
   const theme = inject(ThemeKey)!;
   const cardClass = computed(() => `card card--${theme.value}`);
   return <article class={cardClass}>{children}</article>;
@@ -221,9 +221,9 @@ export const Card = createComponent(({ children }) => {
 ## Form with validation
 
 ```tsx
-import { signal, computed, createComponent } from "sinwan";
+import { signal, computed, cc } from "sinwan";
 
-const SignUp = createComponent(() => {
+const SignUp = cc(() => {
   const email = signal("");
   const password = signal("");
 
@@ -311,12 +311,12 @@ export function createCartStore(): CartStore {
 // Use the store via provide/inject:
 const CartKey: InjectionKey<CartStore> = Symbol("cart");
 
-const App = createComponent(({ children }) => {
+const App = cc(({ children }) => {
   provide(CartKey, createCartStore());
   return <>{children}</>;
 });
 
-const CartTotal = createComponent(() => {
+const CartTotal = cc(() => {
   const cart = inject(CartKey)!;
   return <p>Total: {cart.total}</p>;
 });
@@ -334,10 +334,10 @@ See [`10-hydration.md`](./10-hydration.md) for the complete end-to-end example.
 
 ```ts
 import { Bun } from "bun";
-import { streamPage, registerPage } from "sinwan/server";
-import { createPage } from "sinwan";
+import { streamPage, registerPage } from "sinwan/react-server";
+import { cc } from "sinwan";
 
-const HomePage = createPage<{ title: string }>(({ title }) => (
+const HomePage = cc<{ title: string }>(({ title }) => (
   <html>
     <head><title>{title}</title></head>
     <body><h1>{title}</h1><AsyncSection /></body>
@@ -367,9 +367,9 @@ Bun.serve({
 ## Custom event listener cleanup
 
 ```tsx
-import { onMounted, onUnmounted, createComponent } from "sinwan";
+import { onMounted, onUnmounted, cc } from "sinwan";
 
-const KeyboardShortcut = createComponent(() => {
+const KeyboardShortcut = cc(() => {
   onMounted(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeModal();
@@ -388,9 +388,9 @@ const KeyboardShortcut = createComponent(() => {
 ```tsx
 import { marked } from "marked";
 import DOMPurify from "isomorphic-dompurify";
-import { safeHtml, createComponent } from "sinwan";
+import { safeHtml, cc } from "sinwan";
 
-const Markdown = createComponent<{ source: string }>(({ source }) => {
+const Markdown = cc<{ source: string }>(({ source }) => {
   const dirty = marked.parse(source) as string;
   const clean = DOMPurify.sanitize(dirty);
   return <div class="md">{safeHtml(clean)}</div>;

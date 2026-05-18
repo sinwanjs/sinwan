@@ -51,10 +51,10 @@ const app = mount(App, root, { initialUser: "Ada" });
 
 ### Async components
 
-If the component returns a `Promise<SinwanElement>`, `mount()` inserts an empty placeholder `Text` node, then swaps in the real tree once the promise resolves. `onMounted` fires after the swap.
+If the component returns a `Promise<SinwanNode>`, `mount()` inserts an empty placeholder `Text` node, then swaps in the real tree once the promise resolves. `onMounted` fires after the swap.
 
 ```tsx
-const Posts = createComponent(async () => {
+const Posts = cc(async () => {
   const data = await fetch("/api/posts").then((r) => r.json());
   return (
     <ul>
@@ -123,7 +123,7 @@ type MountedNode =
   | MountedText // { type: "text", node: Text }
   | MountedReactiveText // { type: "reactive-text", node: Text, dispose }
   | MountedElement // { type: "element", node: Element, children, eventCleanups, attrDisposers, refCleanup }
-  | MountedFragment // { type: "fragment", children, anchor: Comment }
+  | MountedFragment // { type: "fragment", children, anchor?: Comment | null }
   | MountedReactiveBlock // { type: "reactive-block", dispose, children, startAnchor, endAnchor }
   | MountedComponent; // { type: "component", children, disposers, instance }
 ```
@@ -188,6 +188,7 @@ import { domOps, setDOMOps, resetDOMOps, type DOMOps } from "sinwan";
 interface DOMOps {
   createElement(tag: string): Element;
   createElementNS(namespace: string, tag: string): Element;
+  createDocumentFragment(): DocumentFragment;
   createTextNode(text: string): Text;
   createComment(text: string): Comment;
   setAttribute(el: Element, key: string, value: string): void;
@@ -259,13 +260,11 @@ function swap(next: SinwanComponent) {
 ### Custom focus management on mount
 
 ```tsx
-const Input = createComponent<{ initialValue?: string }>(
-  ({ initialValue = "" }) => {
-    let el!: HTMLInputElement;
-    onMounted(() => el.focus());
-    return <input value={initialValue} ref={(n) => (el = n!)} />;
-  },
-);
+const Input = cc<{ initialValue?: string }>(({ initialValue = "" }) => {
+  let el!: HTMLInputElement;
+  onMounted(() => el.focus());
+  return <input value={initialValue} ref={(n) => (el = n!)} />;
+});
 ```
 
 The renderer sets the ref before `onMounted` runs and clears it during unmount.

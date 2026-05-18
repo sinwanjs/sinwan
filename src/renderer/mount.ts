@@ -12,6 +12,7 @@ import type { AppInstance, MountedNode } from "./types.ts";
 import { renderNodeToDOM } from "./render-children.ts";
 import { renderElementToDOM } from "./render-element.ts";
 import { unmountNode } from "./unmount.ts";
+import { domOps } from "./dom-ops.ts";
 import {
   createComponentInstance,
   setCurrentInstance,
@@ -35,6 +36,7 @@ export function mount(
   component: SinwanComponent<any>,
   container: Element,
   props?: Record<string, unknown>,
+  options?: { identifierPrefix?: string },
 ): AppInstance {
   // Clear the container
   container.innerHTML = "";
@@ -43,6 +45,9 @@ export function mount(
 
   // Create root component instance
   const instance = createComponentInstance(component, mergedProps, null);
+  if (options?.identifierPrefix) {
+    instance.identifierPrefix = options.identifierPrefix;
+  }
 
   let result: any;
   let root: MountedNode;
@@ -56,18 +61,39 @@ export function mount(
 
     if (result instanceof Promise) {
       // Async component — render placeholder, then swap
-      const placeholder = document.createTextNode("");
-      container.appendChild(placeholder);
+      const placeholder = domOps.createTextNode("");
+      domOps.appendChild(container, placeholder);
       root = { type: "text", node: placeholder };
 
-      result.then((resolved) => {
-        container.innerHTML = "";
-        setCurrentInstance(instance);
-        root = renderElementToDOM(resolved, container);
-        setCurrentInstance(null);
-        instance.element = root;
-        fireMountedHooks(instance);
-      });
+      // Mutable cell so unmount() sees the resolved root after swap
+      const rootRef: { current: MountedNode } = { current: root };
+
+      setCurrentInstance(null);
+
+      result.then(
+        (resolved) => {
+          container.innerHTML = "";
+          setCurrentInstance(instance);
+          rootRef.current = renderElementToDOM(resolved, container);
+          setCurrentInstance(null);
+          instance.element = rootRef.current;
+          fireMountedHooks(instance);
+        },
+        (err) => {
+          // Promise rejected — clear placeholder and report error
+          container.innerHTML = "";
+          handleComponentError(instance, err as Error);
+        },
+      );
+
+      return {
+        root: rootRef.current,
+        unmount() {
+          fireUnmountedHooks(instance);
+          unmountNode(rootRef.current);
+          container.innerHTML = "";
+        },
+      };
     } else if (result && typeof result === "object" && "tag" in result) {
       root = renderElementToDOM(result, container);
     } else {
@@ -77,7 +103,7 @@ export function mount(
     setCurrentInstance(null);
     handleComponentError(instance, err as Error);
     return {
-      root: { type: "text", node: document.createTextNode("") },
+      root: { type: "text", node: domOps.createTextNode("") },
       unmount() {},
     };
   }

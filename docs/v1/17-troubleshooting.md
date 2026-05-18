@@ -1,6 +1,6 @@
 # Troubleshooting
 
-A field guide for the most common Sinwan issues. If you don’t find your problem here, open an issue with a minimal repro at https://github.com/sinwanjs/sinwan-ui/issues.
+A field guide for the most common Sinwan issues. If you don’t find your problem here, open an issue with a minimal repro at https://github.com/sinwanjs/sinwan/issues.
 
 ---
 
@@ -20,7 +20,7 @@ function setupTimer() {
   });
 }
 
-const Timer = createComponent(() => {
+const Timer = cc(() => {
   setupTimer(); // executes synchronously inside setup
   return <div />;
 });
@@ -28,7 +28,7 @@ const Timer = createComponent(() => {
 
 ```tsx
 // ❌ Definitely doesn’t work — call happens with no active instance.
-const Timer = createComponent(() => <div />);
+const Timer = cc(() => <div />);
 onMounted(() => {
   /* throws */
 });

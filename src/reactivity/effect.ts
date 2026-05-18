@@ -6,7 +6,11 @@
  * When those signals change, the effect is re-scheduled.
  */
 
-import { type EffectNode, scheduleEffect, unscheduleEffect } from "./scheduler.ts";
+import {
+  type EffectNode,
+  scheduleEffect,
+  unscheduleEffect,
+} from "./scheduler.ts";
 
 // ─── Global tracking state ─────────────────────────────────
 
@@ -40,7 +44,8 @@ export class ReactiveEffect implements EffectNode {
   private cleanup: CleanupFn | void = undefined;
 
   /** All deps this effect is subscribed to (for bidirectional cleanup) */
-  deps: Set<Dep> = new Set();
+  deps: Dep[] = [];
+  _depsLength = 0;
 
   constructor(fn: EffectFn) {
     this.id = effectIdCounter++;
@@ -55,9 +60,6 @@ export class ReactiveEffect implements EffectNode {
 
     // Prevent infinite re-entry
     if (effectStack.includes(this)) return;
-
-    // Clean up previous dependencies
-    this.cleanupDeps();
 
     // Run user cleanup from previous execution
     if (this.cleanup) {
@@ -78,17 +80,21 @@ export class ReactiveEffect implements EffectNode {
     } finally {
       activeEffect = prevEffect;
       effectStack.pop();
+      // Clean up dependencies that weren't re-tracked in this run
+      this.cleanupDeps();
     }
   }
 
   /**
-   * Unsubscribe from all current deps so stale deps don't trigger this effect.
+   * Unsubscribe from deps that were not re-tracked in the latest run.
+   * Truncates the deps array to only keep actively tracked deps.
    */
   private cleanupDeps(): void {
-    for (const dep of this.deps) {
-      dep.subscribers.delete(this);
+    for (let i = this._depsLength; i < this.deps.length; i++) {
+      this.deps[i].subscribers.delete(this);
     }
-    this.deps.clear();
+    this.deps.length = this._depsLength;
+    this._depsLength = 0;
   }
 
   /**
@@ -111,7 +117,13 @@ export class ReactiveEffect implements EffectNode {
       this.cleanup = undefined;
     }
 
-    this.cleanupDeps();
+    // Remove from all deps and clear
+    for (const dep of this.deps) {
+      dep.subscribers.delete(this);
+    }
+    this.deps.length = 0;
+    this._depsLength = 0;
+
     unscheduleEffect(this);
   }
 }
@@ -152,8 +164,16 @@ export function effect(fn: EffectFn): CleanupFn {
  */
 export function track(dep: Dep): void {
   if (activeEffect) {
-    dep.subscribers.add(activeEffect);
-    activeEffect.deps.add(dep);
+    const effect = activeEffect;
+    dep.subscribers.add(effect);
+    const oldDep = effect.deps[effect._depsLength];
+    if (oldDep !== dep) {
+      if (oldDep) {
+        oldDep.subscribers.delete(effect);
+      }
+      effect.deps[effect._depsLength] = dep;
+    }
+    effect._depsLength++;
   }
 }
 
@@ -162,10 +182,24 @@ export function track(dep: Dep): void {
  * Called by signal.value setters.
  */
 export function trigger(dep: Dep): void {
-  // Copy to avoid modification during iteration
-  const effects = [...dep.subscribers];
-  for (const effect of effects) {
-    effect.notify();
+  for (const effect of dep.subscribers) {
+    if (effect.active) {
+      effect.notify();
+    }
+  }
+}
+
+/**
+ * Run a function without tracking dependencies.
+ * Any signal reads inside `fn` will NOT subscribe the active effect.
+ */
+export function untrack<T>(fn: () => T): T {
+  const prevEffect = activeEffect;
+  activeEffect = null;
+  try {
+    return fn();
+  } finally {
+    activeEffect = prevEffect;
   }
 }
 

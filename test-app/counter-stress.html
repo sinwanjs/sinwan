@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sinwan — Counter Stress Test</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 1.5rem;
+        background: #111;
+        color: #eee;
+      }
+      h1 { margin: 0 0 0.5rem; }
+      button {
+        padding: 0.6rem 1rem;
+        font-size: 1rem;
+        cursor: pointer;
+        background: #2563eb;
+        color: white;
+        border: 0;
+        border-radius: 6px;
+      }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      #counter-stress-stage {
+        max-height: 220px;
+        overflow: hidden;
+        margin-top: 1rem;
+        border: 1px solid #333;
+        border-radius: 4px;
+        padding: 4px;
+      }
+      .bench-report { margin-top: 1rem; border-collapse: collapse; }
+      .bench-report th, .bench-report td {
+        padding: 6px 12px;
+        border: 1px solid #333;
+      }
+      .bench-report .num { text-align: right; font-variant-numeric: tabular-nums; }
+      #counter-stress-report { margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Counter Stress Test</h1>
+    <p>
+      Stress test for the Counter component. Tests rapid increment operations 
+      and measures performance under load. Results are printed to this page 
+      and to the console.
+    </p>
+    <button id="run-counter-stress">Run stress test</button>
+    <div id="counter-stress-stage"></div>
+    <div id="counter-stress-report"></div>
+    <script type="module" src="/src/benchmarks/counter-stress.tsx"></script>
+  </body>
+</html>

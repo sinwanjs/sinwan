@@ -25,17 +25,27 @@ let batchScheduled = false;
  *   b.value = 20;
  * });
  */
-export function batch(fn: () => void): void {
+export function batch<T>(fn: () => T): T {
   batchDepth++;
+  let result: T;
+  let error: unknown;
   try {
-    fn();
+    result = fn();
+  } catch (err) {
+    error = err;
   } finally {
     batchDepth--;
     if (batchDepth === 0) {
-      // Flush all pending effects synchronously
+      // Flush pending effects even on error so the scheduler
+      // doesn't remain stuck.  A partial DOM update is better
+      // than a frozen scheduler.
       flushSync();
     }
   }
+  if (error) {
+    throw error;
+  }
+  return result!;
 }
 
 /**

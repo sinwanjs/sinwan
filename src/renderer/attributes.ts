@@ -18,10 +18,23 @@ import {
 } from "../component/instance.ts";
 
 // Props that should be skipped during attribute rendering
-const SKIP_PROPS = new Set(["children", "key", "ref", "dangerouslySetInnerHTML"]);
+const SKIP_PROPS = new Set([
+  "children",
+  "key",
+  "ref",
+  "dangerouslySetInnerHTML",
+]);
 
 // Props that map to DOM properties rather than attributes
-export const DOM_PROPERTIES = new Set(["value", "checked", "selected", "disabled", "readOnly", "multiple", "indeterminate"]);
+export const DOM_PROPERTIES = new Set([
+  "value",
+  "checked",
+  "selected",
+  "disabled",
+  "readOnly",
+  "multiple",
+  "indeterminate",
+]);
 
 // Prop name aliases
 export const PROP_ALIASES: Record<string, string> = {
@@ -29,6 +42,7 @@ export const PROP_ALIASES: Record<string, string> = {
   htmlFor: "for",
   tabIndex: "tabindex",
   crossOrigin: "crossorigin",
+  httpEquiv: "http-equiv",
 };
 
 interface AttributeBindingState {
@@ -40,19 +54,33 @@ interface AttributeBindingState {
  * Handles static values, reactive signals, and special cases.
  * Returns an array of disposers for reactive attributes.
  */
+export interface ApplyAttrsResult {
+  disposers: CleanupFn[] | null;
+  hasEventProps: boolean;
+}
+
 export function applyAttributes(
   el: Element,
   props: Record<string, unknown>,
-): CleanupFn[] {
-  const disposers: CleanupFn[] = [];
+): ApplyAttrsResult {
+  let disposers: CleanupFn[] | null = null;
+  let hasEventProps = false;
   const owner = getCurrentInstance();
 
-  for (const [key, value] of Object.entries(props)) {
-    if (SKIP_PROPS.has(key) || isEventProp(key)) continue;
+  for (const key in props) {
+    if (!Object.prototype.hasOwnProperty.call(props, key)) continue;
+    if (SKIP_PROPS.has(key)) continue;
+
+    if (isEventProp(key)) {
+      hasEventProps = true;
+      continue;
+    }
+
+    const value = props[key];
 
     const attrName = resolveAttributeName(key);
     const isComplex = attrName === "class" || attrName === "style";
-    
+
     if (isReactive(value) || (isComplex && containsReactive(value))) {
       // Reactive attribute — wrap in an effect
       const state: AttributeBindingState = { previousStyleProps: new Set() };
@@ -64,13 +92,14 @@ export function applyAttributes(
         }
         initialized = true;
       });
+      if (!disposers) disposers = [];
       disposers.push(dispose);
     } else {
       setSingleAttribute(el, key, value);
     }
   }
 
-  return disposers;
+  return { disposers, hasEventProps };
 }
 
 /**
@@ -196,10 +225,17 @@ function normalizeStyle(
   }
 
   if (Array.isArray(resolved)) {
-    return resolved.reduce((acc, item) => {
-      const normalized = normalizeStyle(item);
-      return Object.assign(acc, normalized);
-    }, {} as Record<string, any>);
+    // replace reduce with for loop to avoid function call overhead
+    const result: Record<string, any> = {};
+    for (let i = 0; i < resolved.length; i++) {
+      const normalized = normalizeStyle(resolved[i]);
+      for (const key in normalized) {
+        if (Object.prototype.hasOwnProperty.call(normalized, key)) {
+          result[key] = normalized[key];
+        }
+      }
+    }
+    return result;
   }
 
   if (typeof resolved === "object") {
@@ -215,16 +251,19 @@ function normalizeStyle(
 
 function parseStyleString(style: string): Record<string, string> {
   const result: Record<string, string> = {};
-  style.split(";").forEach((rule) => {
-    const i = rule.indexOf(":");
-    if (i > 0) {
-      const prop = rule.slice(0, i).trim();
-      const val = rule.slice(i + 1).trim();
+  // replace forEach with for loop to avoid creating a callback function
+  const rules = style.split(";");
+  for (let i = 0; i < rules.length; i++) {
+    const rule = rules[i];
+    const idx = rule.indexOf(":");
+    if (idx > 0) {
+      const prop = rule.slice(0, idx).trim();
+      const val = rule.slice(idx + 1).trim();
       if (prop && val) {
         result[prop] = val;
       }
     }
-  });
+  }
   return result;
 }
 
@@ -248,18 +287,31 @@ function normalizeClass(value: unknown): string {
 
   if (Array.isArray(resolved)) {
     // ["foo", "bar", false && "baz", signal] → "foo bar val"
-    return resolved
-      .map(normalizeClass)
-      .filter(Boolean)
-      .join(" ");
+    // replace map/filter with for loop to avoid creating intermediate arrays
+    const parts: string[] = [];
+    for (let i = 0; i < resolved.length; i++) {
+      const normalized = normalizeClass(resolved[i]);
+      if (normalized) {
+        parts.push(normalized);
+      }
+    }
+    return parts.join(" ");
   }
 
   if (typeof resolved === "object") {
     // { foo: true, bar: false, baz: signal } → "foo baz"
-    return Object.entries(resolved)
-      .filter(([, v]) => Boolean(resolve(v)))
-      .map(([k]) => k)
-      .join(" ");
+    // replace Object.entries/filter/map with for loop to avoid creating intermediate arrays
+    const parts: string[] = [];
+    const obj = resolved as Record<string, unknown>;
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        const value = obj[key];
+        if (Boolean(resolve(value))) {
+          parts.push(key);
+        }
+      }
+    }
+    return parts.join(" ");
   }
 
   return String(resolved);
@@ -270,11 +322,24 @@ function normalizeClass(value: unknown): string {
  */
 function containsReactive(value: unknown): boolean {
   if (isReactive(value)) return true;
-  if (Array.isArray(value)) return value.some(containsReactive);
+  if (Array.isArray(value)) {
+    // replace some with for loop and break to stop as soon as a reactive value is found
+    for (let i = 0; i < value.length; i++) {
+      if (containsReactive(value[i])) return true;
+    }
+    return false;
+  }
   if (typeof value === "object" && value !== null) {
     // For style objects/class objects, we only check one level deep for performance
     // but recursive is safer for nested class arrays.
-    return Object.values(value).some(containsReactive);
+    // replace Object.values/some with for loop and break to stop as soon as a reactive value is found
+    const obj = value as Record<string, unknown>;
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        if (containsReactive(obj[key])) return true;
+      }
+    }
+    return false;
   }
   return false;
 }

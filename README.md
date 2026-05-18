@@ -8,7 +8,7 @@
         <h1>Sinwan</h1>
         <p>A fast reactive UI library for JSX, fine-grained reactivity, SSR, and hydration.</p>
         <p>
-          <a href="https://github.com/sinwanjs/sinwan-ui/stargazers"><img src="https://img.shields.io/github/stars/sinwanjs/sinwan-ui.svg?color=ffce3b&label=stars&logo=github" alt="GitHub stars" /></a>
+          <a href="https://github.com/sinwanjs/sinwan/stargazers"><img src="https://img.shields.io/github/stars/sinwanjs/sinwan.svg?color=ffce3b&label=stars&logo=github" alt="GitHub stars" /></a>
           <a href="https://www.npmjs.com/package/sinwan"><img src="https://img.shields.io/npm/dm/sinwan?color=42b883&label=downloads&logo=npm" alt="NPM Downloads" /></a>
           <a href="./LICENSE"><img src="https://img.shields.io/npm/l/sinwan?color=35495e&label=license" alt="License" /></a>
         </p>
@@ -39,24 +39,20 @@ Use the automatic JSX runtime:
 {
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "sinwan"
-  }
+    "jsxImportSource": "sinwan",
+  },
 }
 ```
 
 ## Quick Start
 
 ```tsx
-import { createComponent, mount, signal } from "sinwan";
+import { cc, mount, signal } from "sinwan";
 
-const Counter = createComponent(() => {
+const Counter = cc(() => {
   const count = signal(0);
 
-  return (
-    <button onClick={() => (count.value += 1)}>
-      Count: {count}
-    </button>
-  );
+  return <button onClick={() => (count.value += 1)}>Count: {count}</button>;
 });
 
 mount(Counter, document.getElementById("app")!);
@@ -66,7 +62,7 @@ mount(Counter, document.getElementById("app")!);
 
 - Fine-grained reactivity: `signal`, `computed`, `effect`, `batch`, `nextTick`
 - JSX runtime: `sinwan/jsx-runtime` and `sinwan/jsx-dev-runtime`
-- Components: `createComponent`, lifecycle hooks, provide/inject, `<Show>`, `<For>`
+- Components: `cc`, lifecycle hooks, provide/inject, `<Show>`, `<For>`
 - DOM renderer: reactive text, attributes, events, refs, namespaces, and cleanup
 - Server rendering: `renderToString`, `streamPage`, hydratable strings and streams
 - Hydration: reuse server-rendered DOM with `hydrate`
@@ -75,7 +71,7 @@ mount(Counter, document.getElementById("app")!);
 
 ```tsx
 // Server
-import { renderToHydratableString } from "sinwan/server";
+import { renderToHydratableString } from "sinwan/react-server";
 
 const html = await renderToHydratableString(App, { initial: 5 });
 ```

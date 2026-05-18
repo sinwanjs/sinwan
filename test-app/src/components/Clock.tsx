@@ -1,6 +1,8 @@
-import { signal, computed, createComponent, onMounted, onUnmounted } from "sinwan";
+import { cc, onMounted, onUnmounted } from "sinwan/component";
+import { computed } from "sinwan/reactivity";
+import { signal } from "sinwan/reactivity";
 
-export const Clock = createComponent(() => {
+export const Clock = cc(() => {
   const now = signal(new Date());
   const formatted = computed(() =>
     now.value.toLocaleTimeString(undefined, { hour12: false }),

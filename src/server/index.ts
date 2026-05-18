@@ -23,3 +23,6 @@ export {
   renderToHydratableString,
   renderNodeToHydratableString,
 } from "./hydration-markers.ts";
+
+export { renderShell, streamShell } from "./shell.ts";
+export type { ShellOptions, ShellScript, ShellStylesheet } from "./shell.ts";

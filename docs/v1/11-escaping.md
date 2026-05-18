@@ -83,7 +83,7 @@ function raw(html: string): HtmlEscapedString;
 ```tsx
 import { safeHtml } from "sinwan";
 
-const Card = createComponent<{ markdown: string }>(({ markdown }) => {
+const Card = cc<{ markdown: string }>(({ markdown }) => {
   // Compile markdown server-side; the result is trusted HTML.
   const html = compileMarkdown(markdown);
   return <div class="md">{safeHtml(html)}</div>;

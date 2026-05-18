@@ -15,32 +15,50 @@ import { fireUnmountedHooks } from "../component/instance.ts";
  * Return the actual DOM nodes owned by a mounted tree, in document order.
  */
 export function getMountedDomNodes(node: MountedNode): Node[] {
+  const out: Node[] = [];
+  collectDomNodes(node, out);
+  return out;
+}
+
+function collectDomNodes(node: MountedNode, out: Node[]): void {
   switch (node.type) {
     case "text":
     case "reactive-text":
-      return [node.node];
+      out.push(node.node);
+      break;
 
     case "element":
-      return [node.node];
+      out.push(node.node);
+      break;
 
     case "fragment":
-      return [
-        node.anchor,
-        ...node.children.flatMap((child) => getMountedDomNodes(child)),
-      ];
+      if (node.anchor) out.push(node.anchor);
+      for (const child of node.children) collectDomNodes(child, out);
+      break;
 
     case "reactive-block":
-      return [
-        node.startAnchor,
-        ...node.children.flatMap((child) => getMountedDomNodes(child)),
-        node.endAnchor,
-      ];
+      out.push(node.startAnchor);
+      for (const child of node.children) collectDomNodes(child, out);
+      out.push(node.endAnchor);
+      break;
 
     case "component":
-      return node.children.flatMap((child) => getMountedDomNodes(child));
+      for (const child of node.children) collectDomNodes(child, out);
+      break;
+
+    case "async":
+      out.push(node.startAnchor);
+      if (node.children.length > 0) {
+        for (const child of node.children) collectDomNodes(child, out);
+      } else {
+        out.push(node.placeholder);
+      }
+      out.push(node.endAnchor);
+      break;
 
     case "portal":
-      return [node.anchor];
+      out.push(node.anchor);
+      break;
   }
 }
 
@@ -57,11 +75,15 @@ export function unmountNode(node: MountedNode): void {
       break;
 
     case "element":
-      for (const dispose of node.attrDisposers) {
-        dispose();
+      if (node.attrDisposers) {
+        for (const dispose of node.attrDisposers) {
+          dispose();
+        }
       }
-      for (const cleanup of node.eventCleanups) {
-        cleanup();
+      if (node.eventCleanups) {
+        for (const cleanup of node.eventCleanups) {
+          cleanup();
+        }
       }
       node.refCleanup?.();
       for (const child of node.children) {
@@ -70,6 +92,11 @@ export function unmountNode(node: MountedNode): void {
       break;
 
     case "fragment":
+      if (node.disposers) {
+        for (const dispose of node.disposers) {
+          dispose();
+        }
+      }
       for (const child of node.children) {
         unmountNode(child);
       }
@@ -90,6 +117,13 @@ export function unmountNode(node: MountedNode): void {
           dispose();
         }
       }
+      for (const child of node.children) {
+        unmountNode(child);
+      }
+      break;
+
+    case "async":
+      node.disposed = true;
       for (const child of node.children) {
         unmountNode(child);
       }

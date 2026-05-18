@@ -29,9 +29,9 @@ export interface MountedElement {
   type: "element";
   node: Element;
   children: MountedNode[];
-  eventCleanups: CleanupFn[];
+  eventCleanups: CleanupFn[] | null;
   /** Reactive attribute effects to dispose on unmount. */
-  attrDisposers: CleanupFn[];
+  attrDisposers: CleanupFn[] | null;
   /** Cleanup for callback/object refs. */
   refCleanup: CleanupFn | null;
 }
@@ -41,7 +41,9 @@ export interface MountedFragment {
   type: "fragment";
   children: MountedNode[];
   /** Anchor comment node for positioning. */
-  anchor: Comment;
+  anchor?: Comment | null;
+  /** Cleanup functions for template-generated effects and events. */
+  disposers?: CleanupFn[];
 }
 
 /** A reactive block that swaps DOM when a signal changes (conditional/list). */
@@ -65,6 +67,18 @@ export interface MountedComponent {
   instance: ComponentInstance | null;
 }
 
+/** A mounted async node that renders a placeholder until a promise resolves. */
+export interface MountedAsync {
+  type: "async";
+  startAnchor: Comment;
+  endAnchor: Comment;
+  placeholder: Text;
+  /** Resolved content (empty until promise resolves). */
+  children: MountedNode[];
+  /** True if unmounted before resolution — prevents post-unmount insertion. */
+  disposed: boolean;
+}
+
 /** A mounted portal whose children live under a target outside its source tree. */
 export interface MountedPortal {
   type: "portal";
@@ -83,6 +97,7 @@ export type MountedNode =
   | MountedFragment
   | MountedReactiveBlock
   | MountedComponent
+  | MountedAsync
   | MountedPortal;
 
 // ─── AppInstance ───────────────────────────────────────────

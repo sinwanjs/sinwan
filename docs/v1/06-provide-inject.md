@@ -35,10 +35,10 @@ export const ThemeKey: InjectionKey<"light" | "dark"> = Symbol("theme");
 
 ```tsx
 // App.tsx
-import { provide, createComponent } from "sinwan";
+import { provide, cc } from "sinwan";
 import { ThemeKey } from "./keys";
 
-const App = createComponent(() => {
+const App = cc(() => {
   provide(ThemeKey, "dark");
   return (
     <Layout>
@@ -53,7 +53,7 @@ const App = createComponent(() => {
 import { inject } from "sinwan";
 import { ThemeKey } from "./keys";
 
-const Card = createComponent(() => {
+const Card = cc(() => {
   const theme = inject(ThemeKey, "light"); // typed as "light" | "dark"
   return <div class={`card card--${theme}`}>...</div>;
 });
@@ -111,20 +111,20 @@ import {
   computed,
   provide,
   inject,
-  createComponent,
+  cc,
   type InjectionKey,
   type Signal,
 } from "sinwan";
 
 const ThemeKey: InjectionKey<Signal<"light" | "dark">> = Symbol("theme");
 
-const Root = createComponent(() => {
+const Root = cc(() => {
   const theme = signal<"light" | "dark">("dark");
   provide(ThemeKey, theme);
   return <Layout />;
 });
 
-const Card = createComponent(() => {
+const Card = cc(() => {
   const theme = inject(ThemeKey)!; // Signal<"light" | "dark">
   const cardClass = computed(() => `card card--${theme.value}`);
   return <div class={cardClass}>...</div>;
@@ -141,7 +141,7 @@ const CounterKey: InjectionKey<{
   increment(): void;
 }> = Symbol("counter");
 
-const Root = createComponent(() => {
+const Root = cc(() => {
   const count = signal(0);
   provide(CounterKey, {
     count,
@@ -154,12 +154,12 @@ const Root = createComponent(() => {
 Children inject the store and use both reads (`count.value`) and writes (`increment()`):
 
 ```tsx
-const Display = createComponent(() => {
+const Display = cc(() => {
   const { count } = inject(CounterKey)!;
   return <p>Count: {count}</p>;
 });
 
-const Button = createComponent(() => {
+const Button = cc(() => {
   const { increment } = inject(CounterKey)!;
   return <button onClick={increment}>+1</button>;
 });
@@ -174,7 +174,7 @@ This is the recommended pattern for app-wide state.
 A child may call `provide(sameKey, newValue)` to override the parent’s value for its own subtree only. The parent’s provided value remains visible to siblings:
 
 ```tsx
-const Root = createComponent(() => {
+const Root = cc(() => {
   provide(ThemeKey, "dark");
   return (
     <>
@@ -186,7 +186,7 @@ const Root = createComponent(() => {
   );
 });
 
-const SpecialZone = createComponent(({ children }) => {
+const SpecialZone = cc(({ children }) => {
   provide(ThemeKey, "high-contrast");
   return <section class="special">{children}</section>;
 });

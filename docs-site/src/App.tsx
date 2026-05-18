@@ -1,5 +1,5 @@
 import {
-  createComponent,
+  cc,
   signal,
   onMounted,
   provide,
@@ -16,6 +16,8 @@ export const CurrentPageKey: InjectionKey<Signal<string>> =
   Symbol("current-page");
 export const SidebarOpenKey: InjectionKey<Signal<boolean>> =
   Symbol("sidebar-open");
+export const RawContentKey: InjectionKey<Signal<string>> =
+  Symbol("raw-content");
 
 export const App = createComponent(() => {
   // Get initial theme from localStorage or system preference
@@ -33,10 +35,14 @@ export const App = createComponent(() => {
     window.location.hash.slice(1) || "00-philosophy.md",
   );
   const sidebarOpen = signal(false);
+  const rawContent = signal("");
+  const copyLabel = signal("Copy");
+  let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
 
   provide(ThemeKey, theme);
   provide(CurrentPageKey, currentPage);
   provide(SidebarOpenKey, sidebarOpen);
+  provide(RawContentKey, rawContent);
 
   onMounted(() => {
     const root = document.documentElement;
@@ -61,6 +67,33 @@ export const App = createComponent(() => {
     };
   });
 
+  const copyPageContent = async () => {
+    const text = rawContent.value.trim();
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      copyLabel.value = "Copied";
+      if (copyResetTimer) clearTimeout(copyResetTimer);
+      copyResetTimer = setTimeout(() => (copyLabel.value = "Copy"), 1500);
+    } catch {
+      copyLabel.value = "Failed";
+      if (copyResetTimer) clearTimeout(copyResetTimer);
+      copyResetTimer = setTimeout(() => (copyLabel.value = "Copy"), 1500);
+    }
+  };
+
   return (
     <div class="app-shell">
       <button
@@ -75,7 +108,31 @@ export const App = createComponent(() => {
       <main class="main-content">
         <section class="content-frame">
           <header class="content-header">
-            <div class="content-header-copy">
+            <div class="content-header-left">
+              <p class="content-kicker">Sinwan docs</p>
+              <h1 class="content-title">
+                A fast reactive UI library for JSX, fine-grained reactivity,
+                SSR, and hydration.
+              </h1>
+            </div>
+            <div class="content-header-center">
+              <button
+                class={() =>
+                  `copy-button ${copyLabel.value === "Copied" ? "is-copied" : ""}`
+                }
+                type="button"
+                onClick={copyPageContent}
+                disabled={() => !rawContent.value}
+                aria-label="Copy the current page content"
+              >
+                <span class="copy-button-icon" aria-hidden="true">
+                  {() => (copyLabel.value === "Copied" ? "✓" : "⧉")}
+                </span>
+                {() => copyLabel.value}
+              </button>
+            </div>
+            <div class="content-header-right">
+              <ThemeToggle />
               <button
                 class="sidebar-toggle"
                 type="button"
@@ -90,13 +147,7 @@ export const App = createComponent(() => {
                 </span>
                 <span class="sidebar-toggle-label">Menu</span>
               </button>
-              <p class="content-kicker">Sinwan docs </p>
-              <h1 class="content-title">
-                A fast reactive UI library for JSX, fine-grained reactivity,
-                SSR, and hydration.
-              </h1>
             </div>
-            <ThemeToggle />
           </header>
           <DocViewer />
         </section>
@@ -113,12 +164,13 @@ const ThemeToggle = createComponent(() => {
       aria-label="Toggle color theme"
       onClick={() => (theme.value = theme.value === "dark" ? "light" : "dark")}
     >
-      <span class="theme-toggle-icon">
-        {() => (theme.value === "dark" ? "☀" : "☾")}
+      <span class="theme-toggle-label theme-toggle-label-left"></span>
+      <span class="theme-toggle-pill">
+        <span class="theme-toggle-icon">
+          {() => (theme.value === "dark" ? "☀" : "☾")}
+        </span>
       </span>
-      <span class="theme-toggle-label">
-        {() => (theme.value === "dark" ? "Light" : "Dark")}
-      </span>
+      <span class="theme-toggle-label theme-toggle-label-right"></span>
     </button>
   );
 });

@@ -63,7 +63,7 @@ Importing them in pure-server code is harmless **as long as you don’t call** t
 
 ## Server-only modules
 
-- `sinwan/server` (`renderToString`, `renderPage`, `streamPage`, `renderToHydratableString`, …)
+- `sinwan/react-server` (`renderToString`, `renderPage`, `streamPage`, `renderToHydratableString`, …)
 
 These have no browser-specific dependencies but are usually unused in client bundles. Import them under a server-only entry point in your app.
 
@@ -128,14 +128,14 @@ The package’s `exports` field uses nested conditions so each consumer gets the
 - **ESM consumers** (modern bundlers, Node 22 ESM): pick the right file via `development` / `production` conditions.
 - **CJS consumers** (Node `require`, older Webpack): the top-level `dist/index.js` is a tiny CJS shim that branches on `process.env.NODE_ENV`, identical to React’s pattern.
 
-The same scheme applies to `sinwan/jsx-runtime`, `sinwan/jsx-dev-runtime`, and `sinwan/server`.
+The same scheme applies to `sinwan/jsx-runtime`, `sinwan/jsx-dev-runtime`, and `sinwan/react-server`.
 
 ## Worker / Edge specifics
 
 ### Cloudflare Workers
 
 ```ts
-import { renderToString, streamPage } from "sinwan/server";
+import { renderToString, streamPage } from "sinwan/react-server";
 import { App } from "./App";
 
 export default {
@@ -153,7 +153,7 @@ export default {
 ### Deno Deploy
 
 ```ts
-import { renderToString } from "https://esm.sh/sinwan/server";
+import { renderToString } from "https://esm.sh/sinwan/react-server";
 import { App } from "./App.tsx";
 
 Deno.serve({ port: 8000 }, async () => {
@@ -170,7 +170,7 @@ Convert the Web stream to a Node stream using `Readable.fromWeb`:
 
 ```ts
 import { Readable } from "node:stream";
-import { streamPage } from "sinwan/server";
+import { streamPage } from "sinwan/react-server";
 
 app.get("/", (req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");

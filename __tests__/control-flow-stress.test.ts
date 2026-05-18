@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { signal, computed, batch } from "../src/reactivity/index.ts";
-import { createComponent } from "../src/component/create.ts";
+import { cc } from "../src/component/create.ts";
 import { onMounted, onUnmounted } from "../src/component/lifecycle.ts";
 import {
   Dynamic,
@@ -510,8 +510,8 @@ describe("Dynamic Component (Stress)", () => {
   });
 
   it("should support component function switching", () => {
-    const DivComponent = createComponent(() => el("div", {}, "div content"));
-    const SpanComponent = createComponent(() => el("span", {}, "span content"));
+    const DivComponent = cc(() => el("div", {}, "div content"));
+    const SpanComponent = cc(() => el("span", {}, "span content"));
 
     const dynamicEl = Dynamic({
       component: signal(DivComponent),
