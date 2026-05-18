@@ -75,8 +75,9 @@ Sinwan is the only UI library that delivers **fine-grained reactivity** (signals
 ### Reactive Counter (No Re-Renders!)
 
 ```tsx
-import { signal, mount, cc } from "sinwan";
-
+import { cc } from "sinwan/component";
+import { signal } from "sinwan/reactivity";
+import { mount } from "sinwan/renderer";
 const Counter = cc(() => {
   const count = signal(0);
   return (
@@ -178,8 +179,9 @@ import { useState, createRoot } from "sinwan/react-client";
 Use Sinwan for new features while keeping existing React code:
 
 ```tsx
-import { cc } from "sinwan";
+import { cc } from "sinwan/component";
 import { OldReactComponent } from "./legacy";
+
 
 const NewSinwanFeature = cc(() => {
   // New code uses signals
@@ -220,8 +222,9 @@ npm install sinwan
 
 ```tsx
 // App.tsx
-import { signal, mount, cc } from "sinwan";
-
+import { cc } from "sinwan/component";
+import { signal } from "sinwan/reactivity";
+import { mount } from "sinwan/renderer";
 const App = cc(() => {
   const count = signal(0);
   return (

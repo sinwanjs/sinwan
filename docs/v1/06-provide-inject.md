@@ -2,9 +2,8 @@
 
 `provide` and `inject` are Sinwan’s built-in dependency injection mechanism, modelled after Vue 3. A parent component **provides** a value (any JavaScript value: signal, function, plain object, …); any descendant can **inject** it without props drilling.
 
-```ts
-import { provide, inject, type InjectionKey } from "sinwan";
-```
+````ts
+import { provide, inject, type InjectionKey } from "sinwan/component";```
 
 Both functions need an active component instance. The usual place is component setup; synchronous lifecycle callbacks also have an active owner instance, but values provided after child setup will not retroactively change what those children already injected.
 
@@ -18,7 +17,7 @@ type InjectionKey<T> = symbol & { __type?: T };
 function provide<T>(key: string | symbol, value: T): void;
 
 function inject<T>(key: string | symbol, defaultValue?: T): T;
-```
+````
 
 `InjectionKey<T>` is a typed symbol alias. Sinwan accepts plain strings too, but typed symbols give you full type inference at the call site.
 
@@ -28,14 +27,13 @@ function inject<T>(key: string | symbol, defaultValue?: T): T;
 
 ```tsx
 // keys.ts
-import type { InjectionKey } from "sinwan";
-
+import { InjectionKey } from "sinwan/component";
 export const ThemeKey: InjectionKey<"light" | "dark"> = Symbol("theme");
 ```
 
 ```tsx
 // App.tsx
-import { provide, cc } from "sinwan";
+import { provide, cc } from "sinwan/component";
 import { ThemeKey } from "./keys";
 
 const App = cc(() => {
@@ -50,7 +48,7 @@ const App = cc(() => {
 
 ```tsx
 // Card.tsx
-import { inject } from "sinwan";
+import { inject } from "sinwan/component";
 import { ThemeKey } from "./keys";
 
 const Card = cc(() => {
@@ -106,15 +104,8 @@ When no default is provided **and** the key is missing, Sinwan emits:
 `provide` doesn’t make the value reactive on its own — it stores whatever you pass. To get reactive injection, provide a signal:
 
 ```tsx
-import {
-  signal,
-  computed,
-  provide,
-  inject,
-  cc,
-  type InjectionKey,
-  type Signal,
-} from "sinwan";
+import { signal, computed, type Signal } from "sinwan/reactivity";
+import { provide, inject, cc, type InjectionKey } from "sinwan/component";
 
 const ThemeKey: InjectionKey<Signal<"light" | "dark">> = Symbol("theme");
 

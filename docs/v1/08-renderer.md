@@ -3,8 +3,7 @@
 The client renderer turns a `SinwanElement` tree into real DOM nodes, attaches reactivity, and gives you a handle to unmount everything later.
 
 ```ts
-import { mount, render, unmountNode } from "sinwan";
-```
+import { mount, render, unmountNode } from "sinwan/renderer";```
 
 There is **no virtual DOM**. The renderer creates DOM nodes directly during `mount()` and binds reactivity to them via `effect()`.
 
@@ -28,8 +27,9 @@ interface AppInstance {
 Mounts a top-level **component** into the given DOM container.
 
 ```tsx
-import { mount } from "sinwan";
+import { mount } from "sinwan/renderer";
 import { App } from "./App";
+
 
 const root = document.getElementById("app")!;
 const app = mount(App, root, { initialUser: "Ada" });
@@ -93,8 +93,7 @@ Lower-level than `mount`: takes any `SinwanNode` (not necessarily a component) a
 - Library code that wants to bypass the component instance machinery
 
 ```tsx
-import { render } from "sinwan";
-
+import { render } from "sinwan/renderer";
 render(<h1>Hello, world!</h1>, document.body);
 ```
 
@@ -164,8 +163,7 @@ Direct binding via `el.addEventListener` (not delegation). Handler removal happe
 Helpers exposed for advanced users:
 
 ```ts
-import { bindEvent, bindEvents, isEventProp, toEventName } from "sinwan";
-
+import { bindEvent, bindEvents, isEventProp, toEventName } from "sinwan/renderer";
 isEventProp("onClick"); // → true
 toEventName("onMouseEnter"); // → "mouseenter"
 
@@ -183,8 +181,7 @@ cleanup();
 `src/renderer/dom-ops.ts` exposes a thin abstraction over native DOM APIs so the renderer can be unit tested or pointed at a server-side DOM implementation (`happy-dom`, `linkedom`, …):
 
 ```ts
-import { domOps, setDOMOps, resetDOMOps, type DOMOps } from "sinwan";
-
+import { domOps, setDOMOps, resetDOMOps, type DOMOps } from "sinwan/renderer";
 interface DOMOps {
   createElement(tag: string): Element;
   createElementNS(namespace: string, tag: string): Element;
@@ -238,8 +235,7 @@ If you mount and unmount large subtrees frequently (e.g. modals), use `<Show>` w
 ### Conditional UI
 
 ```tsx
-import { Show } from "sinwan";
-
+import { Show } from "sinwan/component";
 <Show when={isOpen}>
   <Modal />
 </Show>;

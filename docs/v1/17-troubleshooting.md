@@ -257,7 +257,7 @@ Use `<For fallback={...}>` for reactive list shape + empty-state UI:
 
 **Cause:** Pre-fix code that called `Bun.escapeHTML(...)` directly.
 
-**Fix:** Use `escapeHtml` from `sinwan` — it picks the right implementation per runtime. See [`11-escaping.md`](./11-escaping.md).
+**Fix:** Use `escapeHtml` from `sinwan/component` — it picks the right implementation per runtime. See [`11-escaping.md`](./11-escaping.md).
 
 If you’re importing from `sinwan` and still seeing the error, you have an old version cached. Clear `node_modules`, lock files, and reinstall.
 
@@ -286,8 +286,7 @@ if (import.meta.hot) {
 Effects schedule on the microtask queue. Synchronous assertions after a `signal.value = ...` won’t see the new state. Either `await nextTick()` or use `batch()`:
 
 ```ts
-import { signal, effect, batch, nextTick } from "sinwan";
-
+import { signal, effect, batch, nextTick } from "sinwan/reactivity";
 const c = signal(0);
 let observed = -1;
 effect(() => {

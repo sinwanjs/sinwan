@@ -78,3 +78,6 @@ export type { IslandOptions, IslandMeta } from "./island.ts";
 
 // Escaper
 export * from "../common/escaper.ts";
+
+// Core types
+export * from "../types.ts";

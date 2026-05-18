@@ -10,6 +10,21 @@ No unreleased changes.
 
 ---
 
+## [1.2.1] — Computed Tracking Fix
+
+Fixed an issue where computed dependencies were not being tracked correctly in certain scenarios, particularly within loops.
+
+**Optimization & Bugfix:**  
+Prevent duplicate dependency tracking within the same run. Previously, tracking the same dependency multiple times (such as inside a loop) could lead to issues where, if the loop ran fewer times on subsequent executions, `cleanupDeps()` would completely unsubscribe from a dependency.
+
+```typescript
+for (let i = 0; i < effect._depsLength; i++) {
+  if (effect.deps[i] === dep) {
+    return; // Already tracked, avoid duplicate
+  }
+}
+```
+
 ## [1.2.0] — React Integration, Async Suspense & Data Fetching
 
 Sinwan 1.2.0 introduces a full React compatibility layer, virtualized list rendering, data-fetching hooks, and major SSR/hydration improvements for async components.
@@ -122,12 +137,12 @@ Sinwan 1.0.0 is the first stable public release. It includes the original v1 run
 
 ### Added
 
-- **Reactive control flow**: public `<Show>` and `<For>` helpers exported from `sinwan`.
+- **Reactive control flow**: public `<Show>` and `<For>` helpers exported from `sinwan/component`.
   - `<Show>` swaps between truthy content and fallback content reactively.
   - `<For>` renders signal-backed arrays with keyed insert, remove, reorder, cleanup, and same-key item replacement semantics.
 - **Public refs**: JSX `ref` supports callback refs and object refs, sets them after mount, and clears them on unmount.
 - **Namespace-aware rendering**: SVG and MathML trees use `createElementNS`; SVG `foreignObject` switches descendants back to HTML.
-- **Pluggable DOM operations**: `domOps`, `setDOMOps()`, and `resetDOMOps()` are exported from `sinwan` and `sinwan/renderer`.
+- **Pluggable DOM operations**: `domOps`, `setDOMOps()`, and `resetDOMOps()` are exported from `sinwan/renderer`.
 - **Hydration-aware streaming SSR**: `streamHydratablePage()` and `streamHydratableNode()` stream the same marker protocol used by `renderToHydratableString()`.
 - **Reactivity**: `signal`, `computed`, `effect`, `batch`, `nextTick`, type guards `isSignal`/`isComputed`, and the microtask scheduler.
 - **Component model**: `cc` (alias for `cc`), component instances, parent/child trees, and JSX-declared component ownership.

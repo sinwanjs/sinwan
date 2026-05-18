@@ -20,8 +20,9 @@ Because Sinwan components run once, stores are naturally accessible inside any h
 ## Setup
 
 ```ts
-import { cc } from "sinwan";
+import { cc } from "sinwan/component";
 import {
+
   useState,
   useEffect,
   useLayoutEffect,
@@ -47,7 +48,7 @@ import {
 Wrap a Sinwan `effect()` inside `useEffect` to react to store property changes:
 
 ```ts
-import { effect } from "sinwan";
+import { effect } from "sinwan/reactivity";
 import { createStore } from "sinwan/store";
 import { useEffect } from "sinwan/react";
 
@@ -446,8 +447,7 @@ const Form = cc(() => {
 ### 5. Batch multiple setState calls
 
 ```ts
-import { batch } from "sinwan";
-
+import { batch } from "sinwan/reactivity";
 const handleSubmit = () => {
   batch(() => {
     setState("loading", true);

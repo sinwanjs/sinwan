@@ -1,0 +1,21 @@
+{
+  "name": "bun-sinwan-template",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "start": "NODE_ENV=production bun src/index.ts",
+    "build": "bun run build.ts"
+  },
+  "dependencies": {
+    "bun-plugin-sinwan": "file:../packages/bun-plugin-sinwan",
+    "bun-plugin-tailwind": "^0.1.2",
+    "mongoose": "^9.6.2",
+    "sinwan": "^1.2.0",
+    "tailwindcss": "^4.1.11"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

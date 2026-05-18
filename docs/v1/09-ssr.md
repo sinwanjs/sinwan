@@ -99,8 +99,8 @@ function renderPage<D>(name: string, data: D): Promise<string>;
 Usage:
 
 ```ts
-import { cc, registerPage, renderPage } from "sinwan";
-
+import { cc } from "sinwan/component";
+import { registerPage, renderPage } from "sinwan/server";
 const HomePage = cc<{ title: string }>(({ title }) => (
   <Layout title={title}>...</Layout>
 ));
@@ -336,8 +336,7 @@ The client bundle simply re-exports `App` (and `hydrate`) so the auto boot snipp
 
 ```ts
 // client.ts
-export { hydrate } from "sinwan";
-export { default } from "./App";
+export { hydrate } from "sinwan/hydration";export { default } from "./App";
 ```
 
 That’s it — no manual `<script>` or `hydrate()` calls.
@@ -413,7 +412,7 @@ On the client, `hydrateIslands(registry)` walks the document, finds every island
 ### Server
 
 ```ts
-import { island } from "sinwan";
+import { island } from "sinwan/component";
 import { renderToString } from "sinwan/react-server";
 
 const Counter = cc<{ initial: number }>(({ initial }) => {
@@ -441,8 +440,9 @@ const html = await renderToString(<App />);
 ### Client
 
 ```ts
-import { hydrateIslands } from "sinwan";
+import { hydrateIslands } from "sinwan/hydration";
 import { Counter } from "./Counter";
+
 import { ProductGallery } from "./ProductGallery";
 
 hydrateIslands({

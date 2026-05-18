@@ -267,7 +267,7 @@ declare module "sinwan/jsx-runtime" {
 
 ### Can I use React’s `<Fragment>` import?
 
-No — `Fragment` is a Sinwan symbol, distinct from React’s. Use `<>...</>` or `import { Fragment } from "sinwan"`.
+No — `Fragment` is a Sinwan symbol, distinct from React’s. Use `<>...</>` or `import { Fragment } from "sinwan/jsx-runtime"`.
 
 ### Why is `class` accepted as well as `className`?
 

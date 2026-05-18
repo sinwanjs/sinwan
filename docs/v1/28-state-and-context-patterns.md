@@ -4,7 +4,7 @@ Sinwan offers **four overlapping systems** for passing data and managing state a
 
 ```ts
 // Sinwan native
-import { provide, inject } from "sinwan";
+import { provide, inject } from "sinwan/component";
 import { createStore, createMutable } from "sinwan/store";
 
 // React-compatible
@@ -33,9 +33,8 @@ import { createContext, useContext, useReducer } from "sinwan/react";
 - Must be called during component setup (synchronously).
 
 ```tsx
-import { cc, provide, inject } from "sinwan";
-import type { InjectionKey } from "sinwan";
-
+import { cc, provide, inject } from "sinwan/component";
+import { InjectionKey } from "sinwan/component";
 const ThemeKey: InjectionKey<string> = Symbol("theme");
 
 const App = cc(() => {
@@ -68,8 +67,7 @@ const Child = cc(() => {
 
 ```tsx
 import { createContext, useContext } from "sinwan/react";
-import { cc } from "sinwan";
-
+import { cc } from "sinwan/component";
 const ThemeCtx = createContext("light");
 
 const App = cc(() => (
@@ -132,8 +130,7 @@ effect(() => console.log(state.user.name)); // only re-runs when name changes
 
 ```tsx
 import { useReducer } from "sinwan/react";
-import { cc } from "sinwan";
-
+import { cc } from "sinwan/component";
 type Action = { type: "inc" } | { type: "dec" };
 const reducer = (n: number, a: Action) => (a.type === "inc" ? n + 1 : n - 1);
 
@@ -177,10 +174,9 @@ const Counter = cc(() => {
 The most powerful combination. Create a store, provide it to a subtree, inject it in any descendant:
 
 ```tsx
-import { cc, provide, inject } from "sinwan";
+import { cc, provide, inject } from "sinwan/component";
 import { createStore, produce } from "sinwan/store";
-import type { InjectionKey } from "sinwan";
-
+import { InjectionKey } from "sinwan/component";
 // ─── Define the store shape ─────────────────────
 interface AppState {
   user: { name: string; role: string } | null;
@@ -247,8 +243,7 @@ Same concept, but using the React-compatible API:
 ```tsx
 import { createContext, useContext } from "sinwan/react";
 import { createStore } from "sinwan/store";
-import { cc } from "sinwan";
-
+import { cc } from "sinwan/component";
 const TodoCtx = createContext<ReturnType<typeof createTodoStore> | null>(null);
 
 function createTodoStore() {
@@ -305,10 +300,9 @@ const TodoList = cc(() => {
 Share a reducer-based state machine across a subtree:
 
 ```tsx
-import { cc, provide, inject } from "sinwan";
+import { cc, provide, inject } from "sinwan/component";
 import { useReducer } from "sinwan/react";
-import type { InjectionKey } from "sinwan";
-
+import { InjectionKey } from "sinwan/component";
 // ─── State & actions ────────────────────────────
 interface CartState {
   items: string[];

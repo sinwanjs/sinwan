@@ -165,6 +165,17 @@ export function effect(fn: EffectFn): CleanupFn {
 export function track(dep: Dep): void {
   if (activeEffect) {
     const effect = activeEffect;
+
+    // Optimization & bugfix: prevent duplicate tracking in the same run.
+    // Without this, tracking the same dep multiple times (e.g. in a loop)
+    // then running the loop fewer times later causes cleanupDeps() to
+    // fully unsubscribe from the dep!
+    for (let i = 0; i < effect._depsLength; i++) {
+      if (effect.deps[i] === dep) {
+        return;
+      }
+    }
+
     dep.subscribers.add(effect);
     const oldDep = effect.deps[effect._depsLength];
     if (oldDep !== dep) {

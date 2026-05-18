@@ -21,8 +21,8 @@ type RenderResult = SinwanNode | Promise<SinwanNode>;
 ### Defining a component
 
 ```tsx
-import { cc, signal } from "sinwan";
-
+import { cc } from "sinwan/component";
+import { signal } from "sinwan/reactivity";
 interface CardProps {
   title: string;
   subtitle?: string;
@@ -106,8 +106,7 @@ Every component returned by `cc` carries `_SinwanComponent: true`. The JSX runti
 A **page** is a component that takes a plain `data` object. Pages exist to give SSR a clean API where the framework hands the page a serialised state:
 
 ```tsx
-import { cc } from "sinwan";
-
+import { cc } from "sinwan/component";
 interface HomeData {
   title: string;
   posts: { id: number; title: string }[];
@@ -144,8 +143,7 @@ Pages are not required for SSR — you can pass any element directly to `renderT
 A layout is a component whose `children` prop is **required** (typed as `SinwanNode`, never `undefined`). It's ideal for HTML scaffolding:
 
 ```tsx
-import { cc } from "sinwan";
-
+import { cc } from "sinwan/component";
 interface LayoutProps {
   title?: string;
   lang?: string;
@@ -197,8 +195,7 @@ interface ModalProps {
 The injected `children` field is `SinwanNode | SinwanSlots | undefined`. Use the helpers:
 
 ```ts
-import type { PropsWithChildren, PropsWithSlots } from "sinwan";
-
+import { PropsWithChildren, PropsWithSlots } from "sinwan/component";
 type Props = PropsWithChildren<{ title: string }>; // children?: SinwanNode
 type SlotProps = PropsWithSlots<{ title: string }>; // children?: SinwanSlots
 ```
@@ -310,8 +307,7 @@ Plain JS expressions:
 For **reactive** conditionals, use `<Show>`:
 
 ```tsx
-import { Match, Show, Switch } from "sinwan";
-
+import { Match, Show, Switch } from "sinwan/component";
 <Show when={user} fallback={<Login />}>
   {u => <UserCard {...u} />}
 </Show>
@@ -330,8 +326,8 @@ import { Match, Show, Switch } from "sinwan";
 ## Lists
 
 ```tsx
-import { computed, For, Index } from "sinwan";
-
+import { For, Index } from "sinwan/component";
+import { computed } from "sinwan/reactivity";
 <ul>
   <For
     each={items}
@@ -357,8 +353,7 @@ import { computed, For, Index } from "sinwan";
 ### Virtual scrolling
 
 ```tsx
-import { Virtual } from "sinwan";
-
+import { Virtual } from "sinwan/component";
 <Virtual
   each={items}
   key={(item) => item.id}
@@ -413,8 +408,7 @@ import { Virtual } from "sinwan";
 ## Structural helpers
 
 ```tsx
-import { Dynamic, Key, Portal, Visible, Virtual } from "sinwan";
-
+import { Dynamic, Key, Portal, Visible, Virtual } from "sinwan/component";
 <Key when={routeId}>
   {id => <RoutePage id={id} />}
 </Key>
@@ -454,8 +448,7 @@ If no handler is found, the error is logged via `console.error`. The faulty comp
 A control-flow primitive that catches errors thrown during **rendering** of its children and displays a fallback UI instead.
 
 ```ts
-import { ErrorBoundary } from "sinwan";
-```
+import { ErrorBoundary } from "sinwan/component";```
 
 ### Props
 
@@ -480,8 +473,7 @@ interface ErrorBoundaryProps {
 When a child throws during rendering, the fallback is shown instead:
 
 ```tsx
-import { cc, ErrorBoundary } from "sinwan";
-
+import { cc, ErrorBoundary } from "sinwan/component";
 const App = cc(() => (
   <ErrorBoundary fallback={<p>Something went wrong.</p>}>
     <DangerousComponent />

@@ -9,7 +9,7 @@ import {
   raw,
   HtmlEscapedString,
   isSafeHtml,
-} from "sinwan";
+} from "sinwan/component";
 ```
 
 ---
@@ -50,8 +50,7 @@ function escapeHtml(value: unknown): string;
 Use it any time you build HTML strings yourself:
 
 ```ts
-import { escapeHtml } from "sinwan";
-
+import { escapeHtml } from "sinwan/component";
 const html = `<div>${escapeHtml(comment.body)}</div>`;
 ```
 
@@ -81,8 +80,7 @@ function raw(html: string): HtmlEscapedString;
 `safeHtml` and `raw` are aliases. They wrap a string in an `HtmlEscapedString` instance, which both renderers and `escapeHtml` recognise as **already trusted** and pass through verbatim.
 
 ```tsx
-import { safeHtml } from "sinwan";
-
+import { safeHtml } from "sinwan/component";
 const Card = cc<{ markdown: string }>(({ markdown }) => {
   // Compile markdown server-side; the result is trusted HTML.
   const html = compileMarkdown(markdown);
@@ -172,8 +170,7 @@ The client renderer (`mount`/`hydrate`) does **not** escape on its own — it se
 ```ts
 import { marked } from "marked";
 import DOMPurify from "isomorphic-dompurify";
-import { safeHtml } from "sinwan";
-
+import { safeHtml } from "sinwan/component";
 function MarkdownView({ source }: { source: string }) {
   const dirty = marked.parse(source) as string;
   const clean = DOMPurify.sanitize(dirty);
@@ -204,8 +201,7 @@ const Comment = ({ body }: { body: string }) => <p class="comment">{body}</p>;
 ## Recipe: building HTML strings manually
 
 ```ts
-import { escapeHtml } from "sinwan";
-
+import { escapeHtml } from "sinwan/component";
 function listItem(text: string) {
   return `<li>${escapeHtml(text)}</li>`;
 }

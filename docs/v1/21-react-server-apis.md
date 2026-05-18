@@ -583,8 +583,7 @@ Bun.serve({
 
 ```tsx
 // /assets/client.ts — what the boot snippet imports
-export { hydrate } from "sinwan";
-export { default } from "./App";
+export { hydrate } from "sinwan/hydration";export { default } from "./App";
 ```
 
 **Streaming variant:**
