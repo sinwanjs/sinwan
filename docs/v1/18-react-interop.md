@@ -67,7 +67,8 @@ const ListShorthand = () => (
 **Example:**
 
 ```tsx
-import { createContext, use, useState } from "sinwan/component";
+import { createContext, use } from "sinwan/react-shared";
+import { useState } from "sinwan/react-client";
 // Create context with default value
 const ThemeContext = createContext("light");
 
@@ -129,7 +130,9 @@ const ShorthandToolbar = () => (
 **Example:**
 
 ```tsx
-import { memo, useState } from "sinwan/component";
+import { memo } from "sinwan/react-shared";
+import { useState } from "sinwan/react-client";
+
 // Basic memo with default shallow equality
 const ExpensiveComponent = memo(
   ({ data, onUpdate }: { data: number[]; onUpdate: () => void }) => {
@@ -202,7 +205,9 @@ const Parent = () => {
 **Example:**
 
 ```tsx
-import { lazy, Suspense } from "sinwan/component";
+import { lazy } from "sinwan/react-shared";
+import { Suspense } from "sinwan/react-client";
+
 // Define lazy-loaded components
 const HeavyChart = lazy(() => import("./HeavyChart.tsx"));
 const UserProfile = lazy(() => import("./UserProfile.tsx"));
@@ -257,7 +262,8 @@ const AdminSection = ({ isAdmin }: { isAdmin: boolean }) => {
 **Example:**
 
 ```tsx
-import { use, createContext, Suspense } from "sinwan/component";
+import { use, createContext } from "sinwan/react-shared";
+import { Suspense } from "sinwan/react-client";
 // Context usage with use()
 const UserContext = createContext<{ name: string; email: string } | null>(null);
 
@@ -316,7 +322,7 @@ const App = () => {
 **Example:**
 
 ```tsx
-import { cache, cacheSignal } from "sinwan/component";
+import { cache, cacheSignal } from "sinwan/react-shared";
 // Cache API calls
 const fetchUser = cache(async (id: string) => {
   const res = await fetch(`/api/users/${id}`, { signal: cacheSignal() });
@@ -376,7 +382,7 @@ const UserList = async () => {
 **Example:**
 
 ```tsx
-import { cache, cacheSignal } from "sinwan/component";
+import { cache, cacheSignal } from "sinwan/react-shared";
 // Data loader with cancellation support
 const fetchProducts = cache(async (category: string) => {
   const res = await fetch(`/api/products?category=${category}`, {

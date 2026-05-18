@@ -572,7 +572,7 @@ function parseCompId(value: string): number;
 
 ---
 
-## Server (`sinwan/react-server`)
+## Server (`sinwan/server`)
 
 ### `renderToString(node)`
 
