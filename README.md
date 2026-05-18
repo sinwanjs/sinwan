@@ -47,7 +47,9 @@ Use the automatic JSX runtime:
 ## Quick Start
 
 ```tsx
-import { cc, mount, signal } from "sinwan";
+import { cc, mount } from "sinwan/component";
+import { signal } from "sinwan/reactivity";
+import { mount } from "sinwan/renderer";
 
 const Counter = cc(() => {
   const count = signal(0);
@@ -60,9 +62,9 @@ mount(Counter, document.getElementById("app")!);
 
 ## Features
 
-- Fine-grained reactivity: `signal`, `computed`, `effect`, `batch`, `nextTick`
+- Fine-grained reactivity: `signal`, `computed`, `effect`, `batch`, `nextTick`, `untrack`, `on`, `observable`
 - JSX runtime: `sinwan/jsx-runtime` and `sinwan/jsx-dev-runtime`
-- Components: `cc`, lifecycle hooks, provide/inject, `<Show>`, `<For>`
+- Components: `cc`, lifecycle hooks, provide/inject, `<Show>`, `<For>` ...
 - DOM renderer: reactive text, attributes, events, refs, namespaces, and cleanup
 - Server rendering: `renderToString`, `streamPage`, hydratable strings and streams
 - Hydration: reuse server-rendered DOM with `hydrate`
@@ -78,7 +80,7 @@ const html = await renderToHydratableString(App, { initial: 5 });
 
 ```tsx
 // Client
-import { hydrate } from "sinwan";
+import { hydrate } from "sinwan/hydration";
 
 hydrate(App, document.getElementById("app")!, { initial: 5 });
 ```
