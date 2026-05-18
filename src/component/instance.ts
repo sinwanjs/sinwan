@@ -213,11 +213,18 @@ export function fireUnmountedHooks(instance: ComponentInstance): void {
     }
     instance.effects.length = 0;
 
-    // Remove from parent to prevent memory leaks
+    // Remove from parent to prevent memory leaks.
+    // Use swap-with-last for O(1) removal (order is irrelevant for cleanup
+    // tracking, and avoids O(n²) cost when many siblings unmount in a flush).
     if (instance.parent) {
-      const idx = instance.parent.children.indexOf(instance);
+      const siblings = instance.parent.children;
+      const idx = siblings.indexOf(instance);
       if (idx !== -1) {
-        instance.parent.children.splice(idx, 1);
+        const last = siblings.length - 1;
+        if (idx !== last) {
+          siblings[idx] = siblings[last];
+        }
+        siblings.pop();
       }
     }
   }

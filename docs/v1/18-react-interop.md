@@ -16,13 +16,13 @@ This page documents the rules of the bridge and the APIs delivered in Phase 1.
 
 ## Phase 1 — SHARED API surface
 
-All exports below ship from the bare `sinwan` entry point. These APIs work on both client and server.
+All exports below ship from `sinwan/jsx-runtime`. These APIs work on both client and server.
 
 ---
 
 ### `Fragment`
 
-**Signature:** `export { Fragment } from "sinwan"`
+**Signature:** `export { Fragment } from "sinwan/jsx-runtime"`
 
 **Description:** Re-export of Sinwan's existing JSX `Fragment` symbol. Ensures that both `<>...</>` (JSX fragment shorthand) and `<Fragment>...</Fragment>` resolve to the same node type. This is a pure passthrough to Sinwan's native fragment handling.
 
@@ -33,8 +33,7 @@ All exports below ship from the bare `sinwan` entry point. These APIs work on bo
 **Example:**
 
 ```tsx
-import { Fragment } from "sinwan";
-
+import { Fragment } from "sinwan/jsx-runtime";
 // Using explicit Fragment component
 const List = () => (
   <Fragment>
@@ -68,8 +67,7 @@ const ListShorthand = () => (
 **Example:**
 
 ```tsx
-import { createContext, use, useState } from "sinwan";
-
+import { createContext, use, useState } from "sinwan/component";
 // Create context with default value
 const ThemeContext = createContext("light");
 
@@ -131,8 +129,7 @@ const ShorthandToolbar = () => (
 **Example:**
 
 ```tsx
-import { memo, useState } from "sinwan";
-
+import { memo, useState } from "sinwan/component";
 // Basic memo with default shallow equality
 const ExpensiveComponent = memo(
   ({ data, onUpdate }: { data: number[]; onUpdate: () => void }) => {
@@ -205,8 +202,7 @@ const Parent = () => {
 **Example:**
 
 ```tsx
-import { lazy, Suspense } from "sinwan";
-
+import { lazy, Suspense } from "sinwan/component";
 // Define lazy-loaded components
 const HeavyChart = lazy(() => import("./HeavyChart.tsx"));
 const UserProfile = lazy(() => import("./UserProfile.tsx"));
@@ -261,8 +257,7 @@ const AdminSection = ({ isAdmin }: { isAdmin: boolean }) => {
 **Example:**
 
 ```tsx
-import { use, createContext, Suspense } from "sinwan";
-
+import { use, createContext, Suspense } from "sinwan/component";
 // Context usage with use()
 const UserContext = createContext<{ name: string; email: string } | null>(null);
 
@@ -321,8 +316,7 @@ const App = () => {
 **Example:**
 
 ```tsx
-import { cache, cacheSignal } from "sinwan";
-
+import { cache, cacheSignal } from "sinwan/component";
 // Cache API calls
 const fetchUser = cache(async (id: string) => {
   const res = await fetch(`/api/users/${id}`, { signal: cacheSignal() });
@@ -382,8 +376,7 @@ const UserList = async () => {
 **Example:**
 
 ```tsx
-import { cache, cacheSignal } from "sinwan";
-
+import { cache, cacheSignal } from "sinwan/component";
 // Data loader with cancellation support
 const fetchProducts = cache(async (category: string) => {
   const res = await fetch(`/api/products?category=${category}`, {
@@ -445,8 +438,11 @@ async function customFetch(url: string) {
 **Example:**
 
 ```tsx
-import { addTransitionType, startTransition, useTransition } from "sinwan";
-
+import {
+  addTransitionType,
+  startTransition,
+  useTransition,
+} from "sinwan/component";
 const Navigation = () => {
   const [isPending, startTransition] = useTransition();
   const [route, setRoute] = useState("/home");
@@ -473,8 +469,7 @@ const Navigation = () => {
 };
 
 // Introspecting active transition types (e.g., in middleware)
-import { getActiveTransitionTypes } from "sinwan";
-
+import { getActiveTransitionTypes } from "sinwan/component";
 const logTransitions = () => {
   const types = getActiveTransitionTypes();
   if (types.size > 0) {
@@ -504,8 +499,7 @@ const logTransitions = () => {
 **Example:**
 
 ```tsx
-import { captureOwnerStack } from "sinwan";
-
+import { captureOwnerStack } from "sinwan/component";
 // Error boundary pattern
 const ErrorBoundary = ({ children }: { children: any }) => {
   const [error, setError] = useState<Error | null>(null);

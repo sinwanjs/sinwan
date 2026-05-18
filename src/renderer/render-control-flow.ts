@@ -159,7 +159,7 @@ export function renderControlFlowToDOM(
   return block;
 }
 
-const errorBoundaryStack: MountedReactiveBlock[] = [];
+export const errorBoundaryStack: MountedReactiveBlock[] = [];
 
 export function hasActiveErrorBoundary(): boolean {
   return errorBoundaryStack.length > 0;
@@ -173,10 +173,18 @@ function renderShowBlock(
   owner: ComponentInstance | null,
 ): () => void {
   let initialized = false;
+  let prevWhen: unknown = undefined;
 
   return effect(() => {
-    clearChildren(block);
     const when = readReactive((element.props as any).when);
+
+    // Skip re-rendering if 'when' hasn't changed (optimization for large lists)
+    if (initialized && Object.is(when, prevWhen)) {
+      return;
+    }
+    prevWhen = when;
+
+    clearChildren(block);
     block.children = withOptionalInstance(owner, () => {
       const content = when
         ? resolveShowChildren(element, when)
@@ -454,6 +462,16 @@ function renderVirtualBlock<T>(
         removeMountedNode(record.mounted);
       }
     }
+
+    // Reorder DOM nodes to match nextRecords order
+    const fragment = domOps.createDocumentFragment();
+    for (let i = 0; i < nextRecords.length; i++) {
+      const nodes = getMountedDomNodes(nextRecords[i]!.mounted);
+      for (let j = 0; j < nodes.length; j++) {
+        fragment.appendChild(nodes[j]!);
+      }
+    }
+    domOps.appendChild(content, fragment);
 
     records = nextRecords;
     const mountedChildren: MountedNode[] = new Array(nextRecords.length);
@@ -1182,7 +1200,7 @@ function createDynamicElement(
   };
 }
 
-function renderBlockContent(
+export function renderBlockContent(
   content: SinwanNode,
   parent: Node,
   anchor: Node | null,
@@ -1205,16 +1223,23 @@ function renderBlockContent(
   });
 }
 
-function clearChildren(block: MountedReactiveBlock): void {
-  // Fast path: remove all DOM nodes between anchors in one sweep,
-  // avoiding the expensive getMountedDomNodes recursive traversal.
-  if (block.startAnchor.parentNode) {
-    let node = block.startAnchor.nextSibling;
-    while (node && node !== block.endAnchor) {
-      const next = node.nextSibling;
-      domOps.remove(node);
-      node = next;
+export function clearChildren(block: MountedReactiveBlock): void {
+  if (block.children.length <= 4) {
+    for (const child of block.children) {
+      removeMountedNode(child);
     }
+    block.children = [];
+    return;
+  }
+
+  // Fast path: use native Range to delete all nodes between anchors in one
+  // optimized C++ operation, avoiding the expensive per-node remove() overhead.
+  const parent = block.startAnchor.parentNode;
+  if (parent && block.startAnchor.nextSibling !== block.endAnchor) {
+    const range = document.createRange();
+    range.setStartAfter(block.startAnchor);
+    range.setEndBefore(block.endAnchor);
+    range.deleteContents(); // Native batch removal, O(1) per call
   }
   // Run logical cleanup (effects, events, refs)
   for (const child of block.children) {
@@ -1295,7 +1320,9 @@ function syncPortalOrder(mounted: MountedNode): void {
   }
 }
 
-function fireMountedAndQueueUpdated(owner: ComponentInstance | null): void {
+export function fireMountedAndQueueUpdated(
+  owner: ComponentInstance | null,
+): void {
   if (owner) {
     fireMountedHooks(owner);
   }
@@ -1359,6 +1386,7 @@ function renderSuspenseBlock(
   let fallbackNode: MountedNode | null = null;
   let initialized = false;
   let disposed = false;
+  const asyncComponentResults = new Map<Function, unknown>();
 
   const disposeEffect = effect(() => {
     void retrySignal.value; // establish dependency for re-runs
@@ -1383,6 +1411,7 @@ function renderSuspenseBlock(
     const boundary = {
       promises: new Set<PromiseLike<unknown>>(),
       onResolved: () => {},
+      asyncComponentResults,
     };
 
     // Set up promise tracking so we can retry when they resolve.
@@ -1596,7 +1625,7 @@ function renderViewTransitionBlock(
   return () => removeMountedNode(mounted);
 }
 
-function softHideMountedTree(node: MountedNode): void {
+export function softHideMountedTree(node: MountedNode): void {
   switch (node.type) {
     case "component":
       if (node.instance) softHideInstance(node.instance);
@@ -1622,7 +1651,7 @@ function softHideMountedTree(node: MountedNode): void {
   }
 }
 
-function softShowMountedTree(node: MountedNode): void {
+export function softShowMountedTree(node: MountedNode): void {
   switch (node.type) {
     case "component":
       if (node.instance) softShowInstance(node.instance);

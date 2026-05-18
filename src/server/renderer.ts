@@ -11,7 +11,7 @@ import type {
   SinwanComponent,
   SinwanSlots,
 } from "../types.ts";
-import { HtmlEscapedString, escapeHtml } from "../escaper.ts";
+import { HtmlEscapedString, escapeHtml } from "../common/escaper.ts";
 import { renderServerAttribute } from "./attribute-utils.ts";
 import { isSignal } from "../reactivity/signal.ts";
 import { isComputed } from "../reactivity/computed.ts";
@@ -39,6 +39,8 @@ import {
   isSwitchElement,
   isVirtualElement,
   isActivityElement,
+  isSuspenseElement,
+  isViewTransitionElement,
   resolveKeyChildren,
   resolveMatchChildren,
   resolveShowChildren,
@@ -250,21 +252,43 @@ async function renderElement(element: SinwanElement): Promise<string> {
     return renderVirtualElement(element);
   }
 
+  if (isSuspenseElement(element)) {
+    return renderToString((props as any).children as SinwanNode);
+  }
+
+  if (isViewTransitionElement(element)) {
+    const name = props.name;
+    const viewChildren = (props as any).children as SinwanNode;
+    if (!name) {
+      return renderToString(viewChildren);
+    }
+    const wrapperTag = (props as any).as ?? "div";
+    const wrapperElement: SinwanElement = {
+      tag: wrapperTag,
+      props: {
+        style: { viewTransitionName: name },
+        children: viewChildren,
+      },
+      children: normalizeContent(viewChildren),
+    };
+    return renderElement(wrapperElement);
+  }
+
   if (isActivityElement(element)) {
     const mode = readReactive(props.mode) ?? "visible";
     const activityChildren = (props as any).children as SinwanNode;
-    if (mode === "hidden") {
-      return renderElement({
-        tag: "div",
-        props: {
-          hidden: true,
-          "data-sinwan-activity": "hidden",
-          children: activityChildren,
-        },
-        children: normalizeContent(activityChildren),
-      });
-    }
-    return renderToString(activityChildren);
+    const tag = (element.props as any).as ?? "div";
+    const hidden = mode === "hidden";
+
+    return renderElement({
+      tag,
+      props: {
+        "data-sinwan-activity": hidden ? "hidden" : "visible",
+        ...(hidden ? { hidden: true } : {}),
+        children: activityChildren,
+      },
+      children: normalizeContent(activityChildren),
+    });
   }
 
   // Handle functional components
@@ -404,7 +428,8 @@ async function renderForElement(element: SinwanElement): Promise<string> {
   // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
   const promises: Promise<string>[] = [];
   for (let i = 0; i < each.length; i++) {
-    promises.push(renderToString(props.children!(each[i], () => i)));
+    const index = i;
+    promises.push(renderToString(props.children!(each[i], () => index)));
   }
   const rendered = await Promise.all(promises);
   let output = "";
@@ -432,7 +457,8 @@ async function renderIndexElement(element: SinwanElement): Promise<string> {
   // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
   const promises: Promise<string>[] = [];
   for (let i = 0; i < each.length; i++) {
-    promises.push(renderToString(props.children!(() => each[i], i)));
+    const item = each[i];
+    promises.push(renderToString(props.children!(() => item, i)));
   }
   const rendered = await Promise.all(promises);
   let output = "";
@@ -501,7 +527,16 @@ async function renderVirtualElement(element: SinwanElement): Promise<string> {
   if (typeof renderChild === "function") {
     const promises: Promise<string>[] = [];
     for (let i = startIndex; i < endIndex; i++) {
-      promises.push(renderToString(renderChild(list[i], () => i)));
+      const index = i;
+      const top = i * itemHeight;
+      // Wrap each item in a div with absolute positioning at the correct top
+      const itemPromise = renderToString(
+        renderChild(list[i], () => index),
+      ).then(
+        (html) =>
+          `<div style="position:absolute;top:${top}px;left:0;right:0">${html}</div>`,
+      );
+      promises.push(itemPromise);
     }
     const results = await Promise.all(promises);
     for (let i = 0; i < results.length; i++) {

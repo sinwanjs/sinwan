@@ -27,6 +27,11 @@ const DOCS = [
   { id: "22-react-static-apis.md", title: "React Static APIs" },
   { id: "23-react-unstable.md", title: "React Unstable APIs" },
   { id: "24-state-getters.md", title: "State Getters" },
+  { id: "25-style-guide.md", title: "Style Guide" },
+  { id: "26-stores.md", title: "Stores" },
+  { id: "27-stores-react-hooks.md", title: "Store React Hooks" },
+  { id: "28-state-and-context-patterns.md", title: "State & Context Patterns" },
+  { id: "29-use-fetch.md", title: "useFetch" },
   { id: "CHANGELOG.md", title: "Changelog" },
 ];
 

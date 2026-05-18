@@ -73,7 +73,7 @@ Prefer **Option B** when you only need the value at the moment of render.
 ## 4. Full example
 
 ```tsx
-import { For, onUpdated } from "sinwan";
+import { For, onUpdated } from "sinwan/component";
 import { useEffect, useState } from "sinwan/react-client";
 
 export const Counter = () => {

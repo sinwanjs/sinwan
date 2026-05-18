@@ -3,7 +3,7 @@
 Hydration is the process of attaching reactivity and event handlers to **server-rendered HTML** without recreating its DOM. After hydration, the page is fully interactive — exactly as if it had been mounted on the client from scratch — but no DOM was created or replaced, only adopted.
 
 ```ts
-import { hydrate } from "sinwan";
+import { hydrate } from "sinwan/hydration";
 import { renderToHydratableString } from "sinwan/react-server";
 ```
 
@@ -54,8 +54,7 @@ return new Response(
 ### 2. Client: hydrate
 
 ```ts
-import { hydrate } from "sinwan";
-
+import { hydrate } from "sinwan/hydration";
 hydrate(App, document.getElementById("root")!, { initialCount: 5 });
 ```
 
@@ -148,8 +147,7 @@ Static attributes (e.g. `class="card"`, `aria-hidden="true"`) are emitted once o
 Reactive attributes are different: even though the SSR output reflects the **current** value, the hydrator must attach an effect so future signal changes update the live attribute:
 
 ```tsx
-import { signal, computed } from "sinwan";
-
+import { signal, computed } from "sinwan/reactivity";
 const open = signal(false);
 const panelClass = computed(() => `panel ${open.value ? "open" : ""}`);
 
@@ -182,7 +180,7 @@ The corresponding `hydrate()` call sees the resolved data and produces a matchin
 ## API summary
 
 ```ts
-// from "sinwan"
+// from "sinwan/hydration"
 function hydrate(
   component: SinwanComponent<any>,
   container: Element,
@@ -228,8 +226,8 @@ interface HydrationCursor {
 
 ```tsx
 // shared/App.tsx
-import { signal, cc } from "sinwan";
-
+import { cc } from "sinwan/component";
+import { signal } from "sinwan/reactivity";
 export const App = cc<{ initial: number }>(({ initial }) => {
   const count = signal(initial);
   return (
@@ -265,8 +263,7 @@ Bun.serve({
   <div id="root">${ssr}</div>
   <script type="module">
     import { App } from "/app.js";
-    import { hydrate } from "sinwan";
-    hydrate(App, document.getElementById("root"), { initial: ${initial} });
+    import { hydrate } from "sinwan/hydration";    hydrate(App, document.getElementById("root"), { initial: ${initial} });
   </script>
 </body>
 </html>`,

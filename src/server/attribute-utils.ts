@@ -1,4 +1,4 @@
-import { escapeHtml } from "../escaper.ts";
+import { escapeHtml } from "../common/escaper.ts";
 
 const PROP_ALIASES: Record<string, string> = {
   className: "class",

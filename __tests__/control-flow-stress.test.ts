@@ -26,6 +26,7 @@ import {
   Show,
   Switch,
   Visible,
+  Virtual,
   isElementLike,
   isShowElement,
   isForElement,
@@ -1018,5 +1019,37 @@ describe("Type Safety and Prop Validation (Stress)", () => {
     expect(isShowElement(showEl1)).toBe(true);
     expect(isShowElement(showEl2)).toBe(true);
     expect(isShowElement(showEl3)).toBe(true);
+  });
+
+  it("should support nested Switch and functional Virtual components in findTruthyMatch", () => {
+    // A functional component representation of Virtual
+    const virtualFunc = {
+      tag: Virtual,
+      props: {
+        each: signal([]),
+        fallback: "virtual-fallback",
+        itemHeight: 50,
+        containerHeight: 300,
+      },
+      children: [],
+    };
+
+    // A nested Switch element directly under the children of Switch
+    const nestedSwitch = Switch({
+      fallback: virtualFunc as any,
+      children: [
+        Match({
+          when: signal(false),
+          children: "no",
+        }),
+      ],
+    });
+
+    const outerSwitch = Switch({
+      children: [nestedSwitch],
+    });
+
+    const resolved = resolveSwitchContent(outerSwitch);
+    expect(resolved).toBe("virtual-fallback");
   });
 });

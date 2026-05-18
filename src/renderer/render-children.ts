@@ -31,6 +31,14 @@ import {
 } from "../component/instance.ts";
 import { removeMountedNode } from "./unmount.ts";
 import { isTemplateResult, type SinwanTemplateResult } from "./template.ts";
+import { getActiveSuspenseBoundary } from "./suspense-boundary.ts";
+
+type PromiseRecord =
+  | { status: "pending"; promise: PromiseLike<unknown> }
+  | { status: "fulfilled"; value: unknown }
+  | { status: "rejected"; reason: unknown };
+
+const promiseRecords = new WeakMap<PromiseLike<unknown>, PromiseRecord>();
 
 /**
  * Render a single SinwanNode to DOM and append to parent.
@@ -92,6 +100,23 @@ export function renderNodeToDOM(
 
   // Promise → async node (placeholder + swap when resolved)
   if (node instanceof Promise) {
+    const boundary = getActiveSuspenseBoundary();
+    if (boundary) {
+      const record = trackPromise(node);
+      if (record.status === "fulfilled") {
+        return renderNodeToDOM(
+          record.value as SinwanNode,
+          parent,
+          anchor,
+          namespace,
+        );
+      }
+      if (record.status === "rejected") {
+        throw record.reason;
+      }
+      throw record.promise;
+    }
+
     const startAnchor = domOps.createComment("Sinwan-a");
     const endAnchor = domOps.createComment("/Sinwan-a");
     const placeholder = domOps.createTextNode("");
@@ -261,6 +286,27 @@ function renderReactiveNodeToDOM(
   });
 
   return block;
+}
+
+function trackPromise(promise: PromiseLike<unknown>): PromiseRecord {
+  const existing = promiseRecords.get(promise);
+  if (existing) {
+    return existing;
+  }
+
+  const record: PromiseRecord = { status: "pending", promise };
+  promiseRecords.set(promise, record);
+
+  promise.then(
+    (value) => {
+      promiseRecords.set(promise, { status: "fulfilled", value });
+    },
+    (reason) => {
+      promiseRecords.set(promise, { status: "rejected", reason });
+    },
+  );
+
+  return record;
 }
 
 /**

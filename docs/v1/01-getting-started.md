@@ -72,8 +72,8 @@ This pulls `sinwan/jsx-dev-runtime` instead. See [`07-jsx.md`](./07-jsx.md) for 
 Create `src/Counter.tsx`:
 
 ```tsx
-import { signal, cc, onMounted } from "sinwan";
-
+import { cc, onMounted } from "sinwan/component";
+import { signal } from "sinwan/reactivity";
 export const Counter = cc(() => {
   const count = signal(0);
 
@@ -101,8 +101,9 @@ Three things to notice:
 
 ```tsx
 // src/main.tsx
-import { mount } from "sinwan";
+import { mount } from "sinwan/renderer";
 import { Counter } from "./Counter";
+
 
 const root = document.getElementById("app");
 if (!root) throw new Error("#app not found");

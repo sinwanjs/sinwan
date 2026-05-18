@@ -12,7 +12,7 @@ import {
   onServer,
   onClient,
   onError,
-} from "sinwan";
+} from "sinwan/component";
 ```
 
 | Hook          | Fires when                                   | Order                             |
@@ -81,8 +81,7 @@ const Counter = cc(async () => {
 });
 
 // ✅ CORRECT - Use Sinwan signals
-import { signal } from "sinwan";
-
+import { signal } from "sinwan/reactivity";
 const Counter = cc(async () => {
   const count = signal(0); // signals work fine in async components
   const data = await fetch("/api/data");
@@ -198,8 +197,8 @@ const Clock = cc(() => {
 - **Effects you create with `effect()` during setup** are **not** auto-disposed in v1. Either store the disposer and call it from `onUnmounted`, or push it onto `getCurrentInstance().effects` (advanced):
 
 ```tsx
-import { effect, onUnmounted } from "sinwan";
-
+import { onUnmounted } from "sinwan/component";
+import { effect } from "sinwan/reactivity";
 cc(() => {
   const dispose = effect(() => {
     document.title = `App (${count.value})`;
@@ -384,8 +383,7 @@ Multiple `onError` calls on the same instance all fire (in registration order) f
 ## `getCurrentInstance()`
 
 ```ts
-import { getCurrentInstance, type ComponentInstance } from "sinwan";
-
+import { getCurrentInstance, type ComponentInstance } from "sinwan/component";
 const instance: ComponentInstance | null = getCurrentInstance();
 ```
 
@@ -419,8 +417,8 @@ interface ComponentInstance {
 If you have a long-lived effect or subscription, you can register its dispose function for automatic cleanup on unmount:
 
 ```ts
-import { getCurrentInstance, effect } from "sinwan";
-
+import { getCurrentInstance } from "sinwan/component";
+import { effect } from "sinwan/reactivity";
 const dispose = effect(() => {
   /* ... */
 });
@@ -443,11 +441,8 @@ The renderer already pushes its own internal effects this way. Doing it yourself
 ## Cheat sheet
 
 ```tsx
+import { signal, effect, batch, nextTick } from "sinwan/reactivity";
 import {
-  signal,
-  effect,
-  batch,
-  nextTick,
   cc,
   onMounted,
   onUnmounted,
@@ -458,7 +453,7 @@ import {
   onClient,
   onError,
   getCurrentInstance,
-} from "sinwan";
+} from "sinwan/component";
 
 const Widget = cc(() => {
   // 1. State

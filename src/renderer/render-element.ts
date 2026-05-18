@@ -38,7 +38,6 @@ import {
   isViewTransitionElement,
   isVirtualElement,
   Show,
-  SUSPENSE_TYPE,
 } from "../component/control-flow.ts";
 import {
   renderControlFlowToDOM,
@@ -250,8 +249,28 @@ function renderComponentToDOM(
   let result: any;
   let child: MountedNode;
 
+  const boundary = getActiveSuspenseBoundary();
+
   try {
-    result = component(props);
+    // If this async component already resolved inside the active Suspense
+    // boundary, reuse the cached result instead of re-executing it.
+    if (boundary && boundary.asyncComponentResults?.has(component)) {
+      result = boundary.asyncComponentResults.get(component);
+    } else {
+      result = component(props);
+    }
+
+    // If the component returned a Promise and we're inside a Suspense
+    // boundary, register the resolved value in the cache.
+    // Don't throw the Promise here - let renderNodeToDOM handle it
+    // with the existing trackPromise mechanism.
+    if (result instanceof Promise && boundary) {
+      if (!boundary.asyncComponentResults!.has(component)) {
+        result.then((resolved: unknown) => {
+          boundary.asyncComponentResults!.set(component, resolved);
+        });
+      }
+    }
 
     // Render the returned element tree (still under this instance)
     if (result && typeof result === "object" && "tag" in result) {

@@ -9,7 +9,6 @@
 import { flushSync } from "./scheduler.ts";
 
 let batchDepth = 0;
-let batchScheduled = false;
 
 /**
  * Batch multiple signal writes so effects run only once.

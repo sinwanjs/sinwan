@@ -13,7 +13,7 @@
  */
 
 import type { SinwanElement, SinwanNode, SinwanComponent } from "../types.ts";
-import { HtmlEscapedString, escapeHtml } from "../escaper.ts";
+import { HtmlEscapedString, escapeHtml } from "../common/escaper.ts";
 import { renderServerAttribute } from "./attribute-utils.ts";
 import { isSignal } from "../reactivity/signal.ts";
 import { isComputed } from "../reactivity/computed.ts";
@@ -60,6 +60,9 @@ import {
   isShowElement,
   isSwitchElement,
   isVirtualElement,
+  isActivityElement,
+  isSuspenseElement,
+  isViewTransitionElement,
 } from "../component/control-flow.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
@@ -332,6 +335,49 @@ async function renderElementH(
     return await renderVirtualElementH(element, ctx);
   }
 
+  if (isSuspenseElement(element)) {
+    return await renderNodeH(props.children as SinwanNode, ctx);
+  }
+
+  if (isViewTransitionElement(element)) {
+    const name = props.name;
+    const viewChildren = (props as any).children as SinwanNode;
+    if (!name) {
+      return await renderNodeMaybeRoot(viewChildren, ctx, isComponentRoot);
+    }
+    const wrapperTag = (props as any).as ?? "div";
+    const wrapperElement: SinwanElement = {
+      tag: wrapperTag,
+      props: {
+        style: { viewTransitionName: name },
+        children: viewChildren,
+      },
+      children: normalizeContent(viewChildren),
+    };
+    return await renderElementH(wrapperElement, ctx, isComponentRoot);
+  }
+
+  if (isActivityElement(element)) {
+    const mode = readReactive(props.mode) ?? "visible";
+    const activityChildren = (props as any).children as SinwanNode;
+    const tag = (element.props as any).as ?? "div";
+    const hidden = mode === "hidden";
+
+    return await renderElementH(
+      {
+        tag,
+        props: {
+          "data-sinwan-activity": hidden ? "hidden" : "visible",
+          ...(hidden ? { hidden: true } : {}),
+          children: activityChildren,
+        },
+        children: normalizeContent(activityChildren),
+      },
+      ctx,
+      isComponentRoot,
+    );
+  }
+
   // Functional component
   if (typeof tag === "function") {
     return await renderComponentH(tag, props, ctx);
@@ -550,9 +596,10 @@ async function renderForElementH(
   // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
   const promises: Promise<string>[] = [];
   for (let i = 0; i < each.length; i++) {
+    const index = i;
     promises.push(
       renderNodeH(
-        props.children!(each[i], () => i),
+        props.children!(each[i], () => index),
         ctx,
       ),
     );
@@ -586,9 +633,10 @@ async function renderIndexElementH(
   // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
   const promises: Promise<string>[] = [];
   for (let i = 0; i < each.length; i++) {
+    const item = each[i];
     promises.push(
       renderNodeH(
-        props.children!(() => each[i], i),
+        props.children!(() => item, i),
         ctx,
       ),
     );
@@ -662,10 +710,13 @@ async function renderVirtualElementH(
   if (typeof renderChild === "function") {
     const promises: Promise<string>[] = [];
     for (let i = startIndex; i < endIndex; i++) {
+      const index = i;
+      const top = i * itemHeight;
+      // Wrap each item in a div with absolute positioning at the correct top
       promises.push(
-        renderNodeH(
-          renderChild(list[i], () => i),
-          ctx,
+        renderNodeH(renderChild(list[i], () => index), ctx).then(
+          (html) =>
+            `<div style="position:absolute;top:${top}px;left:0;right:0">${html}</div>`,
         ),
       );
     }

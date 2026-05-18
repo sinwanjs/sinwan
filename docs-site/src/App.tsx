@@ -1,5 +1,5 @@
 import {
-  cc,
+  createComponent,
   signal,
   onMounted,
   provide,

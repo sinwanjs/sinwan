@@ -71,7 +71,7 @@ if (process.env.NODE_ENV === "production") {
 }
 ```
 
-When a CJS consumer (`require('sinwan')`) bundles your app, the bundler inlines `process.env.NODE_ENV` and dead-code-eliminates the wrong branch. The result: only the chosen variant ends up in your bundle.
+When a CJS consumer (`require('sinwan/component')`) bundles your app, the bundler inlines `process.env.NODE_ENV` and dead-code-eliminates the wrong branch. The result: only the chosen variant ends up in your bundle.
 
 ### ESM fallback (`dist/index.mjs`)
 
@@ -139,7 +139,7 @@ Resolution order, top to bottom:
 3. **`development` vs `production`**: chosen by the _bundler_ (Vite, Webpack, etc.).
 4. **`default`**: fallback when no condition matched.
 
-This means a Vite app in production gets `dist/esm/index.production.min.js` _directly_; a Node `require('sinwan')` gets `dist/index.js` (the CJS shim that branches at runtime).
+This means a Vite app in production gets `dist/esm/index.production.min.js` _directly_; a Node `require('sinwan/component')` gets `dist/component.js` (the CJS shim that branches at runtime).
 
 ---
 

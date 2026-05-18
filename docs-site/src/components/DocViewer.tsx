@@ -1,5 +1,5 @@
 /** @jsxImportSource sinwan */
-import { cc, inject, signal, effect, onUnmounted } from "sinwan";
+import { createComponent, inject, signal, effect, onUnmounted } from "sinwan";
 import { CurrentPageKey, RawContentKey } from "../App";
 import { marked } from "marked";
 import Prism from "prismjs";

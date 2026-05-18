@@ -1,5 +1,3 @@
-import { type BunRequest } from "bun";
-
 const countries = [
   {
     name: "Morocco",
@@ -50,18 +48,38 @@ function withCors(res: Response): Response {
   return res;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 Bun.serve({
   port: 3002,
-  fetch(req: Request) {
+
+  async fetch(req: Request) {
     const url = new URL(req.url);
+
     if (req.method === "OPTIONS") {
       return withCors(new Response(null, { status: 204 }));
     }
+
     if (url.pathname === "/countries") {
-      return withCors(Response.json({ countries }));
+      // simulate async delay
+      await sleep(1000);
+
+      return withCors(
+        Response.json({
+          countries,
+        })
+      );
     }
-    return withCors(Response.json({ message: "not found" }, { status: 404 }));
+
+    return withCors(
+      Response.json(
+        { message: "not found" },
+        { status: 404 }
+      )
+    );
   },
 });
 
-console.log(`live in http://localhost:${3002}`);
+console.log("live in http://localhost:3002");

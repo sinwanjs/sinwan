@@ -297,8 +297,9 @@ The same logic applies to `readReactive()`, which resolves element attributes: i
 In this example, we use **both** side by side:
 
 ```tsx
-import { signal } from "sinwan"; // ← native Sinwan
-import { useState } from "sinwan/react-client"; // ← React-compatible
+import { signal } from "sinwan/reactivity";
+import { useState } from "sinwan/react-client";
+// ← React-compatible
 
 export const Counter = () => {
   const [count, setCount] = useState(0); // ← getter + setter
@@ -436,8 +437,7 @@ count.value; // ❌ undefined — no such property
 Only a native `signal()` returns a `Signal` object with a `.value` property:
 
 ```tsx
-import { signal } from "sinwan";
-const id = signal("test");
+import { signal } from "sinwan/reactivity";const id = signal("test");
 
 <div>{id.value}</div>  // ✅ works — id is a Signal object
 <div>{id}</div>         // ✅ also works — renderer detects Signal and reads .value

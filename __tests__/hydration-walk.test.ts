@@ -16,7 +16,7 @@ import {
   PORTAL_TYPE,
   Virtual,
 } from "../src/component/control-flow.ts";
-import { raw } from "../src/escaper.ts";
+import { raw } from "../src/common/escaper.ts";
 import type { SinwanElement } from "../src/types.ts";
 
 function el(

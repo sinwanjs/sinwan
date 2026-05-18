@@ -13,6 +13,8 @@ export interface SuspenseBoundary {
   promises: Set<PromiseLike<unknown>>;
   /** Callback fired when a promise resolves (the boundary re-renders). */
   onResolved: () => void;
+  /** Resolved async component results cached within this boundary. */
+  asyncComponentResults?: Map<Function, unknown>;
 }
 
 const stack: SuspenseBoundary[] = [];

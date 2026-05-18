@@ -8,7 +8,7 @@ import {
   renderToString,
   isSlots,
 } from "../src/server/renderer.ts";
-import { HtmlEscapedString, raw } from "../src/escaper.ts";
+import { HtmlEscapedString, raw } from "../src/common/escaper.ts";
 import {
   Show,
   For,
@@ -332,7 +332,7 @@ describe("renderToString control flow", () => {
       props: { mode: "visible", children: "hello" },
       children: ["hello"],
     });
-    expect(html).toBe("hello");
+    expect(html).toBe('<div data-sinwan-activity="visible">hello</div>');
   });
 
   it("renders Activity hidden mode", async () => {
@@ -341,8 +341,7 @@ describe("renderToString control flow", () => {
       props: { mode: "hidden", children: "hello" },
       children: ["hello"],
     });
-    expect(html).toContain('data-sinwan-activity="hidden"');
-    expect(html).toContain("hello");
+    expect(html).toBe('<div data-sinwan-activity="hidden" hidden>hello</div>');
   });
 });
 

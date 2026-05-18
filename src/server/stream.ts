@@ -5,13 +5,8 @@
  * Streams chunks as they resolve without waiting for full tree.
  */
 
-import type {
-  SinwanNode,
-  SinwanElement,
-  SinwanComponent,
-  SinwanSlots,
-} from "../types.ts";
-import { HtmlEscapedString, escapeHtml } from "../escaper.ts";
+import type { SinwanNode, SinwanElement, SinwanComponent } from "../types.ts";
+import { HtmlEscapedString, escapeHtml } from "../common/escaper.ts";
 import { renderServerAttribute } from "./attribute-utils.ts";
 import { isSignal } from "../reactivity/signal.ts";
 import { isComputed } from "../reactivity/computed.ts";
@@ -27,6 +22,7 @@ import {
   Switch,
   Visible,
   Show,
+  Virtual,
   isDynamicElement,
   isErrorBoundaryElement,
   isForElement,
@@ -36,6 +32,7 @@ import {
   isPortalElement,
   isShowElement,
   isSwitchElement,
+  isVirtualElement,
 } from "../component/control-flow.ts";
 import {
   createComponentInstance,
@@ -288,7 +285,8 @@ async function streamElement(
     tag === Key ||
     tag === Dynamic ||
     tag === Portal ||
-    tag === ErrorBoundary
+    tag === ErrorBoundary ||
+    tag === Virtual
   ) {
     await streamElement((tag as Function)(props), controller, encoder);
     return;
@@ -370,6 +368,11 @@ async function streamElement(
           : fallback;
       await streamNode(fallbackContent as SinwanNode, controller, encoder);
     }
+    return;
+  }
+
+  if (isVirtualElement(element)) {
+    await streamVirtualElement(element, controller, encoder);
     return;
   }
 
@@ -689,6 +692,11 @@ async function streamHydratableElement(
     return;
   }
 
+  if (isVirtualElement(element)) {
+    await streamHydratableVirtualElement(element, controller, encoder, ctx);
+    return;
+  }
+
   if (typeof tag === "function") {
     await streamHydratableComponent(
       tag as SinwanComponent<any>,
@@ -818,8 +826,9 @@ async function streamHydratableForElement(
   }
 
   for (let index = 0; index < each.length; index++) {
+    const idx = index;
     await streamHydratableNodeToController(
-      props.children(each[index], () => index),
+      props.children(each[index], () => idx),
       controller,
       encoder,
       ctx,
@@ -864,13 +873,113 @@ async function streamHydratableIndexElement(
   }
 
   for (let index = 0; index < each.length; index++) {
+    const item = each[index];
     await streamHydratableNodeToController(
-      props.children(() => each[index], index),
+      props.children(() => item, index),
       controller,
       encoder,
       ctx,
     );
   }
+}
+
+async function streamHydratableVirtualElement(
+  element: SinwanElement,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  encoder: TextEncoder,
+  ctx: HydratableStreamContext,
+): Promise<void> {
+  const props = element.props as {
+    each?: unknown;
+    key?: (item: unknown, index: number) => string | number | symbol;
+    itemHeight: number;
+    containerHeight: number;
+    overscan?: number;
+    minRendered?: number;
+    fallback?: SinwanNode;
+    children?: (item: unknown, index: () => number) => SinwanNode;
+  };
+
+  const items = readReactive(props.each);
+  const list = Array.isArray(items) ? items : [];
+
+  if (list.length === 0) {
+    if (props.fallback) {
+      await streamHydratableNodeToController(
+        props.fallback,
+        controller,
+        encoder,
+        ctx,
+      );
+    }
+    return;
+  }
+
+  const itemHeight = props.itemHeight;
+  const containerHeight = props.containerHeight;
+  const overscan = props.overscan ?? 3;
+  const minRendered = props.minRendered ?? 0;
+
+  // Compute initial visible window at scrollTop=0
+  let startIndex = 0;
+  let endIndex = Math.ceil(containerHeight / itemHeight);
+  startIndex = Math.max(0, startIndex - overscan);
+  endIndex = Math.min(list.length, endIndex + overscan);
+
+  if (minRendered > 0) {
+    const visibleCount = endIndex - startIndex;
+    if (visibleCount < minRendered) {
+      const deficit = minRendered - visibleCount;
+      const expandStart = Math.min(startIndex, Math.floor(deficit / 2));
+      const expandEnd = Math.min(
+        list.length - endIndex,
+        Math.ceil(deficit / 2),
+      );
+      let remaining = deficit - expandStart - expandEnd;
+      startIndex -= expandStart;
+      endIndex += expandEnd;
+      if (remaining > 0) {
+        if (endIndex < list.length) {
+          endIndex = Math.min(list.length, endIndex + remaining);
+        } else if (startIndex > 0) {
+          startIndex = Math.max(0, startIndex - remaining);
+        }
+      }
+    }
+  }
+
+  const totalHeight = list.length * itemHeight;
+  const renderChild = props.children;
+
+  // Stream container start
+  controller.enqueue(
+    encoder.encode(
+      `<div style="overflow:auto;height:${containerHeight}px"><div style="position:relative;height:${totalHeight}px">`,
+    ),
+  );
+
+  // Stream visible items with absolute positioning
+  if (typeof renderChild === "function") {
+    for (let i = startIndex; i < endIndex; i++) {
+      const index = i;
+      const top = i * itemHeight;
+      controller.enqueue(
+        encoder.encode(
+          `<div style="position:absolute;top:${top}px;left:0;right:0">`,
+        ),
+      );
+      await streamHydratableNodeToController(
+        renderChild(list[i], () => index),
+        controller,
+        encoder,
+        ctx,
+      );
+      controller.enqueue(encoder.encode("</div>"));
+    }
+  }
+
+  // Stream container end
+  controller.enqueue(encoder.encode("</div></div>"));
 }
 
 function renderHydratableAttributes(
@@ -948,8 +1057,9 @@ async function streamForElement(
   }
 
   for (let index = 0; index < each.length; index++) {
+    const idx = index;
     await streamNode(
-      props.children(each[index], () => index),
+      props.children(each[index], () => idx),
       controller,
       encoder,
     );
@@ -982,12 +1092,105 @@ async function streamIndexElement(
   }
 
   for (let index = 0; index < each.length; index++) {
+    const item = each[index];
     await streamNode(
-      props.children(() => each[index], index),
+      props.children(() => item, index),
       controller,
       encoder,
     );
   }
+}
+
+async function streamVirtualElement(
+  element: SinwanElement,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  encoder: TextEncoder,
+): Promise<void> {
+  const props = element.props as {
+    each?: unknown;
+    key?: (item: unknown, index: number) => string | number | symbol;
+    itemHeight: number;
+    containerHeight: number;
+    overscan?: number;
+    minRendered?: number;
+    fallback?: SinwanNode;
+    children?: (item: unknown, index: () => number) => SinwanNode;
+  };
+
+  const items = readReactive(props.each);
+  const list = Array.isArray(items) ? items : [];
+
+  if (list.length === 0) {
+    if (props.fallback) {
+      await streamNode(props.fallback, controller, encoder);
+    }
+    return;
+  }
+
+  const itemHeight = props.itemHeight;
+  const containerHeight = props.containerHeight;
+  const overscan = props.overscan ?? 3;
+  const minRendered = props.minRendered ?? 0;
+
+  // Compute initial visible window at scrollTop=0
+  let startIndex = 0;
+  let endIndex = Math.ceil(containerHeight / itemHeight);
+  startIndex = Math.max(0, startIndex - overscan);
+  endIndex = Math.min(list.length, endIndex + overscan);
+
+  if (minRendered > 0) {
+    const visibleCount = endIndex - startIndex;
+    if (visibleCount < minRendered) {
+      const deficit = minRendered - visibleCount;
+      const expandStart = Math.min(startIndex, Math.floor(deficit / 2));
+      const expandEnd = Math.min(
+        list.length - endIndex,
+        Math.ceil(deficit / 2),
+      );
+      let remaining = deficit - expandStart - expandEnd;
+      startIndex -= expandStart;
+      endIndex += expandEnd;
+      if (remaining > 0) {
+        if (endIndex < list.length) {
+          endIndex = Math.min(list.length, endIndex + remaining);
+        } else if (startIndex > 0) {
+          startIndex = Math.max(0, startIndex - remaining);
+        }
+      }
+    }
+  }
+
+  const totalHeight = list.length * itemHeight;
+  const renderChild = props.children;
+
+  // Stream container start
+  controller.enqueue(
+    encoder.encode(
+      `<div style="overflow:auto;height:${containerHeight}px"><div style="position:relative;height:${totalHeight}px">`,
+    ),
+  );
+
+  // Stream visible items with absolute positioning
+  if (typeof renderChild === "function") {
+    for (let i = startIndex; i < endIndex; i++) {
+      const index = i;
+      const top = i * itemHeight;
+      controller.enqueue(
+        encoder.encode(
+          `<div style="position:absolute;top:${top}px;left:0;right:0">`,
+        ),
+      );
+      await streamNode(
+        renderChild(list[i], () => index),
+        controller,
+        encoder,
+      );
+      controller.enqueue(encoder.encode("</div>"));
+    }
+  }
+
+  // Stream container end
+  controller.enqueue(encoder.encode("</div></div>"));
 }
 
 function resolveShowChildren(

@@ -16,8 +16,31 @@ import { isComputed } from "../reactivity/computed.ts";
 import { effect } from "../reactivity/effect.ts";
 import { bindEvents, isEventProp } from "../renderer/events.ts";
 import { setSingleAttribute } from "../renderer/attributes.ts";
-import { renderControlFlowToDOM } from "../renderer/render-control-flow.ts";
+import {
+  renderBlockContent,
+  renderControlFlowToDOM,
+} from "../renderer/render-control-flow.ts";
 import { HtmlEscapedString } from "../jsx/jsx-runtime.ts";
+import { signal } from "../reactivity/signal.ts";
+import {
+  pushSuspenseBoundary,
+  popSuspenseBoundary,
+  getActiveSuspenseBoundary,
+} from "../renderer/suspense-boundary.ts";
+import {
+  errorBoundaryStack,
+  softHideMountedTree,
+  softShowMountedTree,
+  fireMountedAndQueueUpdated,
+  clearChildren,
+} from "../renderer/render-control-flow.ts";
+import { renderNodeToDOM } from "../renderer/render-children.ts";
+import { renderElementToDOM } from "../renderer/render-element.ts";
+import { removeMountedNode } from "../renderer/unmount.ts";
+import type {
+  MountedElement,
+  MountedReactiveBlock,
+} from "../renderer/types.ts";
 import {
   Dynamic,
   For,
@@ -38,6 +61,11 @@ import {
   isShowElement,
   isSwitchElement,
   isVirtualElement,
+  isErrorBoundaryElement,
+  isSuspenseElement,
+  isActivityElement,
+  isViewTransitionElement,
+  resolveSwitchContent,
 } from "../component/control-flow.ts";
 import {
   parseTextOpenMarker,
@@ -48,7 +76,6 @@ import {
   createComponentInstance,
   getCurrentInstance,
   setCurrentInstance,
-  fireMountedHooks,
   handleComponentError,
   queueUpdatedHooks,
 } from "../component/instance.ts";
@@ -121,6 +148,11 @@ export function hydrateNode(
   // SinwanElement
   if (typeof node === "object" && node !== null && "tag" in node) {
     return hydrateElement(node as SinwanElement, cursor);
+  }
+
+  // Promise → throw to Suspense boundary
+  if (node instanceof Promise) {
+    throw node;
   }
 
   // Fallback — skip a text node
@@ -257,7 +289,11 @@ export function hydrateElement(
     isIndexElement(element) ||
     isKeyElement(element) ||
     isDynamicElement(element) ||
-    isVirtualElement(element)
+    isVirtualElement(element) ||
+    isErrorBoundaryElement(element) ||
+    isSuspenseElement(element) ||
+    isActivityElement(element) ||
+    isViewTransitionElement(element)
   ) {
     return hydrateControlFlow(element, cursor);
   }
@@ -395,7 +431,8 @@ function hydrateControlFlow(
         ? (() => {
             const result: SinwanNode[] = [];
             for (let i = 0; i < items.length; i++) {
-              result.push(props.children!(items[i], () => i));
+              const index = i;
+              result.push(props.children!(items[i], () => index));
             }
             return result;
           })()
@@ -422,7 +459,8 @@ function hydrateControlFlow(
         ? (() => {
             const result: SinwanNode[] = [];
             for (let i = 0; i < items.length; i++) {
-              result.push(props.children!(() => items[i], i));
+              const item = items[i];
+              result.push(props.children!(() => item, i));
             }
             return result;
           })()
@@ -517,16 +555,55 @@ function hydrateControlFlow(
 
     const children: MountedNode[] = [];
     for (let i = startIndex; i < endIndex; i++) {
+      const index = i;
+      const child = renderChild(list[i], () => index);
       children.push(
         hydrateNode(
-          renderChild(list[i], () => i),
+          {
+            tag: "div",
+            props: {
+              style: `position:absolute;top:${i * itemHeight}px;left:0;right:0`,
+            },
+            children: normalizeContent(child),
+          },
           itemCursor,
         ),
       );
     }
 
-    const anchor = document.createComment("Sinwan-f");
-    return { type: "fragment", children, anchor };
+    const contentMounted: MountedElement = {
+      type: "element",
+      node: contentDiv,
+      children,
+      eventCleanups: null,
+      attrDisposers: null,
+      refCleanup: null,
+    };
+
+    return {
+      type: "element",
+      node: containerDiv,
+      children: [contentMounted],
+      eventCleanups: null,
+      attrDisposers: null,
+      refCleanup: null,
+    };
+  }
+
+  if (isErrorBoundaryElement(element)) {
+    return hydrateErrorBoundary(element, cursor);
+  }
+
+  if (isSuspenseElement(element)) {
+    return hydrateSuspense(element, cursor);
+  }
+
+  if (isActivityElement(element)) {
+    return hydrateActivity(element, cursor);
+  }
+
+  if (isViewTransitionElement(element)) {
+    return hydrateViewTransition(element, cursor);
   }
 
   return hydrateArray(element.children, cursor);
@@ -553,28 +630,6 @@ function resolveShowChildren(
     return children(value);
   }
   return children as SinwanNode;
-}
-
-function resolveSwitchContent(element: SinwanElement): SinwanNode {
-  const props = element.props as {
-    fallback?: SinwanNode;
-    children?: SinwanNode;
-  };
-  const children = normalizeContent(props.children ?? element.children);
-
-  for (const child of children) {
-    const match = getMatchElement(child);
-    if (!match) {
-      continue;
-    }
-
-    const when = readReactive((match.props as any).when);
-    if (when) {
-      return resolveMatchChildren(match, when);
-    }
-  }
-
-  return props.fallback;
 }
 
 function resolveMatchChildren(
@@ -704,6 +759,18 @@ function hydrateComponent(
     }
   } catch (err) {
     setCurrentInstance(prevInstance);
+
+    const boundary = getActiveSuspenseBoundary();
+    if (
+      boundary &&
+      err &&
+      typeof err === "object" &&
+      typeof (err as any).then === "function"
+    ) {
+      boundary.promises.add(err as PromiseLike<unknown>);
+      throw err;
+    }
+
     if (!handleComponentError(instance, err as Error)) {
       throw err;
     }
@@ -746,4 +813,417 @@ function hydrateArray(
   // Use a placeholder anchor
   const anchor = document.createComment("Sinwan-f");
   return { type: "fragment", children, anchor };
+}
+
+// ─── Control flow hydration helpers ────────────────────────
+
+function hydrateErrorBoundary(
+  element: SinwanElement,
+  cursor: HydrationCursor,
+): MountedNode {
+  const props = element.props as {
+    fallback?: SinwanNode | ((error: Error, reset: () => void) => SinwanNode);
+    children?: SinwanNode;
+  };
+  const resetSignal = signal(0);
+  let error: Error | null = null;
+  const owner = getCurrentInstance();
+
+  const startAnchor = document.createComment("Sinwan-b");
+  const endAnchor = document.createComment("/Sinwan-b");
+  const parent = cursor.parent;
+  const currentDOMNode = cursor.current;
+
+  parent.insertBefore(startAnchor, currentDOMNode);
+
+  const block: MountedReactiveBlock = {
+    type: "reactive-block",
+    dispose: () => {},
+    children: [],
+    startAnchor,
+    endAnchor,
+  };
+
+  let initialized = false;
+  const dispose = effect(() => {
+    void resetSignal.value;
+
+    if (initialized) {
+      clearChildren(block);
+      errorBoundaryStack.push(block);
+      try {
+        block.children = renderBlockContent(
+          props.children,
+          parent,
+          endAnchor,
+          null,
+          owner,
+        );
+        error = null;
+      } catch (err) {
+        error = err instanceof Error ? err : new Error(String(err));
+        const fallback = props.fallback;
+        const fallbackContent: SinwanNode =
+          typeof fallback === "function"
+            ? (fallback as any)(error, () => {
+                error = null;
+                resetSignal.value = resetSignal.value + 1;
+              })
+            : fallback;
+        block.children = renderBlockContent(
+          fallbackContent,
+          parent,
+          endAnchor,
+          null,
+          owner,
+        );
+      } finally {
+        errorBoundaryStack.pop();
+      }
+      fireMountedAndQueueUpdated(owner);
+      return;
+    }
+
+    errorBoundaryStack.push(block);
+    try {
+      const child = hydrateContent(props.children, cursor);
+      block.children = [child];
+      initialized = true;
+      parent.insertBefore(endAnchor, cursor.current);
+    } catch (err) {
+      error = err instanceof Error ? err : new Error(String(err));
+      parent.insertBefore(endAnchor, cursor.current);
+      clearChildren(block);
+      const fallback = props.fallback;
+      const fallbackContent: SinwanNode =
+        typeof fallback === "function"
+          ? (fallback as any)(error, () => {
+              error = null;
+              resetSignal.value = resetSignal.value + 1;
+            })
+          : fallback;
+      block.children = renderBlockContent(
+        fallbackContent,
+        parent,
+        endAnchor,
+        null,
+        owner,
+      );
+      initialized = true;
+    } finally {
+      errorBoundaryStack.pop();
+    }
+  });
+
+  block.dispose = dispose;
+  return block;
+}
+
+function hydrateSuspense(
+  element: SinwanElement,
+  cursor: HydrationCursor,
+): MountedNode {
+  const props = element.props as {
+    fallback: SinwanNode;
+    children?: SinwanNode;
+  };
+  const retrySignal = signal(0);
+  const owner = getCurrentInstance();
+
+  const startAnchor = document.createComment("Sinwan-b");
+  const endAnchor = document.createComment("/Sinwan-b");
+  const parent = cursor.parent;
+  const currentDOMNode = cursor.current;
+
+  parent.insertBefore(startAnchor, currentDOMNode);
+
+  const block: MountedReactiveBlock = {
+    type: "reactive-block",
+    dispose: () => {},
+    children: [],
+    startAnchor,
+    endAnchor,
+  };
+
+  let initialized = false;
+  let disposed = false;
+  let fallbackNode: MountedNode | null = null;
+  let contentNodes: MountedNode[] = [];
+  const asyncComponentResults = new Map<Function, unknown>();
+
+  const dispose = effect(() => {
+    void retrySignal.value;
+
+    if (initialized) {
+      for (const node of contentNodes) {
+        removeMountedNode(node);
+      }
+      contentNodes = [];
+
+      const boundary = {
+        promises: new Set<PromiseLike<unknown>>(),
+        onResolved: () => {},
+        asyncComponentResults,
+      };
+      let retryScheduled = false;
+      boundary.onResolved = () => {
+        if (disposed || retryScheduled) return;
+        retryScheduled = true;
+        queueMicrotask(() => {
+          retryScheduled = false;
+          if (!disposed) {
+            retrySignal.value = retrySignal.value + 1;
+          }
+        });
+      };
+
+      pushSuspenseBoundary(boundary);
+
+      const children = props.children;
+      const childArray =
+        children != null
+          ? Array.isArray(children)
+            ? children
+            : [children]
+          : [];
+      const nodes: MountedNode[] = [];
+
+      try {
+        for (const child of childArray) {
+          if (child != null) {
+            nodes.push(renderNodeToDOM(child, parent, endAnchor, null));
+          }
+        }
+        popSuspenseBoundary();
+        if (fallbackNode) {
+          removeMountedNode(fallbackNode);
+          fallbackNode = null;
+        }
+        block.children = nodes;
+        contentNodes = nodes;
+      } catch (err) {
+        popSuspenseBoundary();
+        for (const node of nodes) {
+          removeMountedNode(node);
+        }
+        if (
+          err &&
+          typeof err === "object" &&
+          typeof (err as any).then === "function"
+        ) {
+          boundary.promises.add(err as any);
+          if (!fallbackNode) {
+            fallbackNode = renderNodeToDOM(
+              props.fallback,
+              parent,
+              endAnchor,
+              null,
+            );
+          }
+          block.children = fallbackNode ? [fallbackNode] : [];
+        } else {
+          throw err;
+        }
+      }
+
+      for (const promise of boundary.promises) {
+        promise.then(() => boundary.onResolved());
+      }
+      boundary.promises.clear();
+
+      fireMountedAndQueueUpdated(owner);
+      return;
+    }
+
+    const children = props.children;
+    const childArray =
+      children != null ? (Array.isArray(children) ? children : [children]) : [];
+    const nodes: MountedNode[] = [];
+
+    const boundary = {
+      promises: new Set<PromiseLike<unknown>>(),
+      onResolved: () => {},
+      asyncComponentResults,
+    };
+    let retryScheduled = false;
+    boundary.onResolved = () => {
+      if (disposed || retryScheduled) return;
+      retryScheduled = true;
+      queueMicrotask(() => {
+        retryScheduled = false;
+        if (!disposed) {
+          retrySignal.value = retrySignal.value + 1;
+        }
+      });
+    };
+
+    pushSuspenseBoundary(boundary);
+
+    try {
+      for (const child of childArray) {
+        if (child != null) {
+          nodes.push(hydrateNode(child, cursor));
+        }
+      }
+      popSuspenseBoundary();
+      parent.insertBefore(endAnchor, cursor.current);
+      block.children = nodes;
+      contentNodes = nodes;
+      initialized = true;
+    } catch (err) {
+      popSuspenseBoundary();
+      if (
+        err &&
+        typeof err === "object" &&
+        typeof (err as any).then === "function"
+      ) {
+        boundary.promises.add(err as any);
+        fallbackNode = hydrateNode(props.fallback, cursor);
+        parent.insertBefore(endAnchor, cursor.current);
+        block.children = fallbackNode ? [fallbackNode] : [];
+        contentNodes = block.children;
+        initialized = true;
+      } else {
+        throw err;
+      }
+    }
+
+    for (const promise of boundary.promises) {
+      promise.then(() => boundary.onResolved());
+    }
+    boundary.promises.clear();
+  });
+
+  block.dispose = () => {
+    disposed = true;
+    dispose();
+  };
+  return block;
+}
+
+function hydrateActivity(
+  element: SinwanElement,
+  cursor: HydrationCursor,
+): MountedNode {
+  const props = element.props as {
+    mode?: any;
+    children?: SinwanNode;
+  };
+  const owner = getCurrentInstance();
+
+  const startAnchor = document.createComment("Sinwan-b");
+  const endAnchor = document.createComment("/Sinwan-b");
+  const parent = cursor.parent;
+  const currentDOMNode = cursor.current;
+
+  parent.insertBefore(startAnchor, currentDOMNode);
+
+  const block: MountedReactiveBlock = {
+    type: "reactive-block",
+    dispose: () => {},
+    children: [],
+    startAnchor,
+    endAnchor,
+  };
+
+  let initialized = false;
+  let wasHidden = false;
+  let wrapperMounted: MountedElement | null = null;
+
+  const dispose = effect(() => {
+    const currentMode = readReactive(props.mode) ?? "visible";
+    const hidden = currentMode === "hidden";
+
+    if (initialized) {
+      if (hidden !== wasHidden && wrapperMounted) {
+        const wrapper = wrapperMounted.node as HTMLElement;
+        wrapper.setAttribute(
+          "data-sinwan-activity",
+          hidden ? "hidden" : "visible",
+        );
+        if (hidden) {
+          wrapper.setAttribute("hidden", "");
+          wrapper.style.display = "none";
+          softHideMountedTree(wrapperMounted);
+        } else {
+          wrapper.removeAttribute("hidden");
+          wrapper.style.display = "";
+          softShowMountedTree(wrapperMounted);
+        }
+        wasHidden = hidden;
+      }
+      fireMountedAndQueueUpdated(owner);
+      return;
+    }
+
+    // Hydrate the wrapper element from DOM
+    const wrapper = advance(cursor) as HTMLElement;
+    if (wrapper && wrapper.nodeType === 1) {
+      const itemCursor: HydrationCursor = {
+        parent: wrapper,
+        current: wrapper.firstChild,
+      };
+      const child = hydrateContent(props.children, itemCursor);
+
+      wrapperMounted = {
+        type: "element",
+        node: wrapper,
+        children: [child],
+        eventCleanups: null,
+        attrDisposers: null,
+        refCleanup: null,
+      };
+
+      block.children = [wrapperMounted];
+
+      if (hidden) {
+        wrapper.style.display = "none";
+        softHideMountedTree(wrapperMounted);
+      }
+      wasHidden = hidden;
+    }
+
+    parent.insertBefore(endAnchor, cursor.current);
+    initialized = true;
+  });
+
+  block.dispose = dispose;
+  return block;
+}
+
+function hydrateViewTransition(
+  element: SinwanElement,
+  cursor: HydrationCursor,
+): MountedNode {
+  const props = element.props as {
+    name?: string;
+    children?: SinwanNode;
+  };
+  const name = props.name;
+
+  if (!name) {
+    return hydrateContent(props.children, cursor);
+  }
+
+  const wrapper = advance(cursor) as HTMLElement;
+  if (!wrapper || wrapper.nodeType !== 1) {
+    return hydrateContent(props.children, cursor);
+  }
+
+  const itemCursor: HydrationCursor = {
+    parent: wrapper,
+    current: wrapper.firstChild,
+  };
+  const child = hydrateContent(props.children, itemCursor);
+
+  const mounted: MountedElement = {
+    type: "element",
+    node: wrapper,
+    children: [child],
+    eventCleanups: null,
+    attrDisposers: null,
+    refCleanup: null,
+  };
+
+  return mounted;
 }

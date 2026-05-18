@@ -112,43 +112,33 @@ export function sinwan(options: SinwanOptions = {}): SinwanVitePlugin {
 /**
  * Sinwan Bun plugin.
  *
- * Provides the same JSX transformation (hoisting) as the Vite plugin,
- * but using Bun's native plugin API.
+ * Provides JSX transformation (hoisting) using Bun's native plugin API.
+ * Note: treeShake option is ignored for Bun builds as Bun.build has native
+ * tree-shaking. Use the Vite plugin if you need custom Sinwan tree-shaking.
  */
 export function sinwanBun(options: SinwanOptions = {}): any {
   const opts = { ...DEFAULT_SINWAN_OPTIONS, ...options };
-  const enableTreeShake = opts.treeShake !== false;
-  
-  const tsPlugin = enableTreeShake
-    ? sinwanTreeShake(typeof opts.treeShake === "object" ? opts.treeShake : {})
-    : null;
+
+  // Note: Bun.build has excellent native tree-shaking.
+  // The sinwanTreeShake plugin is Vite/Rollup specific and not used here.
+  if (opts.treeShake !== false) {
+    console.warn(
+      "[sinwanBun] treeShake option is not supported for Bun builds. " +
+        "Bun.build has native tree-shaking enabled by default.",
+    );
+  }
 
   return {
     name: "sinwan",
     setup(build: any) {
-      // Bun's onLoad is the equivalent of Vite's transform hook.
+      // Bun's onLoad handles JSX transformation
       build.onLoad({ filter: /\.[tj]sx$/ }, async (args: { path: string }) => {
         const code = await (globalThis as any).Bun.file(args.path).text();
-        
-        // 1. JSX compilation (hoisting)
-        let transformed = transformJSX(code, args.path, { hoist: opts.hoist });
-        
-        // 2. Tree-shaking usage detection (if enabled)
-        if (tsPlugin) {
-          const hook = tsPlugin.transform;
-          const codeToScan = transformed.code;
-          let tsResult: any = null;
-          
-          if (typeof hook === "function") {
-            tsResult = (hook as any)(codeToScan, args.path);
-          } else if (hook && typeof (hook as any).handler === "function") {
-            tsResult = (hook as any).handler(codeToScan, args.path);
-          }
-          
-          if (tsResult) {
-            transformed = typeof tsResult === 'string' ? { code: tsResult } : tsResult;
-          }
-        }
+
+        // JSX compilation with hoisting
+        const transformed = transformJSX(code, args.path, {
+          hoist: opts.hoist,
+        });
 
         return {
           contents: transformed.code,

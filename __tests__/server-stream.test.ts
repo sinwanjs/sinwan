@@ -12,7 +12,7 @@ import {
   Visible,
   Portal,
 } from "../src/component/control-flow.ts";
-import { raw, HtmlEscapedString } from "../src/escaper.ts";
+import { raw, HtmlEscapedString } from "../src/common/escaper.ts";
 import { island } from "../src/component/island.ts";
 import {
   streamPage,

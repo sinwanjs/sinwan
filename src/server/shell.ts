@@ -15,7 +15,7 @@
  */
 
 import type { SinwanComponent, SinwanNode } from "../types.ts";
-import { escapeHtml } from "../escaper.ts";
+import { escapeHtml } from "../common/escaper.ts";
 import { renderServerAttribute } from "./attribute-utils.ts";
 import { renderToHydratableString } from "./hydration-markers.ts";
 import { streamHydratablePage } from "./stream.ts";

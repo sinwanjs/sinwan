@@ -9,8 +9,9 @@ A collection of small, complete examples covering the most common Sinwan pattern
 The hello-world of reactive UI.
 
 ```tsx
-import { signal, mount, cc } from "sinwan";
-
+import { cc } from "sinwan/component";
+import { signal } from "sinwan/reactivity";
+import { mount } from "sinwan/renderer";
 const Counter = cc(() => {
   const count = signal(0);
   return (
@@ -30,8 +31,8 @@ mount(Counter, document.getElementById("app")!);
 ## Computed values
 
 ```tsx
-import { signal, computed, cc } from "sinwan";
-
+import { cc } from "sinwan/component";
+import { signal, computed } from "sinwan/reactivity";
 const TempConverter = cc(() => {
   const c = signal(20);
   const f = computed(() => (c.value * 9) / 5 + 32);
@@ -58,8 +59,8 @@ const TempConverter = cc(() => {
 ## Todo list
 
 ```tsx
-import { signal, cc, For } from "sinwan";
-
+import { cc, For } from "sinwan/component";
+import { signal } from "sinwan/reactivity";
 interface Todo {
   id: number;
   text: string;
@@ -131,8 +132,8 @@ const TodoApp = cc(() => {
 ## Async data fetching
 
 ```tsx
-import { signal, cc, onMounted } from "sinwan";
-
+import { cc, onMounted } from "sinwan/component";
+import { signal } from "sinwan/reactivity";
 interface User {
   id: number;
   name: string;
@@ -174,16 +175,18 @@ const UserList = cc(() => {
 
 ```tsx
 // theme.ts
-import { signal, type InjectionKey, type Signal } from "sinwan";
-
+import { type InjectionKey } from "sinwan/component";
+import { signal, type Signal } from "sinwan/reactivity";
 export type Theme = "light" | "dark";
 export const ThemeKey: InjectionKey<Signal<Theme>> = Symbol("theme");
 ```
 
 ```tsx
 // App.tsx
-import { signal, computed, provide, cc } from "sinwan";
+import { provide, cc } from "sinwan/component";
+import { signal, computed } from "sinwan/reactivity";
 import { ThemeKey } from "./theme";
+
 
 const App = cc(({ children }) => {
   const theme = signal<"light" | "dark">("light");
@@ -206,8 +209,10 @@ const App = cc(({ children }) => {
 
 ```tsx
 // Card.tsx
-import { inject, computed, cc } from "sinwan";
+import { inject, cc } from "sinwan/component";
+import { computed } from "sinwan/reactivity";
 import { ThemeKey } from "./theme";
+
 
 export const Card = cc(({ children }) => {
   const theme = inject(ThemeKey)!;
@@ -221,8 +226,8 @@ export const Card = cc(({ children }) => {
 ## Form with validation
 
 ```tsx
-import { signal, computed, cc } from "sinwan";
-
+import { cc } from "sinwan/component";
+import { signal, computed } from "sinwan/reactivity";
 const SignUp = cc(() => {
   const email = signal("");
   const password = signal("");
@@ -275,8 +280,7 @@ const SignUp = cc(() => {
 A common pattern for complex screens.
 
 ```tsx
-import { signal, computed, type Signal } from "sinwan";
-
+import { signal, computed, type Signal } from "sinwan/reactivity";
 export interface CartStore {
   items: Signal<{ id: string; price: number; qty: number }[]>;
   total: { value: number };
@@ -335,8 +339,7 @@ See [`10-hydration.md`](./10-hydration.md) for the complete end-to-end example.
 ```ts
 import { Bun } from "bun";
 import { streamPage, registerPage } from "sinwan/react-server";
-import { cc } from "sinwan";
-
+import { cc } from "sinwan/component";
 const HomePage = cc<{ title: string }>(({ title }) => (
   <html>
     <head><title>{title}</title></head>
@@ -367,8 +370,7 @@ Bun.serve({
 ## Custom event listener cleanup
 
 ```tsx
-import { onMounted, onUnmounted, cc } from "sinwan";
-
+import { onMounted, onUnmounted, cc } from "sinwan/component";
 const KeyboardShortcut = cc(() => {
   onMounted(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -388,8 +390,7 @@ const KeyboardShortcut = cc(() => {
 ```tsx
 import { marked } from "marked";
 import DOMPurify from "isomorphic-dompurify";
-import { safeHtml, cc } from "sinwan";
-
+import { safeHtml, cc } from "sinwan/component";
 const Markdown = cc<{ source: string }>(({ source }) => {
   const dirty = marked.parse(source) as string;
   const clean = DOMPurify.sanitize(dirty);
@@ -403,8 +404,7 @@ const Markdown = cc<{ source: string }>(({ source }) => {
 
 ```ts
 import { test, expect } from "bun:test";
-import { signal, effect, nextTick } from "sinwan";
-
+import { signal, effect, nextTick } from "sinwan/reactivity";
 test("effect re-runs when signal changes", async () => {
   const c = signal(0);
   let observed = -1;

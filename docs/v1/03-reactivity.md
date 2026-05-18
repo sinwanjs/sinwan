@@ -16,7 +16,7 @@ Plus two utilities:
 | `nextTick(fn?)`                 | Promise that resolves after the next reactive flush |
 | `isSignal(v)` / `isComputed(v)` | Type guards                                         |
 
-All of them live in `sinwan` and `sinwan/reactivity` (re-export).
+All of them live in `sinwan/reactivity`.
 
 ---
 
@@ -112,8 +112,7 @@ But the renderer detects signals via `isSignal` first — passing one as a JSX c
 ### Type guard
 
 ```ts
-import { isSignal } from "sinwan";
-
+import { isSignal } from "sinwan/reactivity";
 if (isSignal(value)) {
   // value is Signal<unknown>
 }
@@ -176,8 +175,7 @@ big.value;
 ### Type guard
 
 ```ts
-import { isComputed } from "sinwan";
-
+import { isComputed } from "sinwan/reactivity";
 if (isComputed(value)) {
   // value is Computed<unknown>
 }
@@ -241,8 +239,8 @@ dispose();
 When `effect()` is called during component setup, it is **not** automatically tied to the component’s lifetime. To dispose effects on unmount, register them via `onUnmounted` or push them onto `getCurrentInstance().effects`:
 
 ```ts
-import { effect, onUnmounted } from "sinwan";
-
+import { onUnmounted } from "sinwan/component";
+import { effect } from "sinwan/reactivity";
 cc(() => {
   const dispose = effect(() => { /* ... */ });
   onUnmounted(dispose);
