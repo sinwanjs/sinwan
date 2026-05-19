@@ -29,7 +29,7 @@ const Counter = () => {
   const [count, setCount] = useState(0);
 
   // Direct value update
-  const increment = () => setCount(count + 1);
+  const increment = () => setCount(count() + 1);
 
   // Functional update (recommended for dependent state)
   const decrement = () => setCount((c) => c - 1);
