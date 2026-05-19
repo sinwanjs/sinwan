@@ -2,7 +2,7 @@
 
 > Status: **Phase 4 — complete.** All entries below are imported from `sinwan/react-server`.
 
-> **Why a separate sub-path?** Sinwan's existing `sinwan/react-server` already exports its own `renderToString` (no hydration markers). To avoid breaking that public API while also delivering a React-named `renderToString` (which **does** include hydration markers), the React server adapters live behind `sinwan/react-server`. The two are completely independent.
+> **Why a separate sub-path?** Sinwan's native `sinwan/server` sub-path exports its own `renderToString` (without hydration markers). To avoid breaking that public API while also delivering a React-compatible `renderToString` (which **does** include hydration markers), the React server adapters are provided through `sinwan/react-server`. The two sub-paths are completely independent.
 
 ---
 
@@ -583,7 +583,8 @@ Bun.serve({
 
 ```tsx
 // /assets/client.ts — what the boot snippet imports
-export { hydrate } from "sinwan/hydration";export { default } from "./App";
+export { hydrate } from "sinwan/hydration";
+export { default } from "./App";
 ```
 
 **Streaming variant:**
