@@ -76,6 +76,81 @@ const Form = () => {
 };
 ```
 
+### Reactive Conditional Rendering with `useState`
+
+In Sinwan, component setup runs **once per instance** and JSX expressions are evaluated during that single setup pass. When a `useState` getter (e.g. `count()`) is used inside a ternary or conditional expression, the value is read **once** during setup. If the state later changes inside a `setTimeout`, `setInterval`, or event listener, the DOM will **not** update because no reactive effect was ever subscribed.
+
+**The fix:** Wrap conditional expressions in a function so the renderer treats them as reactive nodes and automatically re-evaluates them when the signal changes.
+
+```tsx
+import { useState, useEffect } from "sinwan/react-client";
+
+// ❌ WRONG - ternary evaluated once during setup, never re-runs
+const BrokenSteps = () => {
+  const [step1, setStep1] = useState(false);
+
+  useEffect(() => {
+    setTimeout(() => setStep1(true), 500); // state updates, but DOM stays "⏳"
+  }, []);
+
+  return <p>Step 1: {step1() ? "✅" : "⏳"}</p>; // ⏳ stays forever
+};
+
+// ✅ CORRECT - wrap in a function so the renderer subscribes an effect
+const FixedSteps = () => {
+  const [step1, setStep1] = useState(false);
+
+  useEffect(() => {
+    setTimeout(() => setStep1(true), 500);
+  }, []);
+
+  return <p>Step 1: {() => (step1() ? "✅" : "⏳")}</p>; // ✅ appears after 500ms
+};
+```
+
+**When you need a function wrapper:**
+
+| Pattern                           | Needs wrapper? | Why                                                                               |
+| --------------------------------- | -------------- | --------------------------------------------------------------------------------- |
+| `{count}`                         | No             | Raw getter — renderer wraps it automatically                                      |
+| `{count()}`                       | No             | Direct call during setup — but the renderer sees a static value; prefer `{count}` |
+| `{count() + 1}`                   | **Yes**        | Expression evaluated once; wrap: `{() => count() + 1}`                            |
+| `{isDone() ? "Done" : "Loading"}` | **Yes**        | Ternary evaluated once; wrap: `{() => (isDone() ? "Done" : "Loading")}`           |
+| `{items().map(...)}`              | **Yes**        | Array method called once; wrap: `{() => items().map(...)}`                        |
+| `{show && <Modal />}`             | **Yes**        | `&&` evaluated once; wrap: `{() => show() && <Modal />}`                          |
+
+**Full example with multiple timers:**
+
+```tsx
+const MultiStepLoader = () => {
+  const [step1, setStep1] = useState(false);
+  const [step2, setStep2] = useState(false);
+  const [step3, setStep3] = useState(false);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setStep1(true), 300);
+    const t2 = setTimeout(() => setStep2(true), 600);
+    const t3 = setTimeout(() => setStep3(true), 900);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, []);
+
+  return (
+    <div>
+      <p>Step 1: {() => (step1() ? "✅" : "⏳")}</p>
+      <p>Step 2: {() => (step2() ? "✅" : "⏳")}</p>
+      <p>Step 3: {() => (step3() ? "✅" : "⏳")}</p>
+    </div>
+  );
+};
+```
+
+> **Rule of thumb:** If the expression contains a state getter call `()` and any operator (ternary, `&&`, arithmetic, array method, etc.), wrap the **entire expression** in an arrow function so Sinwan's renderer can subscribe it to the signal.
+
 ---
 
 ### `useReducer(reducer, initialState, init?)`
@@ -1462,6 +1537,216 @@ const DrawingCanvas = forwardRef<CanvasHandle>((_, ref) => {
   }, []);
 
   return <canvas ref={canvasRef} width={400} height={300} />;
+});
+```
+
+---
+
+## Async Components and Hooks
+
+> **Important:** React hooks work correctly in async components. The previously documented limitation stating that hooks fail after `await` is **incorrect**.
+
+### React Hooks in Async Components
+
+All React-compatible hooks work in async components, including after `await` statements:
+
+```tsx
+import { useState } from "sinwan/react-client";
+import { cc } from "sinwan/component";
+
+const DataFetcher = cc(async () => {
+  const [data, setData] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Simulate API call
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  // React hooks work correctly after await
+  setData("Fetched data");
+  setLoading(false);
+
+  if (loading()) {
+    return <div>Loading...</div>;
+  }
+
+  return <div>{data}</div>;
+});
+```
+
+### Sinwan Lifecycle Hooks in Async Components
+
+Sinwan lifecycle hooks (`onMounted`, `onUnmounted`, etc.) have specific behavior in async components:
+
+- ✅ **Work when called before `await`** - The hook registers, but executes after the component resolves
+- ❌ **Fail when called after `await`** - Component instance context is lost
+
+```tsx
+import { signal } from "sinwan/reactivity";
+import { onMounted } from "sinwan/component";
+
+const AsyncWithLifecycle = cc(async () => {
+  const data = signal<string>("Not loaded");
+
+  // ✅ Works - hook registers before await
+  onMounted(() => {
+    data.value = "Loaded on mount";
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  // ❌ Fails - instance context lost
+  // onMounted(() => { ... }); // Error: Hook called outside of component setup
+
+  return <div>{data}</div>;
+});
+```
+
+### Recommended Approach: Sinwan Native Signals
+
+While React hooks work in async components, using Sinwan's native signals is recommended for simplicity and consistency:
+
+```tsx
+import { signal } from "sinwan/reactivity";
+import { cc } from "sinwan/component";
+
+const SignalAsync = cc(async () => {
+  const data = signal<string | null>(null);
+  const loading = signal(true);
+
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  data.value = "Fetched data";
+  loading.value = false;
+
+  if (loading.value) {
+    return <div>Loading...</div>;
+  }
+
+  return <div>{data.value}</div>;
+});
+```
+
+**Benefits of native signals:**
+
+- Work identically in both sync and async components
+- No special cases or edge behaviors
+- Simpler mental model
+- Better performance (direct signal access vs hook wrapper)
+
+### Mixed Usage
+
+You can mix React hooks and Sinwan signals in the same component:
+
+```tsx
+import { useState } from "sinwan/react-client";
+import { signal } from "sinwan/reactivity";
+
+const MixedAsync = cc(async () => {
+  const [reactState, setReactState] = useState(0);
+  const sinwanState = signal(0);
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  setReactState(10);
+  sinwanState.value = 20;
+
+  return (
+    <div>
+      <div>React: {reactState}</div>
+      <div>Sinwan: {sinwanState}</div>
+    </div>
+  );
+});
+```
+
+### Context Loss with setTimeout, Event Listeners, etc.
+
+While React hooks work in async components, operations that run outside the component's async function (like `setTimeout`, `setInterval`, event listeners) will lose the component instance context:
+
+```tsx
+import { useState } from "sinwan/react-client";
+import { signal } from "sinwan/reactivity";
+
+// ❌ WRONG - setTimeout runs outside context
+const WrongAsync = cc(async () => {
+  const [count, setCount] = useState(0);
+
+  setTimeout(() => {
+    // This will fail - no component instance context
+    setCount(10); // Error: Hook called outside of component setup
+  }, 100);
+
+  return <div>{count}</div>;
+});
+
+// ✅ CORRECT - Use await instead
+const CorrectAsync = cc(async () => {
+  const [count, setCount] = useState(0);
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  // This works - still in component context
+  setCount(10);
+
+  return <div>{count}</div>;
+});
+
+// ✅ CORRECT - Use onMounted for side effects
+const WithEffect = cc(() => {
+  const count = signal(0);
+
+  onMounted(() => {
+    setTimeout(() => {
+      count.value = 10; // Works - effect has instance context
+    }, 100);
+  });
+
+  return <div>{count}</div>;
+});
+
+// ✅ CORRECT - Use effect for reactive side effects
+import { effect } from "sinwan/reactivity";
+
+const WithReactiveEffect = cc(() => {
+  const count = signal(0);
+  const doubled = signal(0);
+
+  effect(() => {
+    doubled.value = count.value * 2;
+  });
+
+  return <div>{doubled}</div>;
+});
+```
+
+**Rules for maintaining context:**
+
+1. **Use `await`** for async operations in the component body
+2. **Use `onMounted`** for side effects that should run after mount
+3. **Use `effect`** for reactive side effects that track dependencies
+4. **Avoid `setTimeout`/`setInterval`** in the component body - use `await` instead
+5. **Event listeners** should be registered in `onMounted` and cleaned up in `onUnmounted`
+
+```tsx
+import { onMounted, onUnmounted } from "sinwan/component";
+
+const WithEventListener = cc(() => {
+  const windowWidth = signal(window.innerWidth);
+
+  onMounted(() => {
+    const handleResize = () => {
+      windowWidth.value = window.innerWidth;
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    // Cleanup
+    onUnmounted(() => {
+      window.removeEventListener("resize", handleResize);
+    });
+  });
+
+  return <div>Width: {windowWidth}</div>;
 });
 ```
 

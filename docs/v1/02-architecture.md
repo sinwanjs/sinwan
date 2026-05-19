@@ -376,6 +376,114 @@ Performance implications: No VDOM diffing, minimal object churn (effects and sma
 
 ---
 
+## 5a. The Setup-Time vs Effect-Time Evaluation Problem
+
+A common source of confusion when bridging from React to Sinwan is why expressions like `{count() > 0 ? "yes" : "no"}` do not update when `count` changes. The root cause is architectural: **component setup runs exactly once**, and JavaScript evaluates expressions eagerly during that single pass.
+
+### What happens during setup
+
+When a component function runs, the renderer sees the returned JSX tree and walks it once to create DOM nodes and register effects. Any expression that is **not** a signal/computed/function getter is evaluated immediately and its result is inserted as a static value:
+
+```tsx
+const [count, setCount] = useState(0);
+
+// During setup, JavaScript evaluates `count() + 1` to `1`.
+// The renderer only sees the static number 1.
+<p>{count() + 1}</p>
+
+// Same problem: ternary evaluated once to "no".
+<p>{count() > 0 ? "yes" : "no"}</p>
+```
+
+The renderer's `resolve()` function (`src/reactivity/normalization.ts`) only treats signals, computeds, and **0-arity functions** as reactive. Everything else is a static value:
+
+```ts
+export function resolve<T>(value: T | Signal<T> | Computed<T> | (() => T)): T {
+  if (isSignal(value) || isComputed(value)) {
+    return (value as any).value; // reads inside an effect → tracks
+  }
+  if (typeof value === "function" && (value as any).length === 0) {
+    return (value as any)(); // called inside an effect → tracks
+  }
+  return value as T; // static, never re-evaluated
+}
+```
+
+### Why `{count}` works but `{count() + 1}` does not
+
+When you write `{count}` (passing the getter function itself), the renderer's `renderReactiveNodeToDOM` wraps it in an effect. The effect calls `resolve(count)`, which invokes the getter, which reads `sig.value`, which registers the effect as a subscriber. When the signal changes, the effect re-runs and the DOM updates.
+
+When you write `{count() + 1}`, JavaScript evaluates `count()` **before** the renderer ever sees it. The renderer receives the static number `1`, not a reactive node. No effect is created, so no re-subscription happens.
+
+### The fix: defer evaluation with a function wrapper
+
+Wrapping the expression in a 0-arity function tells the renderer: "this is a reactive computation, evaluate it inside an effect":
+
+```tsx
+// ✅ Reactive — the renderer calls this function inside an effect
+<p>{() => (count() > 0 ? "yes" : "no")}</p>
+
+// ✅ Reactive — arithmetic inside an effect
+<p>{() => count() + 1}</p>
+
+// ✅ Reactive — array methods deferred
+<ul>{() => items().map(item => <li>{item}</li>)}</ul>
+```
+
+The renderer's `renderReactiveNodeToDOM` creates an effect that calls the wrapper function. The function body reads signals, which tracks the effect as a subscriber. On change, the effect re-runs, `resolve()` calls the wrapper again, and the DOM updates.
+
+### When do you need a wrapper?
+
+| Pattern                           | Needs wrapper?       | Why                                                       |
+| --------------------------------- | -------------------- | --------------------------------------------------------- |
+| `{count}`                         | No                   | Raw getter — renderer wraps in effect automatically       |
+| `{count()}`                       | No (but discouraged) | Direct call during setup — static value; prefer `{count}` |
+| `{count() + 1}`                   | **Yes**              | Expression evaluated once; wrapper defers to effect       |
+| `{isDone() ? "Done" : "Loading"}` | **Yes**              | Ternary evaluated once; wrapper defers to effect          |
+| `{items().map(...)}`              | **Yes**              | Array method called once; wrapper defers to effect        |
+| `{show() && <Modal />}`           | **Yes**              | `&&` evaluated once; wrapper defers to effect             |
+| `{name.toUpperCase()}`            | No                   | `name` is a static prop, not reactive state               |
+
+### Why this is fundamental, not a bug
+
+This behavior is not a limitation of `useState` or the signal implementation. It is a consequence of how JavaScript evaluates expressions and how Sinwan's renderer distinguishes reactive from static values. No return type from `useState` can change this — even if `useState` returned a `Signal` directly, writing `{sig.value ? "yes" : "no"}` would still evaluate `.value` eagerly during setup.
+
+The only "fix" at the framework level would be compiler-level transformation: detecting state getters inside JSX expressions and auto-wrapping them in effects. This is possible but fragile and would require deep AST analysis of every JSX file. Sinwan opts for explicitness: the developer wraps reactive expressions in functions, making the reactivity boundary visible.
+
+This pattern is shared with other fine-grained frameworks:
+
+- **SolidJS**: expressions in JSX are compiled into effects; the compiler handles the wrapping.
+- **Preact Signals**: same principle — raw signals work, but composed expressions need `computed()` or effect wrappers.
+- **Vue 3 (Composition API)**: `ref` values in templates are unwrapped by the compiler; manual `.value` access in setup functions has the same eager evaluation behavior.
+
+### Practical example: timers and conditional rendering
+
+```tsx
+const StatusLoader = () => {
+  const [step1, setStep1] = useState(false);
+  const [step2, setStep2] = useState(false);
+
+  useEffect(() => {
+    setTimeout(() => setStep1(true), 300);
+    setTimeout(() => setStep2(true), 600);
+  }, []);
+
+  return (
+    <div>
+      {/* ❌ Static — "⏳" forever */}
+      <p>Step 1: {step1() ? "✅" : "⏳"}</p>
+
+      {/* ✅ Reactive — updates when step2 changes */}
+      <p>Step 2: {() => (step2() ? "✅" : "⏳")}</p>
+    </div>
+  );
+};
+```
+
+The timer callbacks update the signal values successfully, but only the second `<p>` re-renders because it is wrapped in a function that the renderer evaluates inside an effect.
+
+---
+
 ## 6. Lifecycle System
 
 Lifecycle is instance-scoped and explicit. There is a globally shared current instance slot keyed by `Symbol.for("sinwan.currentInstance")` to bridge across multiple bundles.
