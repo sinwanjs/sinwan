@@ -23,6 +23,7 @@ type RenderResult = SinwanNode | Promise<SinwanNode>;
 ```tsx
 import { cc } from "sinwan/component";
 import { signal } from "sinwan/reactivity";
+
 interface CardProps {
   title: string;
   subtitle?: string;

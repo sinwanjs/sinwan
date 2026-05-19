@@ -18,6 +18,7 @@ const DOCS = [
   { id: "13-build-and-deploy.md", title: "Build & Deploy" },
   { id: "14-recipes.md", title: "Recipes" },
   { id: "15-api-reference.md", title: "API Reference" },
+  { id: "30-event-bus.md", title: "Event Bus" },
   { id: "16-types.md", title: "Types" },
   { id: "17-troubleshooting.md", title: "Troubleshooting" },
   { id: "18-react-interop.md", title: "React Interop (SHARED)" },
@@ -53,7 +54,7 @@ export const Sidebar = createComponent(() => {
         <div class="sidebar-header-text">
           <div class="logo">Sinwan</div>
         </div>
-        <span class="version-pill">v1.2.2</span>
+        <span class="version-pill">v1.2.3</span>
       </div>
       <p class="sidebar-description">
         A compact guide to the runtime, renderer, and data flow behind Sinwan.

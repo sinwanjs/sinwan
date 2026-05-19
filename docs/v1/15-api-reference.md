@@ -10,6 +10,7 @@ Alphabetical list of every public export from Sinwan's subpaths. Each entry link
 > - `sinwan/hydration` — hydration and hydration-marker utilities.
 > - `sinwan/server` — server-side rendering, streaming, page registry, and hydration markers.
 > - `sinwan/hook` — reactive utility hooks such as `useFetch` and `createFetch`.
+> - `sinwan/event` — event bus for decoupled component communication with SSR safety.
 > - `sinwan/store` — fine-grained reactive stores.
 > - `sinwan/jsx-runtime` — JSX production runtime (auto-imported by TS).
 > - `sinwan/jsx-dev-runtime` — JSX dev runtime.
@@ -298,6 +299,119 @@ interface CreateFetchOptions {
 ```
 
 Full return type and callback context details are documented in [`29-use-fetch.md`](./29-use-fetch.md#type-reference).
+
+---
+
+## Event Bus (`sinwan/event`)
+
+### `SinwanEventBus` &nbsp;·&nbsp; _sinwan/event_
+
+```ts
+class SinwanEventBus {
+  on(event: string, listener: Listener): () => void;
+  onNamespace(pattern: string, listener: Listener): () => void;
+  off(event: string, listener: Listener): void;
+  offNamespace(pattern: string, listener: Listener): void;
+  emit(event: string, ...args: unknown[]): void;
+  once(event: string, listener: Listener): () => void;
+  clear(event?: string): void;
+  listenerCount(event: string): number;
+  hasListeners(event: string): boolean;
+}
+```
+
+Core event bus class for type-safe event communication. See [`30-event-bus.md`](./30-event-bus.md#sinwaneventbus).
+
+### `globalEventBus` &nbsp;·&nbsp; _sinwan/event_
+
+```ts
+const globalEventBus: SinwanEventBus;
+```
+
+Singleton instance for app-wide events. See [`30-event-bus.md`](./30-event-bus.md#global-event-bus).
+
+### `useEvent(event, handler, bus?)` &nbsp;·&nbsp; _sinwan/event_
+
+```ts
+function useEvent(event: string, handler: Listener, bus?: SinwanEventBus): void;
+```
+
+Subscribe to events within a component with automatic cleanup on unmount. See [`30-event-bus.md`](./30-event-bus.md#useevent).
+
+### `useEventNamespace(pattern, handler, bus?)` &nbsp;·&nbsp; _sinwan/event_
+
+```ts
+function useEventNamespace(
+  pattern: string,
+  handler: Listener,
+  bus?: SinwanEventBus,
+): void;
+```
+
+Subscribe to namespace patterns within a component. See [`30-event-bus.md`](./30-event-bus.md#useeventnamespace).
+
+### `useEventOnce(event, handler, bus?)` &nbsp;·&nbsp; _sinwan/event_
+
+```ts
+function useEventOnce(
+  event: string,
+  handler: Listener,
+  bus?: SinwanEventBus,
+): void;
+```
+
+Subscribe to an event that fires only once. See [`30-event-bus.md`](./30-event-bus.md#useeventonce).
+
+### `createSSRContext()` &nbsp;·&nbsp; _sinwan/event_
+
+```ts
+function createSSRContext(): SSRContext;
+```
+
+Create a fresh SSR context for request-scoped event bus isolation. See [`30-event-bus.md`](./30-event-bus.md#ssr-safety).
+
+### `getSSRContext()` &nbsp;·&nbsp; _sinwan/event_
+
+```ts
+function getSSRContext(): SSRContext | null;
+```
+
+Get the current SSR context. Returns `null` on client or when no context is set.
+
+### `setSSRContext(context)` &nbsp;·&nbsp; _sinwan/event_
+
+```ts
+function setSSRContext(context: SSRContext | null): SSRContext | null;
+```
+
+Set or clear the current SSR context.
+
+### `withSSRContext(context, fn)` &nbsp;·&nbsp; _sinwan/event_
+
+```ts
+function withSSRContext<T>(context: SSRContext, fn: () => T): T;
+```
+
+Execute a function with a specific SSR context. See [`30-event-bus.md`](./30-event-bus.md#server-side-usage).
+
+### `getCurrentEventBus(fallback)` &nbsp;·&nbsp; _sinwan/event_
+
+```ts
+function getCurrentEventBus(fallback: SinwanEventBus): SinwanEventBus;
+```
+
+Get the current SSR-scoped event bus or the provided fallback. See [`30-event-bus.md`](./30-event-bus.md#request-scoped-event-bus).
+
+### Event types
+
+```ts
+type Listener = (...args: unknown[]) => void;
+
+interface SSRContext {
+  eventBus: SinwanEventBus;
+  state: Map<string, unknown>;
+}
+```
 
 ---
 

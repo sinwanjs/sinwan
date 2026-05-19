@@ -7,7 +7,11 @@
  * values (Signal / Computed) for any visual attribute.
  */
 
-import type { SinwanElement, SinwanNode, Reactive } from "../types.ts";
+import type {
+  SinwanNode,
+  SinwanSlots,
+  Reactive,
+} from "../types.ts";
 
 // ---------------------------------------------------------------------------
 // Event handler types
@@ -115,7 +119,7 @@ export interface HTMLAttributes {
   dangerouslySetInnerHTML?: { __html: string };
 
   // Children
-  children?: SinwanNode;
+  children?: SinwanNode | SinwanSlots;
 
   // ---------- Aria attributes (permissive prefix) ----------
   "aria-activedescendant"?: string;

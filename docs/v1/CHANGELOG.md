@@ -2,11 +2,16 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
 
----
 
-## [Unreleased]
+## [1.2.3] — TypeScript Type Fixes & Event Module
 
-No unreleased changes.
+### Added
+
+- **Event Module**: Added new event bus module with type-safe event communication, lifecycle integration, and SSR safety. Includes `SinwanEventBus`, `globalEventBus`, `useEvent`, `useEventNamespace`, `useEventOnce`, and SSR context utilities.
+
+### Fixed
+
+- **TypeScript Type Mismatch**: Fixed `SinwanNode | SinwanSlots` not being assignable to `SinwanNode` in JSX. Updated `HTMLAttributes.children` type to accept `SinwanNode | SinwanSlots`, aligning JSX types with the `SinwanComponent` interface that already supports named slots.
 
 ---
 

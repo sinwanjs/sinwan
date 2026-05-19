@@ -1,6 +1,6 @@
 {
   "name": "sinwan",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Sinwan — Reactive UI library with SSR, hydration, and fine-grained reactivity",
   "type": "commonjs",
   "types": "./dist/types.d.ts",
@@ -186,6 +186,20 @@
         "default": "./dist/jsx-dev-runtime.js"
       },
       "default": "./dist/jsx-dev-runtime.js"
+    },
+    "./event": {
+      "types": "./dist/event.d.ts",
+      "import": {
+        "development": "./dist/esm/event/index.development.js",
+        "production": "./dist/esm/event/index.production.min.js",
+        "default": "./dist/esm/event/index.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/event/index.development.js",
+        "production": "./dist/cjs/event/index.production.min.js",
+        "default": "./dist/event.js"
+      },
+      "default": "./dist/event.js"
     },
     "./package.json": "./package.json"
   },

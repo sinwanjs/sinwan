@@ -46,6 +46,14 @@ docs/
 │           │   ├── index.mdx          # hooks natifs Sinwan, reactivity-first
 │           │   └── useFetch.md        # useFetch, createFetch, SSR, hydration, refetch
 │           │
+│           ├── event-bus/
+│           │   ├── index.mdx          # SinwanEventBus, globalEventBus, SSR context
+│           │   ├── sinwan-event-bus.md
+│           │   ├── useEvent.md
+│           │   ├── useEventNamespace.md
+│           │   ├── useEventOnce.md
+│           │   └── ssr-context.md
+│           │
 │           ├── components/
 │           │   ├── index.mdx
 │           │   ├── cc.md
@@ -200,6 +208,7 @@ docs/
 │           │   │   ├── reactivity.md
 │           │   │   ├── stores.md
 │           │   │   ├── hooks.md
+│           │   │   ├── event-bus.md
 │           │   │   ├── components.md
 │           │   │   ├── lifecycle.md
 │           │   │   ├── provide-inject.md
