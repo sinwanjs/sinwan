@@ -23,6 +23,7 @@ const DOCS = [
   { id: "18-react-interop.md", title: "React Interop (SHARED)" },
   { id: "19-react-hooks.md", title: "React Hooks" },
   { id: "20-react-components.md", title: "React Components" },
+  { id: "react-elements-documentation.md", title: "React Elements" },
   { id: "21-react-server-apis.md", title: "React Server APIs" },
   { id: "22-react-static-apis.md", title: "React Static APIs" },
   { id: "23-react-unstable.md", title: "React Unstable APIs" },
@@ -32,7 +33,6 @@ const DOCS = [
   { id: "27-stores-react-hooks.md", title: "Store React Hooks" },
   { id: "28-state-and-context-patterns.md", title: "State & Context Patterns" },
   { id: "29-use-fetch.md", title: "useFetch" },
-  { id: "react-elements-documentation.md", title: "React Elements" },
   { id: "CHANGELOG.md", title: "Changelog" },
 ];
 
