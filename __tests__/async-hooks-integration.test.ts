@@ -7,11 +7,11 @@
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
-import { signal } from "sinwan/reactivity";
-import { cc } from "sinwan/component";
-import { mount } from "sinwan/renderer";
-import { useState } from "sinwan/react-client";
-import { onMounted } from "sinwan/component";
+import { signal } from "../src/reactivity/index.ts";
+import { cc } from "../src/component/create.ts";
+import { mount } from "../src/renderer/mount.ts";
+import { useState } from "../src/integrations/react/use-state.ts";
+import { onMounted } from "../src/component/lifecycle.ts";
 
 let win: InstanceType<typeof Window>;
 let doc: Document;
