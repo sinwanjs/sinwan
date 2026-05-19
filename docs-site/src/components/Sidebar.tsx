@@ -32,6 +32,7 @@ const DOCS = [
   { id: "27-stores-react-hooks.md", title: "Store React Hooks" },
   { id: "28-state-and-context-patterns.md", title: "State & Context Patterns" },
   { id: "29-use-fetch.md", title: "useFetch" },
+  { id: "react-elements-documentation.md", title: "React Elements" },
   { id: "CHANGELOG.md", title: "Changelog" },
 ];
 
