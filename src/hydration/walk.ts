@@ -10,7 +10,7 @@
 
 import type { SinwanElement, SinwanNode } from "../types.ts";
 import type { MountedNode } from "../renderer/types.ts";
-import type { CleanupFn } from "../reactivity/index.ts";
+import { resolve, type CleanupFn } from "../reactivity/index.ts";
 import { isSignal } from "../reactivity/signal.ts";
 import { isComputed } from "../reactivity/computed.ts";
 import { effect } from "../reactivity/effect.ts";
@@ -46,7 +46,6 @@ import {
   For,
   Index,
   Key,
-  Match,
   Portal,
   Switch,
   Visible,
@@ -56,7 +55,6 @@ import {
   isForElement,
   isIndexElement,
   isKeyElement,
-  isMatchElement,
   isPortalElement,
   isShowElement,
   isSwitchElement,
@@ -66,6 +64,8 @@ import {
   isActivityElement,
   isViewTransitionElement,
   resolveSwitchContent,
+  resolveKeyChildren,
+  resolveShowChildren,
 } from "../component/control-flow.ts";
 import {
   parseTextOpenMarker,
@@ -79,6 +79,7 @@ import {
   handleComponentError,
   queueUpdatedHooks,
 } from "../component/instance.ts";
+import { createDynamicElement, normalizeContent } from "../common/index.ts";
 
 /**
  * Hydration cursor — tracks our position in the DOM tree walk.
@@ -411,7 +412,7 @@ function hydrateControlFlow(
   cursor: HydrationCursor,
 ): MountedNode {
   if (isShowElement(element)) {
-    const when = readReactive((element.props as any).when);
+    const when = resolve((element.props as any).when);
     const content = when
       ? resolveShowChildren(element, when)
       : (element.props as any).fallback;
@@ -419,7 +420,7 @@ function hydrateControlFlow(
     return makeReactiveBlock(
       initialMounted,
       () => {
-        const newWhen = readReactive((element.props as any).when);
+        const newWhen = resolve((element.props as any).when);
         return newWhen
           ? resolveShowChildren(element, newWhen)
           : (element.props as any).fallback;
@@ -435,7 +436,7 @@ function hydrateControlFlow(
       children?: (item: unknown, index: () => number) => SinwanNode;
     };
     const resolveChildren = () => {
-      const items = readReactive(props.each);
+      const items = resolve(props.each);
       if (Array.isArray(items) && typeof props.children === "function") {
         const result: SinwanNode[] = [];
         for (let i = 0; i < items.length; i++) {
@@ -451,7 +452,7 @@ function hydrateControlFlow(
     return makeReactiveBlock(
       initialMounted,
       () => resolveChildren() as unknown as SinwanNode,
-      readReactive(props.each),
+      resolve(props.each),
     );
   }
 
@@ -472,7 +473,7 @@ function hydrateControlFlow(
       children?: (item: () => unknown, index: number) => SinwanNode;
     };
     const resolveChildren = () => {
-      const items = readReactive(props.each);
+      const items = resolve(props.each);
       if (Array.isArray(items) && typeof props.children === "function") {
         const result: SinwanNode[] = [];
         for (let i = 0; i < items.length; i++) {
@@ -488,12 +489,12 @@ function hydrateControlFlow(
     return makeReactiveBlock(
       initialMounted,
       () => resolveChildren() as unknown as SinwanNode,
-      readReactive(props.each),
+      resolve(props.each),
     );
   }
 
   if (isKeyElement(element)) {
-    const key = readReactive((element.props as any).when);
+    const key = resolve((element.props as any).when);
     const initialMounted = hydrateContent(
       resolveKeyChildren(element, key),
       cursor,
@@ -501,7 +502,7 @@ function hydrateControlFlow(
     return makeReactiveBlock(
       initialMounted,
       () => {
-        const newKey = readReactive((element.props as any).when);
+        const newKey = resolve((element.props as any).when);
         return resolveKeyChildren(element, newKey);
       },
       key,
@@ -509,7 +510,7 @@ function hydrateControlFlow(
   }
 
   if (isDynamicElement(element)) {
-    const tag = readReactive((element.props as any).component);
+    const tag = resolve((element.props as any).component);
     const dynamic = createDynamicElement(element, tag);
     const initialMounted = dynamic
       ? hydrateElement(dynamic, cursor)
@@ -517,7 +518,7 @@ function hydrateControlFlow(
     return makeReactiveBlock(
       initialMounted,
       () => {
-        const newTag = readReactive((element.props as any).component);
+        const newTag = resolve((element.props as any).component);
         const newDynamic = createDynamicElement(element, newTag);
         return newDynamic;
       },
@@ -537,7 +538,7 @@ function hydrateControlFlow(
       children?: (item: unknown, index: () => number) => SinwanNode;
     };
 
-    const items = readReactive(props.each);
+    const items = resolve(props.each);
     const list = Array.isArray(items) ? items : [];
 
     if (list.length === 0) {
@@ -678,7 +679,7 @@ function hydrateControlFlow(
 
         // Re-read list to handle signal updates
         const currentList = (() => {
-          const items = readReactive(props.each);
+          const items = resolve(props.each);
           return Array.isArray(items) ? items : [];
         })();
 
@@ -788,82 +789,6 @@ function hydrateContent(
   return Array.isArray(content)
     ? hydrateArray(content, cursor)
     : hydrateNode(content as SinwanNode, cursor);
-}
-
-function resolveShowChildren(
-  element: SinwanElement,
-  value: unknown,
-): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function resolveMatchChildren(
-  element: SinwanElement,
-  value: unknown,
-): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function resolveKeyChildren(
-  element: SinwanElement,
-  value: unknown,
-): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function createDynamicElement(
-  element: SinwanElement,
-  tag: unknown,
-): SinwanElement | null {
-  if (typeof tag !== "string" && typeof tag !== "function") {
-    return null;
-  }
-
-  const { component, ...props } = element.props as Record<string, unknown>;
-  const children = normalizeContent(props.children ?? element.children);
-
-  return {
-    tag: tag as SinwanElement["tag"],
-    props,
-    children,
-  };
-}
-
-function readReactive(value: unknown): unknown {
-  return isSignal(value) || isComputed(value) ? (value as any).value : value;
-}
-
-function normalizeContent(content: unknown): SinwanNode[] {
-  if (content == null || typeof content === "boolean") {
-    return [];
-  }
-  return Array.isArray(content) ? content : [content as SinwanNode];
-}
-
-function isElementLike(value: unknown): value is SinwanElement {
-  return value != null && typeof value === "object" && "tag" in value;
-}
-
-function getMatchElement(value: unknown): SinwanElement | null {
-  if (!isElementLike(value)) {
-    return null;
-  }
-  if (isMatchElement(value)) {
-    return value;
-  }
-  return value.tag === Match ? Match(value.props as any) : null;
 }
 
 type RefValue =
@@ -1300,7 +1225,7 @@ function hydrateActivity(
   let wrapperMounted: MountedElement | null = null;
 
   const dispose = effect(() => {
-    const currentMode = readReactive(props.mode) ?? "visible";
+    const currentMode = resolve(props.mode) ?? "visible";
     const hidden = currentMode === "hidden";
 
     if (initialized) {

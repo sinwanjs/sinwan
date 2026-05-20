@@ -54,6 +54,7 @@ import {
   pushSuspenseBoundary,
   popSuspenseBoundary,
 } from "./suspense-boundary.ts";
+import { createDynamicElement, normalizeContent } from "../common/index.ts";
 
 interface ForRecord<T> {
   key: unknown;
@@ -176,7 +177,7 @@ function renderShowBlock(
   let prevWhen: unknown = undefined;
 
   return effect(() => {
-    const when = readReactive((element.props as any).when);
+    const when = resolve((element.props as any).when);
 
     // Skip re-rendering if 'when' hasn't changed (optimization for large lists)
     if (initialized && Object.is(when, prevWhen)) {
@@ -318,7 +319,7 @@ function renderVirtualBlock<T>(
   let records: ForRecord<T>[] = [];
 
   const disposeEffect = effect(() => {
-    const items = readReactive(props.each) as readonly T[] | null | undefined;
+    const items = resolve(props.each) as readonly T[] | null | undefined;
     const list = Array.isArray(items) ? items : [];
     const renderChild = props.children;
 
@@ -512,7 +513,7 @@ function renderForBlock<T>(
       fallback?: SinwanNode;
       children?: (item: T, index: () => number) => SinwanNode;
     };
-    const items = readReactive(props.each) as readonly T[] | null | undefined;
+    const items = resolve(props.each) as readonly T[] | null | undefined;
     const list = Array.isArray(items) ? items : [];
     const renderChild = props.children;
 
@@ -971,7 +972,7 @@ function renderIndexBlock<T>(
       fallback?: SinwanNode;
       children?: (item: () => T, index: number) => SinwanNode;
     };
-    const items = readReactive(props.each) as readonly T[] | null | undefined;
+    const items = resolve(props.each) as readonly T[] | null | undefined;
     const list = Array.isArray(items) ? items : [];
     const renderChild = props.children;
 
@@ -1059,7 +1060,7 @@ function renderKeyBlock(
   let currentKey: unknown;
 
   return effect(() => {
-    const key = readReactive((element.props as any).when);
+    const key = resolve((element.props as any).when);
     if (hasKey && Object.is(currentKey, key)) {
       return;
     }
@@ -1098,7 +1099,7 @@ function renderDynamicBlock(
   let currentTag: unknown;
 
   return effect(() => {
-    const tag = readReactive((element.props as any).component);
+    const tag = resolve((element.props as any).component);
     if (hasTag && Object.is(currentTag, tag)) {
       return;
     }
@@ -1180,24 +1181,6 @@ function renderPortal(
   });
 
   return portal;
-}
-
-function createDynamicElement(
-  element: SinwanElement,
-  tag: unknown,
-): SinwanElement | null {
-  if (typeof tag !== "string" && typeof tag !== "function") {
-    return null;
-  }
-
-  const { component, ...props } = element.props as Record<string, unknown>;
-  const children = normalizeContent(props.children ?? element.children);
-
-  return {
-    tag: tag as SinwanElement["tag"],
-    props,
-    children,
-  };
 }
 
 export function renderBlockContent(
@@ -1336,23 +1319,12 @@ function withOptionalInstance<T>(
   return owner ? withInstance(owner, fn) : fn();
 }
 
-function readReactive(value: unknown): unknown {
-  return resolve(value as any);
-}
-
-function normalizeContent(content: unknown): SinwanNode[] {
-  if (content == null || typeof content === "boolean") {
-    return [];
-  }
-  return Array.isArray(content) ? content : [content as SinwanNode];
-}
-
 function isNonNegativeInt(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function resolvePortalTarget(value: unknown): Node | null {
-  const target = readReactive(value);
+  const target = resolve(value);
 
   if (target == null) {
     return typeof document === "undefined" ? null : document.body;
@@ -1525,7 +1497,7 @@ function renderActivityBlock(
 
   return effect(() => {
     const rawMode = (element.props as any).mode;
-    const mode = readReactive(rawMode) ?? "visible";
+    const mode = resolve(rawMode) ?? "visible";
     const hidden = mode === "hidden";
 
     if (!initialized) {

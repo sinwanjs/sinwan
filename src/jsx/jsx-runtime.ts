@@ -66,7 +66,7 @@ const VOID_ELEMENTS = new Set([
 /**
  * Normalize children into an array of SinwanNode.
  */
-function normalizeChildren(children: any): SinwanNode[] {
+export function normalizeChildren(children: any): SinwanNode[] {
   if (children == null || typeof children === "boolean") return [];
   if (Array.isArray(children)) return children.flat(Infinity);
   return [children];

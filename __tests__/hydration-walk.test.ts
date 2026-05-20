@@ -407,7 +407,8 @@ describe("hydrateControlFlow fallbacks", () => {
     const html = await renderToHydratableString(App);
     container.innerHTML = html;
     const app = hydrate(App, container);
-    expect(container.textContent).toContain("no-match");
+    expect(container.textContent).toContain("not-a-match");
+    expect(container.textContent).not.toContain("no-match");
     app.unmount();
   });
 });

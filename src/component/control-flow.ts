@@ -6,6 +6,8 @@ import type {
 } from "../types.ts";
 import { computed } from "../reactivity/computed.ts";
 import { resolve } from "../reactivity/index.ts";
+import { normalizeContent } from "../common/index.ts";
+import { normalizeChildren } from "sinwan/jsx-runtime";
 
 export const SHOW_TYPE = Symbol.for("Sinwan.Show");
 export const FOR_TYPE = Symbol.for("Sinwan.For");
@@ -358,8 +360,8 @@ export function Visible(props: VisibleProps): SinwanElement {
   const { when, as = "span", style, children, ...rest } = props;
 
   const visibleStyle = computed(() => {
-    const base = readReactive(style);
-    const visible = Boolean(readReactive(when));
+    const base = resolve(style);
+    const visible = Boolean(resolve(when));
 
     if (typeof base === "string") {
       return visible ? base : appendHiddenDisplay(base);
@@ -488,7 +490,7 @@ export function resolveSwitchContent(element: SinwanElement): SinwanNode {
   return match !== undefined ? match : props.fallback;
 }
 
-function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
+export function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
   for (const node of nodes) {
     if (node == null || typeof node === "boolean") continue;
 
@@ -500,6 +502,11 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
 
     if (isElementLike(node)) {
       let element = node;
+
+      // Handle el(Match, ...) where tag is the Match function itself
+      if ((element as any).tag === Match) {
+        element = Match((element as any).props);
+      }
 
       // Expand functional control flow components if needed
       if (typeof element.tag === "function") {
@@ -528,12 +535,12 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
       }
 
       if (isMatchElement(element)) {
-        const when = readReactive((element.props as any).when);
+        const when = resolve((element.props as any).when);
         if (when) {
           return resolveMatchChildren(element, when);
         }
       } else if (isShowElement(element)) {
-        const when = readReactive((element.props as any).when);
+        const when = resolve((element.props as any).when);
         if (when) {
           const content = resolveShowChildren(element, when);
           const match = findTruthyMatch(normalizeContent(content));
@@ -550,7 +557,7 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
         if (match !== undefined) return match;
       } else if (isForElement(element)) {
         const props = element.props as any;
-        const items = readReactive(props.each);
+        const items = resolve(props.each);
         if (Array.isArray(items)) {
           for (let i = 0; i < items.length; i++) {
             const child = props.children(items[i], () => i);
@@ -560,7 +567,7 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
         }
       } else if (isIndexElement(element)) {
         const props = element.props as any;
-        const items = readReactive(props.each);
+        const items = resolve(props.each);
         if (Array.isArray(items)) {
           for (let i = 0; i < items.length; i++) {
             const child = props.children(() => items[i], i);
@@ -569,12 +576,12 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
           }
         }
       } else if (isKeyElement(element)) {
-        const key = readReactive((element.props as any).when);
+        const key = resolve((element.props as any).when);
         const child = resolveKeyChildren(element, key);
         const match = findTruthyMatch(normalizeContent(child));
         if (match !== undefined) return match;
       } else if (isDynamicElement(element)) {
-        const tag = readReactive((element.props as any).component);
+        const tag = resolve((element.props as any).component);
         if (typeof tag === "string" || typeof tag === "function") {
           const { component, ...rest } = element.props as Record<
             string,
@@ -591,7 +598,7 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
         }
       } else if (isVirtualElement(element)) {
         const props = element.props as any;
-        const items = readReactive(props.each);
+        const items = resolve(props.each);
         if (!Array.isArray(items) || items.length === 0) {
           if (props.fallback) {
             const match = findTruthyMatch(normalizeContent(props.fallback));
@@ -647,24 +654,6 @@ export function resolveKeyChildren(
     return children(value);
   }
   return children as SinwanNode;
-}
-
-function normalizeContent(content: unknown): SinwanNode[] {
-  if (content == null || typeof content === "boolean") {
-    return [];
-  }
-  return Array.isArray(content) ? content : [content as SinwanNode];
-}
-
-function normalizeChildren(children: SinwanNode | undefined): SinwanNode[] {
-  if (children == null || typeof children === "boolean") {
-    return [];
-  }
-  return Array.isArray(children) ? children : [children];
-}
-
-function readReactive(value: unknown): unknown {
-  return resolve(value as any);
 }
 
 function appendHiddenDisplay(style: string): string {

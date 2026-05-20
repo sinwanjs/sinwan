@@ -1056,7 +1056,7 @@ describe("resolveSwitchContent", () => {
         {},
       ),
     );
-    expect(html).toBe("fb");
+    expect(html).toBe("not-a-match");
   });
 });
 
