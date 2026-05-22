@@ -38,6 +38,7 @@ const ENTRYPOINTS = [
   `${SRC}/integrations/react/_server.ts`,
   `${SRC}/integrations/react/_shared.ts`,
   `${SRC}/integrations/react/_static.ts`,
+  `${SRC}/integrations/react/_type.ts`,
   `${SRC}/jsx/jsx-runtime.ts`,
   `${SRC}/jsx/jsx-dev-runtime.ts`,
   `${SRC}/reactivity/index.ts`,

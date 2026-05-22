@@ -43,6 +43,8 @@ import {
   resolveKeyChildren,
   resolveShowChildren,
   resolveSwitchContent,
+  createDynamicElement,
+  normalizeContent,
 } from "../component/control-flow.ts";
 import {
   getMountedDomNodes,
@@ -54,7 +56,6 @@ import {
   pushSuspenseBoundary,
   popSuspenseBoundary,
 } from "./suspense-boundary.ts";
-import { createDynamicElement, normalizeContent } from "../common/index.ts";
 
 interface ForRecord<T> {
   key: unknown;
@@ -1048,6 +1049,24 @@ function renderIndexBlock<T>(
   });
 }
 
+interface KeyCacheEntry {
+  key: unknown;
+  mounted: MountedNode[];
+  fragment: DocumentFragment;
+}
+
+function fireMountedForSubtree(node: MountedNode): void {
+  if (node.type === "component" && node.instance) {
+    fireMountedHooks(node.instance);
+    return;
+  }
+  if ("children" in node && Array.isArray(node.children)) {
+    for (const child of node.children) {
+      fireMountedForSubtree(child);
+    }
+  }
+}
+
 function renderKeyBlock(
   element: SinwanElement,
   block: MountedReactiveBlock,
@@ -1056,34 +1075,112 @@ function renderKeyBlock(
   owner: ComponentInstance | null,
 ): () => void {
   let initialized = false;
-  let hasKey = false;
   let currentKey: unknown;
+  let currentEntry: KeyCacheEntry | null = null;
+  const cache = new Map<unknown, KeyCacheEntry>();
+  const useCache = (element.props as any).cache !== false;
 
   return effect(() => {
     const key = resolve((element.props as any).when);
-    if (hasKey && Object.is(currentKey, key)) {
+    if (initialized && Object.is(currentKey, key)) {
       return;
     }
 
-    currentKey = key;
-    hasKey = true;
-    clearChildren(block);
-
-    const content = withOptionalInstance(owner, () =>
-      resolveKeyChildren(element, key),
-    );
-    block.children = renderBlockContent(
-      content,
-      parent,
-      block.endAnchor,
-      namespace,
-      owner,
-    );
-
-    if (initialized) {
-      fireMountedAndQueueUpdated(owner);
+    // When cache=false, fully unmount old content (React-style key behavior)
+    if (!useCache && currentEntry) {
+      for (const child of currentEntry.mounted) {
+        removeMountedNode(child);
+      }
+      currentEntry = null;
     }
+
+    // Soft-hide and detach current entry (keep-alive path)
+    if (useCache && currentEntry) {
+      for (const child of currentEntry.mounted) {
+        softHideMountedTree(child);
+      }
+      for (const child of currentEntry.mounted) {
+        for (const node of getMountedDomNodes(child)) {
+          currentEntry.fragment.appendChild(node);
+        }
+      }
+    }
+
+    currentKey = key;
     initialized = true;
+
+    if (!useCache) {
+      // React-style: always render fresh, never cache
+      const content = withOptionalInstance(owner, () =>
+        resolveKeyChildren(element, key),
+      );
+      const mounted = renderBlockContent(
+        content,
+        parent,
+        block.endAnchor,
+        namespace,
+        owner,
+      );
+      const entry: KeyCacheEntry = {
+        key,
+        mounted,
+        fragment: domOps.createDocumentFragment(),
+      };
+      currentEntry = entry;
+      block.children = entry.mounted;
+
+      for (const child of entry.mounted) {
+        fireMountedForSubtree(child);
+      }
+      if (owner) {
+        queueUpdatedHooks(owner);
+      }
+      return;
+    }
+
+    // Look up or create cache entry for this key
+    let entry = cache.get(key);
+    if (!entry) {
+      const content = withOptionalInstance(owner, () =>
+        resolveKeyChildren(element, key),
+      );
+      const mounted = renderBlockContent(
+        content,
+        parent,
+        block.endAnchor,
+        namespace,
+        owner,
+      );
+      entry = {
+        key,
+        mounted,
+        fragment: domOps.createDocumentFragment(),
+      };
+      cache.set(key, entry);
+
+      // Fire mounted hooks for newly created components
+      for (const child of entry.mounted) {
+        fireMountedForSubtree(child);
+      }
+    } else {
+      // Reattach DOM nodes from the cached fragment
+      for (const child of entry.mounted) {
+        for (const node of getMountedDomNodes(child)) {
+          parent.insertBefore(node, block.endAnchor);
+        }
+      }
+      // Soft-show to restore state, re-register effects, and fire mounted hooks
+      for (const child of entry.mounted) {
+        softShowMountedTree(child);
+      }
+    }
+
+    currentEntry = entry;
+    block.children = entry.mounted;
+
+    if (owner) {
+      queueUpdatedHooks(owner);
+    }
   });
 }
 

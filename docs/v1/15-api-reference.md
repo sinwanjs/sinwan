@@ -703,6 +703,16 @@ function renderPage<D extends object = {}>(
 ): Promise<string>;
 ```
 
+### `renderToHydratablePage(name, data, options?)`
+
+```ts
+function renderToHydratablePage<D extends object = {}>(
+  name: string,
+  data: D,
+  options?: { identifierPrefix?: string },
+): Promise<string>;
+```
+
 ### `registerPage(name, page)`
 
 ```ts

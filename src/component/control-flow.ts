@@ -6,7 +6,6 @@ import type {
 } from "../types.ts";
 import { computed } from "../reactivity/computed.ts";
 import { resolve } from "../reactivity/index.ts";
-import { normalizeContent } from "../common/index.ts";
 import { normalizeChildren } from "sinwan/jsx-runtime";
 
 export const SHOW_TYPE = Symbol.for("Sinwan.Show");
@@ -133,6 +132,13 @@ export interface KeyProps<T> {
    */
   when: Reactive<T | null | undefined>;
   /**
+   * Whether to cache the subtree when the key changes.
+   * - `true` (default): keep-alive style — state and DOM are preserved
+   *   and reattached when the key switches back.
+   * - `false`: React-style — fully unmount and remount on every key change.
+   */
+  cache?: boolean;
+  /**
    * Content or render function receiving the value.
    */
   children?: SinwanNode | ((value: NonNullable<T>) => SinwanNode);
@@ -171,15 +177,20 @@ export type DynamicProps<P extends object = Record<string, unknown>> = P & {
  * @property [key: string] - Additional props passed to the rendered element.
  */
 export interface VisibleProps {
+  /** Reactive value that controls visibility. */
   when: Reactive<unknown>;
+  /** HTML tag to render (default: "span"). */
   as?: string;
+  /** Style object/string, can be reactive. */
   style?: Reactive<
     | Record<string, string | number | null | undefined>
     | string
     | null
     | undefined
   >;
+  /** Content to render inside the element. */
   children?: SinwanNode;
+  /** Additional props passed to the rendered element. */
   [key: string]: unknown;
 }
 
@@ -660,4 +671,29 @@ function appendHiddenDisplay(style: string): string {
   const trimmed = style.trim();
   const separator = trimmed.length > 0 && !trimmed.endsWith(";") ? ";" : "";
   return `${trimmed}${separator}display:none`;
+}
+
+export function createDynamicElement(
+  element: SinwanElement,
+  tag: unknown,
+): SinwanElement | null {
+  if (typeof tag !== "string" && typeof tag !== "function") {
+    return null;
+  }
+
+  const { component, ...props } = element.props as Record<string, unknown>;
+  const children = normalizeContent(props.children ?? element.children);
+
+  return {
+    tag: tag as SinwanElement["tag"],
+    props,
+    children,
+  };
+}
+
+export function normalizeContent(content: unknown): SinwanNode[] {
+  if (content == null || typeof content === "boolean") {
+    return [];
+  }
+  return Array.isArray(content) ? content : [content as SinwanNode];
 }

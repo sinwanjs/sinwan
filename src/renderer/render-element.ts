@@ -385,7 +385,7 @@ type RefValue =
   | null
   | undefined;
 
-function applyRef(el: Element, ref: unknown): CleanupFn | null {
+export function applyRef(el: Element, ref: unknown): CleanupFn | null {
   const value = ref as RefValue;
   if (!value) {
     return null;

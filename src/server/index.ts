@@ -7,6 +7,7 @@
 export {
   renderToString,
   renderPage,
+  renderToHydratablePage,
   registerPage,
   getPage,
   hasPage,

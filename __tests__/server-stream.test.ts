@@ -524,7 +524,7 @@ describe("streamHydratableElement branches", () => {
         })),
       ),
     );
-    expect(html).toContain("<span>a</span>");
+    expect(html).toContain('<span data-sinwan-id="c0">a</span>');
     expect(html).toContain("<span>b</span>");
   });
 
@@ -708,7 +708,7 @@ describe("streamHydratableElement branches", () => {
     const html = await collectStream(
       streamHydratablePage(cc(() => el(Child, {}))),
     );
-    expect(html).toContain("<span>child</span>");
+    expect(html).toContain('<span data-sinwan-id="c0">child</span>');
   });
 
   it("handles intrinsic element", async () => {

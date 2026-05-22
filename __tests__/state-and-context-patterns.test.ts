@@ -19,12 +19,12 @@ import { provide, inject } from "../src/component/provide-inject.ts";
 import { effect, nextTick } from "../src/reactivity/index.ts";
 import type { SinwanElement } from "../src/types.ts";
 import {
-  createContext,
   useContext,
   useReducer,
   useState,
 } from "../src/integrations/react/_client.ts";
 import { createStore, createMutable, produce } from "../src/store/index.ts";
+import { createContext } from "../src/integrations/react/create-context.ts";
 
 // ─── DOM setup ─────────────────────────────────────────────
 

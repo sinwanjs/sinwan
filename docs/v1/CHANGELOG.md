@@ -2,6 +2,25 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
 
+## [1.2.4] — SSR Hydration & Streaming Renderer Fixes
+
+Sinwan 1.2.4 fixes critical race conditions in the SSR hydration renderer and hardens the streaming renderer with missing element type support and proper component root propagation.
+
+### Added
+
+- **React Type Export**: Added new `sinwan/react-type` export that provides React-compatible types from the `_types` directory. Includes type definitions for ReactNode, ReactElement, Ref, ComponentType, Key, and other core React types authored from scratch without React imports.
+
+### Fixed
+
+- **Hydration Race Conditions**: Fixed race conditions on mutable context indices (`textIndex`, `eventIndex`, `componentIndex`) in `renderForElementH`, `renderIndexElementH`, and `renderVirtualElementH` by replacing `Promise.all` with sequential for loops. Concurrent mutations during async component rendering now correctly preserve index ordering for client-side hydration.
+- **Fragment Component Root Propagation**: Fixed Fragment blocks in `renderElementH` (hydration-markers.ts) and `streamHydratableElement` (stream.ts) to propagate `isComponentRoot` to the first intrinsic child. Components returning Fragments as root now correctly receive `data-sinwan-id` markers on their first child element.
+- **Streaming Component Root Marking**: Fixed `streamHydratableComponent` being called with `isComponentRoot=false` from `streamHydratableElement`. Functional components now correctly receive `data-sinwan-id` markers on their root elements in the streaming renderer.
+- **Missing Streaming Element Handlers**: Added missing `isSuspenseElement`, `isActivityElement`, and `isViewTransitionElement` handlers to `streamHydratableElement`. These control flow components now render correctly in hydratable streaming mode with proper `isComponentRoot` propagation.
+- **Dead Code Removal**: Removed unused `originalRenderIntrinsic` variable and its comment from `renderer.ts`, a remnant from an incomplete refactoring.
+- **React State Getter Hydration**: Fixed client-side hydration not recognizing React-compatible state getters (from `useState`/`useReducer` ...) in text content and attributes. The hydration walker now checks for `STATE_GETTER_MARKER` and uses the underlying signal reference for proper reactivity. This ensures that components using React-style hooks remain interactive after SSR hydration.
+- **`<Key>` Component Dynamic Swap**: Fixed `<Key>` destroying and recreating its entire subtree on every key change, which caused loss of event listeners, React hook state, internal signals, and inconsistent lifecycle ordering. The renderer and hydration walker now cache component instances per key using `softHideMountedTree` / `softShowMountedTree` (same preservation model as `<Activity>`). Swapping back to a previously seen key restores the original DOM, effects, hooks, and event bindings without remounting.
+
+---
 
 ## [1.2.3] — TypeScript Type Fixes & Event Module
 

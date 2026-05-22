@@ -386,7 +386,9 @@ describe("renderToReadableStream — Complex rendering", () => {
       props: {},
       children: [{ tag: Child, props: {}, children: [] }],
     });
-    expect(await streamToString(stream)).toBe("<div><div>child</div></div>");
+    expect(await streamToString(stream)).toBe(
+      '<div><div data-sinwan-id="c0">child</div></div>',
+    );
   });
 
   it("handles async components that return a Promise", async () => {
@@ -396,7 +398,9 @@ describe("renderToReadableStream — Complex rendering", () => {
       props: {},
       children: [],
     });
-    expect(await streamToString(stream)).toBe("<div>async</div>");
+    expect(await streamToString(stream)).toBe(
+      '<div data-sinwan-id="c0">async</div>',
+    );
   });
 
   it("handles large text content", async () => {
@@ -487,7 +491,9 @@ describe("renderToReadableStream — Hydration", () => {
       props: {},
       children: [],
     });
-    expect(await streamToString(stream)).toBe("<div>child</div>");
+    expect(await streamToString(stream)).toBe(
+      '<div data-sinwan-id="c0">child</div>',
+    );
   });
 
   it("does not emit component hydration markers on plain elements", async () => {
@@ -788,7 +794,9 @@ describe("renderToReadableStream — Component returns", () => {
       props: {},
       children: [],
     });
-    expect(await streamToString(stream)).toBe('<div id="x">props</div>');
+    expect(await streamToString(stream)).toBe(
+      '<div data-sinwan-id="c0" id="x">props</div>',
+    );
   });
 
   it("renders a component returning a fragment", async () => {
@@ -1270,7 +1278,9 @@ describe("renderToReadableStream — Null props", () => {
       props: null as any,
       children: [],
     });
-    expect(await streamToString(stream)).toBe("<div>fallback</div>");
+    expect(await streamToString(stream)).toBe(
+      '<div data-sinwan-id="c0">fallback</div>',
+    );
   });
 });
 
@@ -1284,7 +1294,9 @@ describe("renderToReadableStream — Undefined props", () => {
       props: undefined as any,
       children: [],
     });
-    expect(await streamToString(stream)).toBe("<div>fallback</div>");
+    expect(await streamToString(stream)).toBe(
+      '<div data-sinwan-id="c0">fallback</div>',
+    );
   });
 });
 
@@ -1364,7 +1376,9 @@ describe("renderToReadableStream — Children prop variants", () => {
       props: { children: null },
       children: [null],
     });
-    expect(await streamToString(stream)).toBe("<div>fallback</div>");
+    expect(await streamToString(stream)).toBe(
+      '<div data-sinwan-id="c0">fallback</div>',
+    );
   });
 
   it("renders a component with undefined children prop", async () => {
@@ -1374,7 +1388,9 @@ describe("renderToReadableStream — Children prop variants", () => {
       props: { children: undefined },
       children: [undefined],
     });
-    expect(await streamToString(stream)).toBe("<div>fallback</div>");
+    expect(await streamToString(stream)).toBe(
+      '<div data-sinwan-id="c0">fallback</div>',
+    );
   });
 
   it("renders a component with boolean children prop", async () => {
@@ -1384,7 +1400,9 @@ describe("renderToReadableStream — Children prop variants", () => {
       props: { children: true },
       children: [true],
     });
-    expect(await streamToString(stream)).toBe("<div>true</div>");
+    expect(await streamToString(stream)).toBe(
+      '<div data-sinwan-id="c0">true</div>',
+    );
   });
 
   it("renders a component with numeric children prop", async () => {
@@ -1394,7 +1412,9 @@ describe("renderToReadableStream — Children prop variants", () => {
       props: { children: 42 },
       children: [42],
     });
-    expect(await streamToString(stream)).toBe("<div>42</div>");
+    expect(await streamToString(stream)).toBe(
+      '<div data-sinwan-id="c0">42</div>',
+    );
   });
 
   it("renders a component with array children prop", async () => {
@@ -1404,7 +1424,9 @@ describe("renderToReadableStream — Children prop variants", () => {
       props: { children: ["a", "b"] },
       children: [["a", "b"]],
     });
-    expect(await streamToString(stream)).toBe("<div>ab</div>");
+    expect(await streamToString(stream)).toBe(
+      '<div data-sinwan-id="c0">ab</div>',
+    );
   });
 
   it("renders a component with element children prop", async () => {
@@ -1414,7 +1436,9 @@ describe("renderToReadableStream — Children prop variants", () => {
       props: { children: div({}, "inner") },
       children: [div({}, "inner")],
     });
-    expect(await streamToString(stream)).toBe("<div><div>inner</div></div>");
+    expect(await streamToString(stream)).toBe(
+      '<div data-sinwan-id="c0"><div>inner</div></div>',
+    );
   });
 
   it("renders a component with fragment children prop", async () => {
@@ -1424,7 +1448,9 @@ describe("renderToReadableStream — Children prop variants", () => {
       props: { children: { tag: "", props: {}, children: ["a", "b"] } },
       children: [{ tag: "", props: {}, children: ["a", "b"] }],
     });
-    expect(await streamToString(stream)).toBe("<div>ab</div>");
+    expect(await streamToString(stream)).toBe(
+      '<div data-sinwan-id="c0">ab</div>',
+    );
   });
 });
 

@@ -12,6 +12,8 @@ import { renderToHydratableString } from "../../../../src/server/hydration-marke
 import { signal, nextTick } from "../../../../src/reactivity/index.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
+globalThis.__DEV__ = false;
+
 let container: HTMLElement;
 
 beforeEach(() => {

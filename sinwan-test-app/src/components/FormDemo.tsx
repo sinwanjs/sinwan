@@ -16,19 +16,9 @@ import {
 } from "sinwan/react-client";
 
 export const FormDemo = cc(() => {
-  const handleSubmit = (formData: FormData) => {
-    // Log all form data to console
-    console.log("Form submitted with data:");
-    for (const [key, value] of formData.entries()) {
-      console.log(`${key}: ${value}`);
-    }
 
-    // Also log as object for easier reading
-    const data: Record<string, string> = {};
-    for (const [key, value] of formData.entries()) {
-      data[key] = value as string;
-    }
-    console.log("Form data as object:", data);
+  const handleSubmit = (formData: FormData) => {
+    console.log(formData.get("name"));
   };
 
   return (

@@ -56,6 +56,11 @@ const ENTRIES: PublicEntry[] = [
     types: "integrations/react/_static",
   },
   {
+    name: "react-type",
+    internal: "integrations/react/_type",
+    types: "integrations/react/_type",
+  },
+  {
     name: "jsx-runtime",
     internal: "jsx/jsx-runtime",
     types: "jsx/jsx-runtime",

@@ -258,7 +258,7 @@ describe("resumeAndPrerender — Edge cases", () => {
     );
     const html = await streamToString(prelude);
     expect(html).toContain("async");
-    expect(html).toContain("<div");
+    expect(html).toContain('<div data-sinwan-id="c0"');
     expect(html).toContain("</div>");
   });
 

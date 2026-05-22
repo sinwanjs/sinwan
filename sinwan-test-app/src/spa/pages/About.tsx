@@ -1,7 +1,7 @@
 import { cc } from "sinwan/component";
 import { Link } from "../Router.tsx";
 
-export const About = cc(() => {
+const About = cc(() => {
   return (
     <div style="padding: 20px;">
       <h1>About</h1>
@@ -29,3 +29,5 @@ export const About = cc(() => {
     </div>
   );
 });
+
+export default About;

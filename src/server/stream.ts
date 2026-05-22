@@ -32,10 +32,15 @@ import {
   isShowElement,
   isSwitchElement,
   isVirtualElement,
+  isSuspenseElement,
+  isActivityElement,
+  isViewTransitionElement,
   resolveSwitchContent,
   resolveKeyChildren,
   resolveMatchChildren,
   resolveShowChildren,
+  createDynamicElement,
+  normalizeContent,
 } from "../component/control-flow.ts";
 import {
   createComponentInstance,
@@ -58,7 +63,6 @@ import {
   type IslandElement,
 } from "../component/island.ts";
 import { renderToHydratableString as renderHydratableComponent } from "./hydration-markers.ts";
-import { createDynamicElement, normalizeContent } from "../common/index.ts";
 import { resolve } from "../reactivity/index.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
@@ -552,8 +556,27 @@ async function streamHydratableElement(
   }
 
   if (tag === "") {
+    let rootMarked = false;
     for (const child of children) {
-      await streamHydratableNodeToController(child, controller, encoder, ctx);
+      const isRoot =
+        isComponentRoot &&
+        !rootMarked &&
+        child != null &&
+        typeof child === "object" &&
+        "tag" in child &&
+        typeof (child as SinwanElement).tag === "string";
+      if (isRoot) rootMarked = true;
+      if (child != null && typeof child === "object" && "tag" in child) {
+        await streamHydratableElement(
+          child as SinwanElement,
+          controller,
+          encoder,
+          ctx,
+          isRoot,
+        );
+      } else {
+        await streamHydratableNodeToController(child, controller, encoder, ctx);
+      }
     }
     return;
   }
@@ -702,6 +725,72 @@ async function streamHydratableElement(
     return;
   }
 
+  if (isSuspenseElement(element)) {
+    await streamHydratableNodeToController(
+      props.children as SinwanNode,
+      controller,
+      encoder,
+      ctx,
+      isComponentRoot,
+    );
+    return;
+  }
+
+  if (isViewTransitionElement(element)) {
+    const name = props.name;
+    const viewChildren = (props as any).children as SinwanNode;
+    if (!name) {
+      await streamHydratableNodeToController(
+        viewChildren,
+        controller,
+        encoder,
+        ctx,
+        isComponentRoot,
+      );
+      return;
+    }
+    const wrapperTag = (props as any).as ?? "div";
+    await streamHydratableElement(
+      {
+        tag: wrapperTag,
+        props: {
+          style: { viewTransitionName: name },
+          children: viewChildren,
+        },
+        children: normalizeContent(viewChildren),
+      },
+      controller,
+      encoder,
+      ctx,
+      isComponentRoot,
+    );
+    return;
+  }
+
+  if (isActivityElement(element)) {
+    const mode = resolve(props.mode) ?? "visible";
+    const activityChildren = (props as any).children as SinwanNode;
+    const tag = (element.props as any).as ?? "div";
+    const hidden = mode === "hidden";
+
+    await streamHydratableElement(
+      {
+        tag,
+        props: {
+          "data-sinwan-activity": hidden ? "hidden" : "visible",
+          ...(hidden ? { hidden: true } : {}),
+          children: activityChildren,
+        },
+        children: normalizeContent(activityChildren),
+      },
+      controller,
+      encoder,
+      ctx,
+      isComponentRoot,
+    );
+    return;
+  }
+
   if (typeof tag === "function") {
     await streamHydratableComponent(
       tag as SinwanComponent<any>,
@@ -709,7 +798,7 @@ async function streamHydratableElement(
       controller,
       encoder,
       ctx,
-      false,
+      true,
     );
     return;
   }

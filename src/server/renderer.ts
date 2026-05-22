@@ -45,6 +45,8 @@ import {
   resolveMatchChildren,
   resolveShowChildren,
   resolveSwitchContent,
+  createDynamicElement,
+  normalizeContent,
 } from "../component/control-flow.ts";
 import {
   ISLAND_TAG,
@@ -55,7 +57,6 @@ import {
   type IslandElement,
 } from "../component/island.ts";
 import { renderToHydratableString as renderHydratableComponent } from "./hydration-markers.ts";
-import { createDynamicElement, normalizeContent } from "../common/index.ts";
 import { resolve } from "../reactivity/index.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
@@ -103,6 +104,26 @@ export async function renderPage<D extends object = {}>(
 
   const element = await page(data);
   return renderToString(element);
+}
+
+/**
+ * Render a registered page to an HTML string with hydration markers.
+ */
+export async function renderToHydratablePage<D extends object = {}>(
+  name: string,
+  data: D,
+  options?: { identifierPrefix?: string },
+): Promise<string> {
+  const page = getPage<D>(name);
+  if (!page) {
+    throw new Error(`Page "${name}" not found in registry`);
+  }
+
+  return renderHydratableComponent(
+    page,
+    data as Record<string, unknown>,
+    options,
+  );
 }
 
 /**
@@ -396,9 +417,6 @@ async function renderChildren(
 
   return renderToString(children);
 }
-
-// Wire up dangerouslySetInnerHTML handling by patching renderIntrinsicElement
-const originalRenderIntrinsic = renderIntrinsicElement;
 
 /**
  * Check if children is a slots object (named slots).

@@ -103,6 +103,20 @@
       },
       "default": "./dist/react-static.js"
     },
+    "./react-type": {
+      "types": "./dist/react-type.d.ts",
+      "import": {
+        "development": "./dist/esm/integrations/react/_type.development.js",
+        "production": "./dist/esm/integrations/react/_type.production.min.js",
+        "default": "./dist/esm/integrations/react/_type.production.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/integrations/react/_type.development.js",
+        "production": "./dist/cjs/integrations/react/_type.production.min.js",
+        "default": "./dist/react-type.js"
+      },
+      "default": "./dist/react-type.js"
+    },
     "./reactivity": {
       "types": "./dist/reactivity.d.ts",
       "import": {

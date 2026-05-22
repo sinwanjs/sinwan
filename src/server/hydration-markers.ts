@@ -66,8 +66,9 @@ import {
   resolveShowChildren,
   resolveKeyChildren,
   resolveSwitchContent,
+  createDynamicElement,
+  normalizeContent,
 } from "../component/control-flow.ts";
-import { createDynamicElement, normalizeContent } from "../common/index.ts";
 import { resolve } from "../reactivity/normalization.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
@@ -236,15 +237,23 @@ async function renderElementH(
 
   // Fragment
   if (tag === "") {
-    // replace map/Promise.all with for loop to avoid creating an intermediate array
-    const promises: Promise<string>[] = [];
-    for (let i = 0; i < children.length; i++) {
-      promises.push(renderNodeH(children[i], ctx));
-    }
-    const results = await Promise.all(promises);
+    let rootMarked = false;
     let output = "";
-    for (let i = 0; i < results.length; i++) {
-      output += results[i];
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      const isRoot =
+        isComponentRoot &&
+        !rootMarked &&
+        child != null &&
+        typeof child === "object" &&
+        "tag" in child &&
+        typeof (child as SinwanElement).tag === "string";
+      if (isRoot) rootMarked = true;
+      if (child != null && typeof child === "object" && "tag" in child) {
+        output += await renderElementH(child as SinwanElement, ctx, isRoot);
+      } else {
+        output += await renderNodeH(child, ctx);
+      }
     }
     return output;
   }
@@ -598,21 +607,14 @@ async function renderForElementH(
     return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
   }
 
-  // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
-  const promises: Promise<string>[] = [];
+  // sequential render to avoid race condition on mutable context indices (textIndex, eventIndex, componentIndex)
+  let output = "";
   for (let i = 0; i < each.length; i++) {
     const index = i;
-    promises.push(
-      renderNodeH(
-        props.children!(each[i], () => index),
-        ctx,
-      ),
+    output += await renderNodeH(
+      props.children!(each[i], () => index),
+      ctx,
     );
-  }
-  const results = await Promise.all(promises);
-  let output = "";
-  for (let i = 0; i < results.length; i++) {
-    output += results[i];
   }
   return output;
 }
@@ -635,21 +637,14 @@ async function renderIndexElementH(
     return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
   }
 
-  // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
-  const promises: Promise<string>[] = [];
+  // sequential render to avoid race condition on mutable context indices (textIndex, eventIndex, componentIndex)
+  let output = "";
   for (let i = 0; i < each.length; i++) {
     const item = each[i];
-    promises.push(
-      renderNodeH(
-        props.children!(() => item, i),
-        ctx,
-      ),
+    output += await renderNodeH(
+      props.children!(() => item, i),
+      ctx,
     );
-  }
-  const results = await Promise.all(promises);
-  let output = "";
-  for (let i = 0; i < results.length; i++) {
-    output += results[i];
   }
   return output;
 }
@@ -713,21 +708,15 @@ async function renderVirtualElementH(
 
   let itemsHtml = "";
   if (typeof renderChild === "function") {
-    const promises: Promise<string>[] = [];
+    // sequential render to avoid race condition on mutable context indices (textIndex, eventIndex, componentIndex)
     for (let i = startIndex; i < endIndex; i++) {
       const index = i;
       const top = i * itemHeight;
-      // Wrap each item in a div with absolute positioning at the correct top
-      promises.push(
-        renderNodeH(renderChild(list[i], () => index), ctx).then(
-          (html) =>
-            `<div style="position:absolute;top:${top}px;left:0;right:0">${html}</div>`,
-        ),
+      const html = await renderNodeH(
+        renderChild(list[i], () => index),
+        ctx,
       );
-    }
-    const results = await Promise.all(promises);
-    for (let i = 0; i < results.length; i++) {
-      itemsHtml += results[i];
+      itemsHtml += `<div style="position:absolute;top:${top}px;left:0;right:0">${html}</div>`;
     }
   }
 

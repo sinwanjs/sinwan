@@ -15,6 +15,7 @@ export { cacheSignal } from "./cache-signal.ts";
 export {
   addTransitionType,
   getActiveTransitionTypes,
+  clearTransitionTypes,
 } from "./add-transition-type.ts";
 export { captureOwnerStack } from "./capture-owner-stack.ts";
 

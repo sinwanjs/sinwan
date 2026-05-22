@@ -1,5 +1,5 @@
 import { cc, For } from "sinwan/component";
-import { signal } from "sinwan/reactivity";
+import { signal, effect } from "sinwan/reactivity";
 import { Link } from "../Router.tsx";
 
 interface Database {
@@ -7,26 +7,46 @@ interface Database {
   sizeOnDisk: number;
 }
 
-// Get initial data from SSR if available
-const getInitialData = (): { databases: Database[] } => {
-  if (typeof window !== "undefined" && (window as any).__INITIAL_DATA__) {
-    return (window as any).__INITIAL_DATA__;
-  }
-  return { databases: [] };
-};
+interface HomeProps {
+  databases?: Database[];
+  routeData?: any;
+}
 
-export const Home = cc(() => {
-  const data = signal<{ databases: Database[] }>(getInitialData());
+export async function homeLoader() {
+  const res = await fetch("/api/dbs");
+  const data = await res.json();
+  return { databases: data.databases || [] };
+}
+
+const Home = cc<HomeProps>(({ databases: propDatabases, routeData }) => {
+  const databases = signal<Database[]>(
+    propDatabases ||
+      (typeof window !== "undefined" &&
+        (window as any).__INITIAL_DATA__?.databases) ||
+      [],
+  );
+
+  if (routeData) {
+    effect(() => {
+      const dbs = routeData.value?.databases;
+      if (dbs) {
+        databases.value = dbs;
+      }
+    });
+  }
 
   return (
     <div style="padding: 20px;">
-      <h1>SPA with Full Hydration</h1>
+      <h1>
+        SPA this with Full Hydration sinwan is the best lib in the world testok
+        tlsdfhljshfkest ,dfst ok you ar good  frp donc ok from your dist donner la localisation 
+      </h1>
       <p>Server-rendered, fully hydrated single page app</p>
 
       <nav style="margin: 20px 0; display: flex; gap: 20px;">
         <Link href="/">
           <span style="color: blue; text-decoration: underline; cursor: pointer;">
-            Home
+            Home youre 
           </span>
         </Link>
         <Link href="/about">
@@ -43,7 +63,7 @@ export const Home = cc(() => {
 
       <h2>Databases from Server</h2>
       <ul>
-        <For each={() => data.value.databases}>
+        <For each={() => databases.value}>
           {(db) => (
             <li>
               {db.name} - {(db.sizeOnDisk / 1024 / 1024).toFixed(2)} MB
@@ -55,8 +75,4 @@ export const Home = cc(() => {
   );
 });
 
-export async function homeLoader() {
-  const res = await fetch("/api/dbs");
-  const data = await res.json();
-  return { databases: data.databases || [] };
-}
+export default Home;

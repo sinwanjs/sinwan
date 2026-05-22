@@ -2,7 +2,7 @@ import { cc } from "sinwan/component";
 import { Link } from "../Router.tsx";
 import { Counter } from "../Counter.tsx";
 
-export const CounterPage = cc(() => {
+const CounterPage = cc(() => {
   return (
     <div style="padding: 20px;">
       <h1>Counter Page</h1>
@@ -21,7 +21,7 @@ export const CounterPage = cc(() => {
         </Link>
         <Link href="/counter">
           <span style="color: blue; text-decoration: underline; cursor: pointer;">
-            Counter
+            Counter chercher la localisation
           </span>
         </Link>
       </nav>
@@ -31,3 +31,5 @@ export const CounterPage = cc(() => {
     </div>
   );
 });
+
+export default CounterPage;
