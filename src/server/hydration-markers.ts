@@ -70,6 +70,7 @@ import {
   normalizeContent,
 } from "../component/control-flow.ts";
 import { resolve } from "../reactivity/normalization.ts";
+import { setSSRContext, createSSRContext } from "../event/ssr-context.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
 
@@ -93,7 +94,11 @@ function createHydrationContext(): HydrationContext {
 export async function renderToHydratableString(
   component: SinwanComponent<any>,
   props?: Record<string, unknown>,
-  options?: { identifierPrefix?: string },
+  options?: {
+    identifierPrefix?: string;
+    out?: { fetchData?: Record<string, any> };
+    baseUrl?: string;
+  },
 ): Promise<string> {
   const ctx = createHydrationContext();
   const mergedProps = props ?? {};
@@ -105,18 +110,50 @@ export async function renderToHydratableString(
   }
   const prev = setCurrentInstance(instance);
 
+  const ssrCtx = createSSRContext();
+  if (options?.baseUrl) {
+    ssrCtx.baseUrl = options.baseUrl;
+  }
+  const prevSSR = setSSRContext(ssrCtx);
+
   try {
-    // Call the component to get the element tree
-    const result = (await Promise.resolve(
+    // First pass: render to HTML to trigger fetches from nested sync components
+    let result = (await Promise.resolve(
       component(mergedProps) as unknown,
     )) as SinwanNode;
+
+    let html: string;
     if (result && typeof result === "object" && "tag" in result) {
-      return await renderElementH(result, ctx, true /* isComponentRoot */);
+      html = await renderElementH(result, ctx, true /* isComponentRoot */);
+    } else {
+      html = await renderNodeH(result as SinwanNode, ctx);
     }
 
-    return await renderNodeH(result as SinwanNode, ctx);
+    // Wait for any fetches started during rendering, then re-render
+    // with data populated so the HTML includes fetched content.
+    if (ssrCtx.pendingFetches.size > 0) {
+      const pending = Array.from(ssrCtx.pendingFetches);
+      ssrCtx.pendingFetches.clear();
+      await Promise.all(pending);
+
+      // Re-create context for second pass to avoid stale state
+      const ctx2 = createHydrationContext();
+      const result2 = (await Promise.resolve(
+        component(mergedProps) as unknown,
+      )) as SinwanNode;
+      if (result2 && typeof result2 === "object" && "tag" in result2) {
+        return await renderElementH(result2, ctx2, true);
+      }
+      return await renderNodeH(result2 as SinwanNode, ctx2);
+    }
+
+    return html;
   } finally {
+    if (options?.out && ssrCtx.fetchCache.size) {
+      options.out.fetchData = Object.fromEntries(ssrCtx.fetchCache);
+    }
     setCurrentInstance(prev);
+    setSSRContext(prevSSR);
   }
 }
 
@@ -142,10 +179,13 @@ export async function renderNodeToHydratableString(
   );
   dummy.identifierPrefix = prefix;
   const prev = setCurrentInstance(dummy);
+  const prevSSR = setSSRContext(createSSRContext());
+
   try {
     return await renderNodeH(node, ctx);
   } finally {
     setCurrentInstance(prev);
+    setSSRContext(prevSSR);
   }
 }
 
@@ -216,6 +256,11 @@ async function renderNodeH(
 
   if (typeof node === "object" && "tag" in node) {
     return renderElementH(node, ctx, false);
+  }
+
+  // Plain function getter (0-arity) — resolve and render as text
+  if (typeof node === "function" && (node as any).length === 0) {
+    return escapeHtml(String((node as any)()));
   }
 
   return escapeHtml(String(node));

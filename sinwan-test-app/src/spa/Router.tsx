@@ -1,4 +1,4 @@
-import { cc, Show, Key } from "sinwan/component";
+import { cc, Key } from "sinwan/component";
 import { signal, computed, effect } from "sinwan/reactivity";
 import type { SinwanComponent } from "sinwan/component";
 
@@ -11,7 +11,6 @@ export type LazyComponent<P extends object = {}> = () => Promise<{
 export interface Route {
   path: string;
   component: SinwanComponent<any> | LazyComponent<any>;
-  loader?: () => Promise<any>;
 }
 
 // ─── State ──────────────────────────────────────────────
@@ -21,12 +20,9 @@ const currentPath = signal<string>(
 );
 
 const routes = signal<Route[]>([]);
-const isLoading = signal<boolean>(false);
-const routeError = signal<string | null>(null);
 
-// Cache for lazy-loaded components + prefetched data
+// Cache for lazy-loaded components
 const componentCache = new Map<string, SinwanComponent<any>>();
-const prefetchCache = new Map<string, Promise<any>>();
 
 // ─── Helpers ────────────────────────────────────────────
 
@@ -95,17 +91,6 @@ export function prefetchRoute(path: string): void {
       }
     });
   }
-
-  // Prefetch loader data
-  if (r.loader && !prefetchCache.has(path)) {
-    prefetchCache.set(path, r.loader());
-  }
-}
-
-export function getPrefetchedData(path: string): any | undefined {
-  const promise = prefetchCache.get(path);
-  // If already resolved, the consumer awaits it; otherwise undefined
-  return undefined;
 }
 
 // ─── lazy() helper ──────────────────────────────────────
@@ -144,14 +129,9 @@ export const Link = cc<{
 
 // ─── RouterOutlet with Suspense + lazy loading ──────────
 
-export const RouterOutlet = cc<{
-  initialData?: any;
-  fallback?: any;
-}>(({ initialData, fallback }) => {
-  const data = signal<any>(initialData ?? null);
+export const RouterOutlet = cc(() => {
   const resolvedComponent = signal<SinwanComponent<any> | null>(null);
 
-  // Track previous path to avoid duplicate work
   let lastPath: string | null = null;
 
   if (typeof window !== "undefined") {
@@ -162,14 +142,10 @@ export const RouterOutlet = cc<{
       if (!r || lastPath === path) return;
       lastPath = path;
 
-      routeError.value = null;
-      isLoading.value = true;
-
       const loadComponent = async () => {
         let Comp: SinwanComponent<any>;
 
         if (isLazyComponent(r.component)) {
-          // Check cache first
           const cached = componentCache.get(r.path);
           if (cached) {
             Comp = cached;
@@ -185,69 +161,25 @@ export const RouterOutlet = cc<{
         resolvedComponent.value = Comp;
       };
 
-      const loadData = async () => {
-        if (!r.loader) {
-          data.value = null;
-          return;
-        }
-
-        // Use prefetched data if available
-        const prefetched = prefetchCache.get(r.path);
-        try {
-          const result = prefetched ? await prefetched : await r.loader();
-          data.value = result;
-        } catch (e: any) {
-          console.error("Loader error:", e);
-          routeError.value = e.message || "Failed to load data";
-        }
-      };
-
-      Promise.all([loadComponent(), loadData()])
-        .then(() => {
-          isLoading.value = false;
-        })
-        .catch((e: any) => {
-          console.error("Route load error:", e);
-          routeError.value = e.message || "Failed to load route";
-          isLoading.value = false;
-        });
+      loadComponent();
     });
   }
 
-  const defaultFallback = (
-    <div style="padding: 20px; text-align: center;">
-      <p>Loading...</p>
-    </div>
-  );
-
   return (
     <div class="router-outlet">
-      <Show when={() => routeError.value}>
-        <div style="padding: 20px; color: #e74c3c; border: 1px solid #e74c3c; border-radius: 4px;">
-          <strong>Error:</strong> {routeError.value}
-        </div>
-      </Show>
+      <Key when={currentPath} cache={true}>
+        {() => {
+          const r = matchedRoute.value;
+          if (!r) return <div>404 - Page not found</div>;
 
-      <Show when={() => !routeError.value}>
-        <Show
-          when={() => !isLoading.value}
-          fallback={fallback ?? defaultFallback}
-        >
-          <Key when={currentPath} cache={false}>
-            {() => {
-              const r = matchedRoute.value;
-              if (!r) return <div>404 - Page not found</div>;
+          const Comp = resolvedComponent.value ?? r.component;
+          if (!Comp || isLazyComponent(Comp)) {
+            return <div>Loading component...</div>;
+          }
 
-              const Comp = resolvedComponent.value ?? r.component;
-              if (!Comp || isLazyComponent(Comp)) {
-                return <div>Loading component...</div>;
-              }
-
-              return <Comp routeData={data} {...(data.value || {})} />;
-            }}
-          </Key>
-        </Show>
-      </Show>
+          return <Comp />;
+        }}
+      </Key>
     </div>
   );
 });

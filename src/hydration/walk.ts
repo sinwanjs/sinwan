@@ -152,6 +152,12 @@ export function hydrateNode(
     }
   }
 
+  // Plain function getter (0-arity) — resolve for hydration,
+  // attach effect so it stays reactive when dependencies change.
+  if (typeof node === "function" && (node as any).length === 0) {
+    return hydrateReactiveFunction(node as Function, cursor);
+  }
+
   // Array → hydrate each child
   if (Array.isArray(node)) {
     return hydrateArray(node, cursor);
@@ -249,6 +255,53 @@ function hydrateReactiveText(
   let initialized = false;
   const dispose = effect(() => {
     newText.data = String(reactive.value);
+    if (initialized) {
+      queueUpdatedHooks(owner);
+    }
+    initialized = true;
+  });
+  return { type: "reactive-text", node: newText, dispose };
+}
+
+/**
+ * Hydrate a plain function getter (0-arity) as reactive text.
+ * The server renders the resolved value as text without markers.
+ * We match the existing text node and attach an effect so updates
+ * are reflected when the function's signal dependencies change.
+ */
+function hydrateReactiveFunction(
+  fn: Function,
+  cursor: HydrationCursor,
+): MountedNode {
+  const textNode = advance(cursor) as Text;
+  const owner = getCurrentInstance();
+
+  if (textNode) {
+    let initialized = false;
+    const dispose = effect(() => {
+      textNode.data = String(fn());
+      if (initialized) {
+        queueUpdatedHooks(owner);
+      }
+      initialized = true;
+    });
+    return { type: "reactive-text", node: textNode, dispose };
+  }
+
+  // Last resort — create a new text node and insert it into the DOM
+  // at the current cursor position so it isn't orphaned.
+  const newText = document.createTextNode(String(fn()));
+  const parent = cursor.parent;
+  const anchor = cursor.current;
+  if (anchor) {
+    parent.insertBefore(newText, anchor);
+  } else {
+    parent.appendChild(newText);
+  }
+
+  let initialized = false;
+  const dispose = effect(() => {
+    newText.data = String(fn());
     if (initialized) {
       queueUpdatedHooks(owner);
     }

@@ -73,12 +73,19 @@ export interface ForProps<T> {
 
 /**
  * Props for the `<Switch>` control flow component.
- * @property fallback - Content to render if no `<Match>` is truthy.
+ * @template T - Type of the `when` value.
+ * @property when - Reactive gate; if provided and truthy, evaluate `<Match>` children.
+ * @property fallback - Content to render if `when` is falsy or no `<Match>` is truthy.
  * @property children - List of `<Match>` elements to evaluate.
  */
-export interface SwitchProps {
+export interface SwitchProps<T = unknown> {
   /**
-   * Content to render if no <Match> branch is truthy.
+   * Reactive gate. If provided and falsy, the switch renders `fallback`
+   * without evaluating any `<Match>` branches.
+   */
+  when?: Reactive<T | false | null | undefined>;
+  /**
+   * Content to render if `when` is falsy or no <Match> branch is truthy.
    */
   fallback?: SinwanNode;
   /**
@@ -305,7 +312,7 @@ export function For<T>(props: ForProps<T>): SinwanElement {
  * Control flow primitive for exclusive branching.
  * Renders the first matching `<Match>` child, or fallback if none match.
  */
-export function Switch(props: SwitchProps): SinwanElement {
+export function Switch<T>(props: SwitchProps<T>): SinwanElement {
   return {
     tag: SWITCH_TYPE,
     props: props as unknown as Record<string, unknown>,
@@ -492,11 +499,21 @@ export function isVirtualElement(element: SinwanElement): boolean {
 
 export function resolveSwitchContent(element: SinwanElement): SinwanNode {
   const props = element.props as {
+    when?: unknown;
     fallback?: SinwanNode;
     children?: SinwanNode;
   };
-  const children = normalizeContent(props.children ?? element.children);
 
+  // If a top-level `when` is provided, act as a reactive gate:
+  // falsy → render fallback immediately without evaluating matches.
+  if ("when" in props && props.when !== undefined) {
+    const gate = resolve(props.when);
+    if (!gate) {
+      return props.fallback;
+    }
+  }
+
+  const children = normalizeContent(props.children ?? element.children);
   const match = findTruthyMatch(children);
   return match !== undefined ? match : props.fallback;
 }

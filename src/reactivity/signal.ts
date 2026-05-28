@@ -23,8 +23,8 @@ export interface Signal<T> {
   subscribe(fn: (value: T) => void): () => void;
 }
 
-// Brand for type-checking
-const SIGNAL_BRAND = Symbol("Sinwan:signal");
+// Brand for type-checking — Symbol.for ensures recognition across bundle boundaries
+const SIGNAL_BRAND = Symbol.for("Sinwan:signal");
 
 // ─── Implementation ────────────────────────────────────────
 

@@ -245,6 +245,12 @@ async function streamNode(
     return;
   }
 
+  // Plain function getter (0-arity) — resolve and stream as text
+  if (typeof node === "function" && (node as any).length === 0) {
+    controller.enqueue(encoder.encode(escapeHtml(String((node as any)()))));
+    return;
+  }
+
   // Handle arrays - stream each child
   if (Array.isArray(node)) {
     for (const child of node) {
@@ -504,6 +510,17 @@ async function streamHydratableNodeToController(
   }
 
   if (typeof node === "function" && (node as any)[STATE_GETTER_MARKER]) {
+    const idx = ctx.textIndex++;
+    enqueue(
+      controller,
+      encoder,
+      `${textMarkerOpen(idx)}${escapeHtml(String((node as any)()))}${textMarkerCloseStr()}`,
+    );
+    return;
+  }
+
+  // Plain function getter (0-arity) — resolve and stream as text
+  if (typeof node === "function" && (node as any).length === 0) {
     const idx = ctx.textIndex++;
     enqueue(
       controller,

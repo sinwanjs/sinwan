@@ -1,9 +1,12 @@
-import { hydrate } from "sinwan/hydration";
+import { hydrate, getSinwanData } from "sinwan/hydration";
 import { App } from "./App.tsx";
 
-const initialPath =
-  (window as any).__INITIAL_PATH__ || window.location.pathname;
+const sinwanData = getSinwanData();
+const initialPath = sinwanData.path || window.location.pathname;
 
-const container = document.getElementById("app")!;
+const container = document.getElementById("app");
+if (!container) {
+  throw new Error("Container not found");
+}
 hydrate(App, container, { initialPath });
 console.log("✅ App hydrated at path:", initialPath);

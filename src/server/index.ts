@@ -27,3 +27,6 @@ export {
 
 export { renderShell, streamShell } from "./shell.ts";
 export type { ShellOptions, ShellScript, ShellStylesheet } from "./shell.ts";
+
+export { getSSRFetchData } from "../event/ssr-context.ts";
+export type { FetchCacheEntry } from "../event/ssr-context.ts";

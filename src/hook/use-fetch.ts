@@ -7,6 +7,8 @@ import {
   type Computed,
   type Signal,
 } from "../reactivity/index.ts";
+import { getSSRContext } from "../event/ssr-context.ts";
+import { getSinwanData } from "../hydration/index.ts";
 
 export type Fn = () => void;
 export type Stoppable = { stop: Fn; start: Fn; isPending: Signal<boolean> };
@@ -52,7 +54,7 @@ export interface UseFetchReturn<T> {
     payload?: MaybeReactive<unknown>,
     type?: string,
   ) => UseFetchReturn<T> & PromiseLike<UseFetchReturn<T>>;
-  json: <JSON = any>() => UseFetchReturn<JSON> &
+  json: <JSON = T>() => UseFetchReturn<JSON> &
     PromiseLike<UseFetchReturn<JSON>>;
   text: () => UseFetchReturn<string> & PromiseLike<UseFetchReturn<string>>;
   blob: () => UseFetchReturn<Blob> & PromiseLike<UseFetchReturn<Blob>>;
@@ -342,6 +344,35 @@ export function useFetch<T>(
   if (args.length > 1 && isFetchOptions(args[1]))
     options = { ...options, ...args[1] };
 
+  function getClientFetchCache(): Map<string, any> | undefined {
+    if (typeof window === "undefined") return undefined;
+    const sinwanData = getSinwanData();
+    if (!sinwanData?.fetchData) return undefined;
+    return new Map(Object.entries(sinwanData.fetchData));
+  }
+
+  function consumeClientCachedData(key: string): any {
+    const cache = getClientFetchCache();
+    if (!cache) return undefined;
+    const value = cache.get(key);
+    if (value !== undefined) {
+      cache.delete(key);
+      const script = document.getElementById("__SINWAN_DATA__");
+      if (script) {
+        try {
+          const sinwanData = JSON.parse(script.textContent || "{}");
+          if (sinwanData.fetchData && key in sinwanData.fetchData) {
+            delete sinwanData.fetchData[key];
+            script.textContent = JSON.stringify(sinwanData);
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    return value;
+  }
+
   const fetchFn = options.fetch ?? globalThis.fetch?.bind(globalThis);
   const responseEvent = createEventHook<Response>();
   const errorEvent = createEventHook<any>();
@@ -375,7 +406,42 @@ export function useFetch<T>(
 
   let executeCounter = 0;
 
+  let hasConsumedCache = false;
+
+  function getCacheKey(resolvedUrl: string): string {
+    return `${config.method}:${resolvedUrl}`;
+  }
+
+  function applyCached(cached: any): null {
+    hasConsumedCache = true;
+    data.value = cached.data ?? null;
+    statusCode.value = cached.statusCode ?? null;
+    error.value = cached.error ?? null;
+    isLoading.value = false;
+    return null;
+  }
+
   const execute = async (throwOnFailed = false) => {
+    let resolvedUrl = resolve(url);
+    const ssrCtx = getSSRContext();
+    if (ssrCtx?.baseUrl && !isAbsoluteURL(resolvedUrl)) {
+      resolvedUrl = joinPaths(ssrCtx.baseUrl, resolvedUrl);
+    }
+    const cacheKey = getCacheKey(resolve(url));
+
+    if (!hasConsumedCache) {
+      // Client hydration cache
+      if (typeof window !== "undefined") {
+        const cached = consumeClientCachedData(cacheKey);
+        if (cached) return applyCached(cached);
+      }
+      // SSR cache
+      const ssrCtx = getSSRContext();
+      if (ssrCtx?.fetchCache?.has(cacheKey)) {
+        return applyCached(ssrCtx.fetchCache.get(cacheKey));
+      }
+    }
+
     abort();
     isLoading.value = true;
     error.value = null;
@@ -414,7 +480,7 @@ export function useFetch<T>(
 
     let isCanceled = false;
     const context: BeforeFetchContext = {
-      url: resolve(url),
+      url: resolvedUrl,
       options: {
         ...defaultFetchOptions,
         ...fetchOptions,
@@ -462,6 +528,17 @@ export function useFetch<T>(
         }
         data.value = responseData;
         responseEvent.trigger(fetchResponse);
+
+        // Cache for SSR hydration
+        const ssrCtx = getSSRContext();
+        if (ssrCtx?.fetchCache) {
+          ssrCtx.fetchCache.set(cacheKey, {
+            data: responseData,
+            statusCode: fetchResponse.status,
+            error: null,
+          });
+        }
+
         return fetchResponse;
       })
       .catch(async (fetchError) => {
@@ -479,6 +556,17 @@ export function useFetch<T>(
         error.value = errorData;
         if (options.updateDataOnError) data.value = responseData;
         errorEvent.trigger(fetchError);
+
+        // Cache error for SSR
+        const ssrCtx = getSSRContext();
+        if (ssrCtx?.fetchCache) {
+          ssrCtx.fetchCache.set(cacheKey, {
+            data: options.updateDataOnError ? responseData : null,
+            statusCode: response.value?.status ?? null,
+            error: errorData,
+          });
+        }
+
         if (throwOnFailed) throw fetchError;
         return null;
       })
@@ -547,9 +635,8 @@ export function useFetch<T>(
             if (shouldRefetch) execute();
           });
         }
-        return promiseShell(shell);
       }
-      return undefined as any;
+      return promiseShell(shell);
     };
   }
 
@@ -569,13 +656,10 @@ export function useFetch<T>(
   }
 
   function setType(type: DataType) {
-    return () => {
-      if (!isFetching.value) {
-        config.type = type;
-        return promiseShell(shell as any);
-      }
-      return undefined as any;
-    };
+    return (() => {
+      config.type = type;
+      return promiseShell(shell as any);
+    }) as any;
   }
 
   function promiseShell<R>(target: UseFetchReturn<R>) {
@@ -587,7 +671,27 @@ export function useFetch<T>(
     } as UseFetchReturn<R> & PromiseLike<UseFetchReturn<R>>;
   }
 
-  if (options.immediate) Promise.resolve().then(() => execute());
+  if (options.immediate) {
+    if (typeof window === "undefined") {
+      // On server, execute and register promise for two-pass SSR rendering
+      const promise = execute();
+      const ssrCtx = getSSRContext();
+      if (ssrCtx?.pendingFetches) {
+        ssrCtx.pendingFetches.add(promise);
+      }
+    } else {
+      // Check hydration cache synchronously so async components that
+      // await useFetch resolve with data already populated.
+      const resolvedUrl = resolve(url);
+      const cacheKey = getCacheKey(resolvedUrl);
+      const cached = consumeClientCachedData(cacheKey);
+      if (cached) {
+        applyCached(cached);
+      } else {
+        Promise.resolve().then(() => execute());
+      }
+    }
+  }
 
   return promiseShell(shell);
 }

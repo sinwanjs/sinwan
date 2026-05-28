@@ -47,7 +47,7 @@ const hmrClientScript = `
 `;
 
 // HTML shell
-const shell = (content: string, initialPath: string, data: any) => `
+const shell = (content: string, initialPath: string, fetchData: any) => `
 <!doctype html>
 <html lang="en">
   <head>
@@ -61,7 +61,7 @@ const shell = (content: string, initialPath: string, data: any) => `
   </head>
   <body>
     <div id="app">${content}</div>
-    <script>window.__INITIAL_PATH__ = "${initialPath}"; window.__INITIAL_DATA__ = ${JSON.stringify(data)};</script>
+    <script id="__SINWAN_DATA__" type="application/json">${JSON.stringify({ path: initialPath, fetchData })}</script>
     <script type="module" src="/spa/client.tsx"></script>
     ${isDev ? hmrClientScript : ""}
   </body>
@@ -76,15 +76,16 @@ const mockDatabases = [
 ];
 
 async function renderRoute(path: string) {
-  let data = {};
-  if (path === "/") {
-    data = { databases: mockDatabases };
-  }
-  const html = await renderToHydratableString(App, {
-    initialPath: path,
-    initialData: data,
-  });
-  return { html, data };
+  const out: { fetchData?: Record<string, any> } = {};
+  const html = await renderToHydratableString(
+    App,
+    {
+      initialPath: path,
+    },
+    { out, baseUrl: "http://localhost:3004" },
+  );
+  const fetchData = out.fetchData ?? {};
+  return { html, fetchData };
 }
 
 let clientBundle: string | null = null;
@@ -95,7 +96,7 @@ async function buildClient() {
     entrypoints: [clientPath],
     target: "browser",
     format: "esm",
-    minify: !isDev,
+    minify: true,
   });
   if (!result.success || !result.outputs[0]) {
     throw new Error("Client build failed");
@@ -112,6 +113,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // API routes
   if (path === "/api/dbs") {
+    await Bun.sleep(1000);
     return Response.json({
       success: true,
       databases: mockDatabases,
@@ -132,8 +134,8 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 
   // SSR catch-all
-  const { html, data } = await renderRoute(path);
-  return new Response(shell(html, path, data), {
+  const { html, fetchData } = await renderRoute(path);
+  return new Response(shell(html, path, fetchData), {
     headers: { "Content-Type": "text/html" },
   });
 }
@@ -144,7 +146,7 @@ if (isDev) {
   const spaDir = resolve(import.meta.dir);
   watch(spaDir, { recursive: true }, async (_event, filename) => {
     if (!filename) return;
-    if (filename === "server.ts") return; // exclude server file
+    // if (filename === "server.ts") return; // exclude server file
     if (
       filename.endsWith(".tsx") ||
       filename.endsWith(".ts") ||

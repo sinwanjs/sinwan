@@ -161,6 +161,11 @@ export async function renderToString(node: SinwanNode): Promise<string> {
     return escapeHtml(String((node as any)()));
   }
 
+  // Plain function getter (0-arity) — resolve and render as text
+  if (typeof node === "function" && (node as any).length === 0) {
+    return escapeHtml(String((node as any)()));
+  }
+
   // Handle arrays - render each child and concatenate
   if (Array.isArray(node)) {
     // replace map/Promise.all with for loop to avoid creating an intermediate array

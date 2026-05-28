@@ -1,6 +1,5 @@
 import { cc } from "sinwan/component";
 import { useEffect, useState } from "sinwan/react-client";
-import { effect, signal } from "sinwan/reactivity";
 
 /**
  * Counter - Normal interactive component (NOT an island)
@@ -9,9 +8,11 @@ import { effect, signal } from "sinwan/reactivity";
 export const Counter = cc<{ initial?: number }>(({ initial = 0 }) => {
   const [count, setCount] = useState(initial);
   const [test, setTest] = useState(0);
+
   const handel = () => {
     setCount((c: number) => c + 1);
     setTest((t: number) => t + 1);
+    console.log("Counter clicked", count());
   };
 
   useEffect(() => {
@@ -33,7 +34,7 @@ export const Counter = cc<{ initial?: number }>(({ initial = 0 }) => {
         onClick={() => setCount((c: number) => c - 1)}
         style="padding: 8px 16px; margin: 4px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;"
       >
-        - 
+        -
       </button>
     </div>
   );

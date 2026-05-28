@@ -27,3 +27,18 @@ export {
 } from "./markers.ts";
 
 export type { HydrationCursor } from "./walk.ts";
+
+/**
+ * Read SSR data serialized in the `<script id="__SINWAN_DATA__" type="application/json">` tag.
+ * Returns an empty object if the tag is missing or invalid.
+ */
+export function getSinwanData(): any {
+  if (typeof document === "undefined") return {};
+  const script = document.getElementById("__SINWAN_DATA__");
+  if (!script) return {};
+  try {
+    return JSON.parse(script.textContent || "{}");
+  } catch {
+    return {};
+  }
+}
