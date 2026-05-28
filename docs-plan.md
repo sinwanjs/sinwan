@@ -189,7 +189,7 @@ docs/
 │           │   │   ├── resume.md
 │           │   │   ├── renderShell.md
 │           │   │   └── streamShell.md
-│           │   └── static/
+│           │   └── react-static/
 │           │       ├── index.mdx        # sinwan/react-static subpath
 │           │       ├── prerender.md
 │           │       └── resumeAndPrerender.md

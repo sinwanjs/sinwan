@@ -1,17 +1,53 @@
 import { serve } from "bun";
-import mongoose from "mongoose";
 import { renderToHydratableString } from "sinwan/server";
 import { App } from "./App.tsx";
+import { watch } from "node:fs";
+import { resolve } from "node:path";
 
-// Connect MongoDB
-await mongoose.connect("mongodb://127.0.0.1:27017", {
-  user: "admin",
-  pass: "secret123",
-});
-console.log("✅ Connected to MongoDB");
+const isDev = process.env.NODE_ENV !== "production";
+
+const hmrClientScript = `
+<script>
+(function() {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  let ws, pingInterval, reconnectDelay = 200;
+
+  let firstConnect = true;
+
+  function connect() {
+    ws = new WebSocket(protocol + '//' + location.host + '/__hmr');
+
+    ws.onopen = function() {
+      reconnectDelay = 200;
+      pingInterval = setInterval(function() {
+        if (ws.readyState === 1) ws.send('ping');
+      }, 200);
+      if (!firstConnect) location.reload();
+      firstConnect = false;
+    };
+
+    ws.onmessage = function(e) {
+      if (e.data === 'reload') location.reload();
+    };
+
+    ws.onclose = function() {
+      clearInterval(pingInterval);
+      setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+    };
+
+    ws.onerror = function() {
+      console.log('[HMR] WS error, will retry...');
+    };
+  }
+
+  connect();
+})();
+</script>
+`;
 
 // HTML shell
-const shell = (content: string, initialPath: string, data: any) => `
+const shell = (content: string, initialPath: string, fetchData: any) => `
 <!doctype html>
 <html lang="en">
   <head>
@@ -25,32 +61,51 @@ const shell = (content: string, initialPath: string, data: any) => `
   </head>
   <body>
     <div id="app">${content}</div>
-    <script>window.__INITIAL_PATH__ = "${initialPath}"; window.__INITIAL_DATA__ = ${JSON.stringify(data)};</script>
+    <script id="__SINWAN_DATA__" type="application/json">${JSON.stringify({ path: initialPath, fetchData })}</script>
     <script type="module" src="/spa/client.tsx"></script>
+    ${isDev ? hmrClientScript : ""}
   </body>
 </html>
 `;
 
+const mockDatabases = [
+  { name: "users", sizeOnDisk: 1024 * 1024 * 45, empty: false },
+  { name: "products", sizeOnDisk: 1024 * 1024 * 128, empty: false },
+  { name: "logs", sizeOnDisk: 1024 * 1024 * 512, empty: false },
+  { name: "test", sizeOnDisk: 0, empty: true },
+];
+
 async function renderRoute(path: string) {
-  let data = {};
-  if (path === "/") {
-    try {
-      const admin = mongoose.connection.db!.admin();
-      const result = await admin.listDatabases();
-      data = {
-        databases: result.databases.map((db) => ({
-          name: db.name,
-          sizeOnDisk: db.sizeOnDisk ?? 0,
-          empty: db.empty ?? false,
-        })),
-      };
-    } catch (e) {
-      console.error("Data load error:", e);
-    }
-  }
-  const html = await renderToHydratableString(App, { initialPath: path });
-  return { html, data };
+  const out: { fetchData?: Record<string, any> } = {};
+  const html = await renderToHydratableString(
+    App,
+    {
+      initialPath: path,
+    },
+    { out, baseUrl: "http://localhost:3004" },
+  );
+  const fetchData = out.fetchData ?? {};
+  return { html, fetchData };
 }
+
+let clientBundle: string | null = null;
+
+async function buildClient() {
+  const clientPath = import.meta.dir + "/client.tsx";
+  const result = await Bun.build({
+    entrypoints: [clientPath],
+    target: "browser",
+    format: "esm",
+    minify: true,
+  });
+  if (!result.success || !result.outputs[0]) {
+    throw new Error("Client build failed");
+  }
+  clientBundle = await result.outputs[0].text();
+}
+
+// Build client on startup
+if (isDev) buildClient();
 
 async function handleRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
@@ -58,29 +113,17 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // API routes
   if (path === "/api/dbs") {
-    const admin = mongoose.connection.db!.admin();
-    const result = await admin.listDatabases();
+    await Bun.sleep(1000);
     return Response.json({
       success: true,
-      databases: result.databases.map((db) => ({
-        name: db.name,
-        sizeOnDisk: db.sizeOnDisk ?? 0,
-        empty: db.empty ?? false,
-      })),
+      databases: mockDatabases,
     });
   }
 
-  // Client bundle
+  // Client bundle — serve from memory cache (instant)
   if (path === "/spa/client.tsx") {
-    const result = await Bun.build({
-      entrypoints: ["./src/spa/client.tsx"],
-      target: "browser",
-      format: "esm",
-    });
-    if (!result.success || !result.outputs[0]) {
-      return new Response("Build failed", { status: 500 });
-    }
-    return new Response(await result.outputs[0].text(), {
+    if (!clientBundle) await buildClient();
+    return new Response(clientBundle, {
       headers: { "Content-Type": "application/javascript" },
     });
   }
@@ -91,15 +134,52 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 
   // SSR catch-all
-  const { html, data } = await renderRoute(path);
-  return new Response(shell(html, path, data), {
+  const { html, fetchData } = await renderRoute(path);
+  return new Response(shell(html, path, fetchData), {
     headers: { "Content-Type": "text/html" },
   });
 }
 
+const hmrClients = new Set<any>();
+
+if (isDev) {
+  const spaDir = resolve(import.meta.dir);
+  watch(spaDir, { recursive: true }, async (_event, filename) => {
+    if (!filename) return;
+    // if (filename === "server.ts") return; // exclude server file
+    if (
+      filename.endsWith(".tsx") ||
+      filename.endsWith(".ts") ||
+      filename.endsWith(".css")
+    ) {
+      await buildClient();
+      for (const ws of hmrClients) {
+        if (ws.readyState === 1) ws.send("reload");
+      }
+    }
+  });
+  console.log("[HMR] Watching for file changes...");
+}
+
 const server = serve({
   port: 3004,
-  fetch: handleRequest,
+  fetch(req, server) {
+    const url = new URL(req.url);
+    if (isDev && url.pathname === "/__hmr") {
+      const upgraded = server.upgrade(req);
+      if (upgraded) return undefined as any;
+    }
+    return handleRequest(req);
+  },
+  websocket: {
+    open(ws) {
+      hmrClients.add(ws);
+    },
+    close(ws) {
+      hmrClients.delete(ws);
+    },
+    message() {},
+  },
   development: {
     hmr: true,
     console: true,

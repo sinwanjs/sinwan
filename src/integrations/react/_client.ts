@@ -5,9 +5,6 @@
  * `sinwan/react-client` in one go.
  */
 
-// SHARED (re-exported for ergonomics)
-export * from "./_shared.ts";
-
 // CLIENT hooks (Phase 2)
 export { useState } from "./use-state.ts";
 export { useReducer } from "./use-reducer.ts";

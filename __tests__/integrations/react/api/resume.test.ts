@@ -199,7 +199,9 @@ describe("resume — Edge cases", () => {
       { tag: AsyncComp, props: {}, children: [] } as any,
       null,
     );
-    expect(await streamToString(stream)).toBe("<div>async</div>");
+    expect(await streamToString(stream)).toBe(
+      '<div data-sinwan-id="c0">async</div>',
+    );
   });
 });
 

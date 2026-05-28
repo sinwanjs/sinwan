@@ -20,6 +20,8 @@ import {
   useRef,
 } from "../../../../src/integrations/react/_client.ts";
 
+globalThis.__DEV__ = false;
+
 let container: HTMLElement;
 beforeEach(() => {
   const win = new Window({ url: "http://localhost" });

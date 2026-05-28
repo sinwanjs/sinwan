@@ -27,6 +27,8 @@ import {
 } from "../../../../src/integrations/react/_client.ts";
 import { onUpdated } from "../../../../src/component/lifecycle.ts";
 
+globalThis.__DEV__ = false;
+
 let container: HTMLElement;
 beforeEach(() => {
   const win = new Window({ url: "http://localhost" });

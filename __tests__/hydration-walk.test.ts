@@ -3,7 +3,8 @@ import { Window } from "happy-dom";
 import { hydrate } from "../src/hydration/hydrate.ts";
 import { renderToHydratableString } from "../src/server/hydration-markers.ts";
 import { cc } from "../src/component/create.ts";
-import { signal } from "../src/reactivity/index.ts";
+import { signal, nextTick } from "../src/reactivity/index.ts";
+import { useState } from "../src/integrations/react/_client.ts";
 import {
   Show,
   For,
@@ -143,6 +144,53 @@ describe("hydrateElement control flow", () => {
     container.innerHTML = html;
     const app = hydrate(App, container);
     expect(container.textContent).toContain("mykey");
+    app.unmount();
+  });
+
+  it("hydrates Key with cache=false and fully remounts on key swap", async () => {
+    const key = signal<"a" | "b">("a");
+
+    const Counter = cc<{ label: string }>(({ label }) => {
+      const [count, setCount] = useState(0);
+      return el(
+        "div",
+        {},
+        `${label}:`,
+        el("span", {}, () => `count:${count()}`),
+        el("button", { onClick: () => setCount((c: number) => c + 1) }, "inc"),
+      );
+    });
+
+    const App = cc(() =>
+      el(Key, {
+        when: key,
+        cache: false,
+        children: (k: string) => el(Counter, { label: k }),
+      }),
+    );
+
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+    const app = hydrate(App, container);
+
+    expect(container.textContent).toContain("count:0");
+
+    // increment
+    let btn = container.getElementsByTagName("button")[0] as HTMLButtonElement;
+    btn.click();
+    await nextTick();
+    expect(container.textContent).toContain("count:1");
+
+    // switch to b
+    key.value = "b";
+    await nextTick();
+    expect(container.textContent).toContain("count:0");
+
+    // switch back to a — state is fully reset because cache=false
+    key.value = "a";
+    await nextTick();
+    expect(container.textContent).toContain("count:0");
+
     app.unmount();
   });
 
@@ -407,7 +455,8 @@ describe("hydrateControlFlow fallbacks", () => {
     const html = await renderToHydratableString(App);
     container.innerHTML = html;
     const app = hydrate(App, container);
-    expect(container.textContent).toContain("no-match");
+    expect(container.textContent).toContain("not-a-match");
+    expect(container.textContent).not.toContain("no-match");
     app.unmount();
   });
 });
@@ -466,6 +515,56 @@ describe("hydrateComponent edge cases", () => {
         ),
       ),
     ).toBe(true);
+    app.unmount();
+  });
+});
+
+// ─── React-compatible state getters (useState / useReducer) ─────────────────
+
+describe("React-compatible state getters", () => {
+  const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
+
+  it("hydrates state getter in text content", async () => {
+    const countSignal = signal(5);
+    const stateGetter = (() => countSignal.value) as any;
+    stateGetter[STATE_GETTER_MARKER] = true;
+    stateGetter.__signal__ = countSignal;
+
+    const App = cc(() => el("div", {}, stateGetter));
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+    const app = hydrate(App, container);
+    expect(container.textContent).toContain("5");
+
+    // Update the underlying signal and verify DOM updates
+    countSignal.value = 10;
+    await Bun.sleep(0); // Wait for microtask queue
+    expect(container.textContent).toContain("10");
+
+    app.unmount();
+  });
+
+  it("hydrates state getter in attributes", async () => {
+    const countSignal = signal(5);
+    const stateGetter = (() => countSignal.value) as any;
+    stateGetter[STATE_GETTER_MARKER] = true;
+    stateGetter.__signal__ = countSignal;
+
+    const App = cc(() => el("div", { "data-count": stateGetter }, "hello"));
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+    const app = hydrate(App, container);
+    expect(container.querySelector("div")?.getAttribute("data-count")).toBe(
+      "5",
+    );
+
+    // Update the underlying signal and verify attribute updates
+    countSignal.value = 10;
+    await Bun.sleep(0); // Wait for microtask queue
+    expect(container.querySelector("div")?.getAttribute("data-count")).toBe(
+      "10",
+    );
+
     app.unmount();
   });
 });

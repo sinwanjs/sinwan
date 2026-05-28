@@ -8,6 +8,12 @@
 import { SinwanEventBus } from "./bus.ts";
 import type { SinwanEventBus as SinwanEventBusType } from "./bus.ts";
 
+export interface FetchCacheEntry {
+  data: unknown;
+  statusCode: number | null;
+  error: unknown | null;
+}
+
 /**
  * SSR context containing a request-scoped event bus.
  */
@@ -16,6 +22,12 @@ export interface SSRContext {
   eventBus: SinwanEventBusType;
   /** Additional request-scoped state */
   state: Map<string, unknown>;
+  /** Request-scoped fetch cache for SSR hydration */
+  fetchCache: Map<string, FetchCacheEntry>;
+  /** Pending fetch promises for two-pass SSR rendering */
+  pendingFetches: Set<Promise<unknown>>;
+  /** Base URL for resolving relative fetch URLs during SSR */
+  baseUrl?: string;
 }
 
 /**
@@ -26,6 +38,8 @@ export function createSSRContext(): SSRContext {
   return {
     eventBus: new SinwanEventBus(),
     state: new Map(),
+    fetchCache: new Map(),
+    pendingFetches: new Set(),
   };
 }
 
@@ -81,4 +95,14 @@ export function getCurrentEventBus(
 ): SinwanEventBusType {
   const ssrContext = getSSRContext();
   return ssrContext?.eventBus ?? fallback;
+}
+
+/**
+ * Extract the request-scoped fetch cache as a plain object for serialization.
+ * Returns `null` if no SSR context is active.
+ */
+export function getSSRFetchData(): Record<string, FetchCacheEntry> | null {
+  const ssrContext = getSSRContext();
+  if (!ssrContext?.fetchCache.size) return null;
+  return Object.fromEntries(ssrContext.fetchCache);
 }

@@ -30,8 +30,8 @@ import {
   useOptimistic,
   useActionState,
   useImperativeHandle,
-  createContext,
 } from "../../../../src/integrations/react/_client.ts";
+import { createContext } from "../../../../src/integrations/react/create-context.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

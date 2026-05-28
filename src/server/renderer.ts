@@ -45,6 +45,8 @@ import {
   resolveMatchChildren,
   resolveShowChildren,
   resolveSwitchContent,
+  createDynamicElement,
+  normalizeContent,
 } from "../component/control-flow.ts";
 import {
   ISLAND_TAG,
@@ -55,11 +57,9 @@ import {
   type IslandElement,
 } from "../component/island.ts";
 import { renderToHydratableString as renderHydratableComponent } from "./hydration-markers.ts";
+import { resolve } from "../reactivity/index.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
-
-// Component cache - maps component identity to render function
-const componentCache = new WeakMap<SinwanComponent<any>, boolean>();
 
 // Page registry
 const pageRegistry = new Map<string, SinwanComponent<any>>();
@@ -74,6 +74,9 @@ export function registerPage<D extends object = {}>(
   pageRegistry.set(name, page);
 }
 
+/**
+ * Get a page renderer by name.
+ */
 export function getPage<D extends object = {}>(
   name: string,
 ): SinwanComponent<D> | undefined {
@@ -101,6 +104,26 @@ export async function renderPage<D extends object = {}>(
 
   const element = await page(data);
   return renderToString(element);
+}
+
+/**
+ * Render a registered page to an HTML string with hydration markers.
+ */
+export async function renderToHydratablePage<D extends object = {}>(
+  name: string,
+  data: D,
+  options?: { identifierPrefix?: string },
+): Promise<string> {
+  const page = getPage<D>(name);
+  if (!page) {
+    throw new Error(`Page "${name}" not found in registry`);
+  }
+
+  return renderHydratableComponent(
+    page,
+    data as Record<string, unknown>,
+    options,
+  );
 }
 
 /**
@@ -135,6 +158,11 @@ export async function renderToString(node: SinwanNode): Promise<string> {
 
   // Handle React-compatible state getters (useState / useReducer)
   if (typeof node === "function" && (node as any)[STATE_GETTER_MARKER]) {
+    return escapeHtml(String((node as any)()));
+  }
+
+  // Plain function getter (0-arity) — resolve and render as text
+  if (typeof node === "function" && (node as any).length === 0) {
     return escapeHtml(String((node as any)()));
   }
 
@@ -191,7 +219,7 @@ async function renderElement(element: SinwanElement): Promise<string> {
   }
 
   if (isShowElement(element)) {
-    const when = readReactive(props.when);
+    const when = resolve(props.when);
     return renderToString(
       when
         ? resolveShowChildren(element, when)
@@ -208,7 +236,7 @@ async function renderElement(element: SinwanElement): Promise<string> {
   }
 
   if (isMatchElement(element)) {
-    const when = readReactive(props.when);
+    const when = resolve(props.when);
     return renderToString(when ? resolveMatchChildren(element, when) : null);
   }
 
@@ -217,12 +245,12 @@ async function renderElement(element: SinwanElement): Promise<string> {
   }
 
   if (isKeyElement(element)) {
-    const key = readReactive(props.when);
+    const key = resolve(props.when);
     return renderToString(resolveKeyChildren(element, key));
   }
 
   if (isDynamicElement(element)) {
-    const tag = readReactive(props.component);
+    const tag = resolve(props.component);
     const dynamic = createDynamicElement(element, tag);
     return dynamic ? renderElement(dynamic) : "";
   }
@@ -275,7 +303,7 @@ async function renderElement(element: SinwanElement): Promise<string> {
   }
 
   if (isActivityElement(element)) {
-    const mode = readReactive(props.mode) ?? "visible";
+    const mode = resolve(props.mode) ?? "visible";
     const activityChildren = (props as any).children as SinwanNode;
     const tag = (element.props as any).as ?? "div";
     const hidden = mode === "hidden";
@@ -366,7 +394,7 @@ function renderAttributes(props: Record<string, unknown>): string {
       continue;
     }
 
-    const resolvedValue = readReactive(value);
+    const resolvedValue = resolve(value);
 
     // Skip null/undefined/false values
     if (resolvedValue == null || resolvedValue === false) continue;
@@ -395,9 +423,6 @@ async function renderChildren(
   return renderToString(children);
 }
 
-// Wire up dangerouslySetInnerHTML handling by patching renderIntrinsicElement
-const originalRenderIntrinsic = renderIntrinsicElement;
-
 /**
  * Check if children is a slots object (named slots).
  */
@@ -416,7 +441,7 @@ async function renderForElement(element: SinwanElement): Promise<string> {
     fallback?: SinwanNode;
     children?: (item: unknown, index: () => number) => SinwanNode;
   };
-  const each = readReactive(props.each);
+  const each = resolve(props.each);
   if (!Array.isArray(each) || typeof props.children !== "function") {
     return props.fallback ? renderToString(props.fallback) : "";
   }
@@ -445,7 +470,7 @@ async function renderIndexElement(element: SinwanElement): Promise<string> {
     fallback?: SinwanNode;
     children?: (item: () => unknown, index: number) => SinwanNode;
   };
-  const each = readReactive(props.each);
+  const each = resolve(props.each);
   if (!Array.isArray(each) || typeof props.children !== "function") {
     return props.fallback ? renderToString(props.fallback) : "";
   }
@@ -480,7 +505,7 @@ async function renderVirtualElement(element: SinwanElement): Promise<string> {
     children?: (item: unknown, index: () => number) => SinwanNode;
   };
 
-  const items = readReactive(props.each);
+  const items = resolve(props.each);
   const list = Array.isArray(items) ? items : [];
 
   if (list.length === 0) {
@@ -547,24 +572,6 @@ async function renderVirtualElement(element: SinwanElement): Promise<string> {
   return `<div style="overflow:auto;height:${containerHeight}px"><div style="position:relative;height:${totalHeight}px">${itemsHtml}</div></div>`;
 }
 
-function createDynamicElement(
-  element: SinwanElement,
-  tag: unknown,
-): SinwanElement | null {
-  if (typeof tag !== "string" && typeof tag !== "function") {
-    return null;
-  }
-
-  const { component, ...props } = element.props as Record<string, unknown>;
-  const children = normalizeContent(props.children ?? element.children);
-
-  return {
-    tag: tag as SinwanElement["tag"],
-    props,
-    children,
-  };
-}
-
 /**
  * Render an island element: produce a static wrapper with hydration markers
  * inside, plus the embedded props JSON the client needs to hydrate it.
@@ -585,35 +592,4 @@ async function renderIsland(element: IslandElement): Promise<string> {
   const safeName = escapeHtml(__island.name);
   const safeProps = escapeIslandPropsJson(json);
   return `<${__island.tag} ${ISLAND_ATTR}="${safeName}" ${ISLAND_PROPS_ATTR}="${safeProps}">${inner}</${__island.tag}>`;
-}
-
-function readReactive(value: unknown): unknown {
-  if (isSignal(value) || isComputed(value)) {
-    return (value as any).value;
-  }
-  if (typeof value === "function" && (value as any)[STATE_GETTER_MARKER]) {
-    return (value as any)();
-  }
-  return value;
-}
-
-function normalizeContent(content: unknown): SinwanNode[] {
-  if (content == null || typeof content === "boolean") {
-    return [];
-  }
-  return Array.isArray(content) ? content : [content as SinwanNode];
-}
-
-function isElementLike(value: unknown): value is SinwanElement {
-  return value != null && typeof value === "object" && "tag" in value;
-}
-
-function getMatchElement(value: unknown): SinwanElement | null {
-  if (!isElementLike(value)) {
-    return null;
-  }
-  if (isMatchElement(value)) {
-    return value;
-  }
-  return value.tag === Match ? Match(value.props as any) : null;
 }

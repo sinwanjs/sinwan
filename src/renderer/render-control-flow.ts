@@ -43,6 +43,8 @@ import {
   resolveKeyChildren,
   resolveShowChildren,
   resolveSwitchContent,
+  createDynamicElement,
+  normalizeContent,
 } from "../component/control-flow.ts";
 import {
   getMountedDomNodes,
@@ -176,7 +178,7 @@ function renderShowBlock(
   let prevWhen: unknown = undefined;
 
   return effect(() => {
-    const when = readReactive((element.props as any).when);
+    const when = resolve((element.props as any).when);
 
     // Skip re-rendering if 'when' hasn't changed (optimization for large lists)
     if (initialized && Object.is(when, prevWhen)) {
@@ -318,7 +320,7 @@ function renderVirtualBlock<T>(
   let records: ForRecord<T>[] = [];
 
   const disposeEffect = effect(() => {
-    const items = readReactive(props.each) as readonly T[] | null | undefined;
+    const items = resolve(props.each) as readonly T[] | null | undefined;
     const list = Array.isArray(items) ? items : [];
     const renderChild = props.children;
 
@@ -512,7 +514,7 @@ function renderForBlock<T>(
       fallback?: SinwanNode;
       children?: (item: T, index: () => number) => SinwanNode;
     };
-    const items = readReactive(props.each) as readonly T[] | null | undefined;
+    const items = resolve(props.each) as readonly T[] | null | undefined;
     const list = Array.isArray(items) ? items : [];
     const renderChild = props.children;
 
@@ -971,7 +973,7 @@ function renderIndexBlock<T>(
       fallback?: SinwanNode;
       children?: (item: () => T, index: number) => SinwanNode;
     };
-    const items = readReactive(props.each) as readonly T[] | null | undefined;
+    const items = resolve(props.each) as readonly T[] | null | undefined;
     const list = Array.isArray(items) ? items : [];
     const renderChild = props.children;
 
@@ -1047,6 +1049,24 @@ function renderIndexBlock<T>(
   });
 }
 
+interface KeyCacheEntry {
+  key: unknown;
+  mounted: MountedNode[];
+  fragment: DocumentFragment;
+}
+
+function fireMountedForSubtree(node: MountedNode): void {
+  if (node.type === "component" && node.instance) {
+    fireMountedHooks(node.instance);
+    return;
+  }
+  if ("children" in node && Array.isArray(node.children)) {
+    for (const child of node.children) {
+      fireMountedForSubtree(child);
+    }
+  }
+}
+
 function renderKeyBlock(
   element: SinwanElement,
   block: MountedReactiveBlock,
@@ -1055,34 +1075,112 @@ function renderKeyBlock(
   owner: ComponentInstance | null,
 ): () => void {
   let initialized = false;
-  let hasKey = false;
   let currentKey: unknown;
+  let currentEntry: KeyCacheEntry | null = null;
+  const cache = new Map<unknown, KeyCacheEntry>();
+  const useCache = (element.props as any).cache !== false;
 
   return effect(() => {
-    const key = readReactive((element.props as any).when);
-    if (hasKey && Object.is(currentKey, key)) {
+    const key = resolve((element.props as any).when);
+    if (initialized && Object.is(currentKey, key)) {
       return;
     }
 
-    currentKey = key;
-    hasKey = true;
-    clearChildren(block);
-
-    const content = withOptionalInstance(owner, () =>
-      resolveKeyChildren(element, key),
-    );
-    block.children = renderBlockContent(
-      content,
-      parent,
-      block.endAnchor,
-      namespace,
-      owner,
-    );
-
-    if (initialized) {
-      fireMountedAndQueueUpdated(owner);
+    // When cache=false, fully unmount old content (React-style key behavior)
+    if (!useCache && currentEntry) {
+      for (const child of currentEntry.mounted) {
+        removeMountedNode(child);
+      }
+      currentEntry = null;
     }
+
+    // Soft-hide and detach current entry (keep-alive path)
+    if (useCache && currentEntry) {
+      for (const child of currentEntry.mounted) {
+        softHideMountedTree(child);
+      }
+      for (const child of currentEntry.mounted) {
+        for (const node of getMountedDomNodes(child)) {
+          currentEntry.fragment.appendChild(node);
+        }
+      }
+    }
+
+    currentKey = key;
     initialized = true;
+
+    if (!useCache) {
+      // React-style: always render fresh, never cache
+      const content = withOptionalInstance(owner, () =>
+        resolveKeyChildren(element, key),
+      );
+      const mounted = renderBlockContent(
+        content,
+        parent,
+        block.endAnchor,
+        namespace,
+        owner,
+      );
+      const entry: KeyCacheEntry = {
+        key,
+        mounted,
+        fragment: domOps.createDocumentFragment(),
+      };
+      currentEntry = entry;
+      block.children = entry.mounted;
+
+      for (const child of entry.mounted) {
+        fireMountedForSubtree(child);
+      }
+      if (owner) {
+        queueUpdatedHooks(owner);
+      }
+      return;
+    }
+
+    // Look up or create cache entry for this key
+    let entry = cache.get(key);
+    if (!entry) {
+      const content = withOptionalInstance(owner, () =>
+        resolveKeyChildren(element, key),
+      );
+      const mounted = renderBlockContent(
+        content,
+        parent,
+        block.endAnchor,
+        namespace,
+        owner,
+      );
+      entry = {
+        key,
+        mounted,
+        fragment: domOps.createDocumentFragment(),
+      };
+      cache.set(key, entry);
+
+      // Fire mounted hooks for newly created components
+      for (const child of entry.mounted) {
+        fireMountedForSubtree(child);
+      }
+    } else {
+      // Reattach DOM nodes from the cached fragment
+      for (const child of entry.mounted) {
+        for (const node of getMountedDomNodes(child)) {
+          parent.insertBefore(node, block.endAnchor);
+        }
+      }
+      // Soft-show to restore state, re-register effects, and fire mounted hooks
+      for (const child of entry.mounted) {
+        softShowMountedTree(child);
+      }
+    }
+
+    currentEntry = entry;
+    block.children = entry.mounted;
+
+    if (owner) {
+      queueUpdatedHooks(owner);
+    }
   });
 }
 
@@ -1098,7 +1196,7 @@ function renderDynamicBlock(
   let currentTag: unknown;
 
   return effect(() => {
-    const tag = readReactive((element.props as any).component);
+    const tag = resolve((element.props as any).component);
     if (hasTag && Object.is(currentTag, tag)) {
       return;
     }
@@ -1180,24 +1278,6 @@ function renderPortal(
   });
 
   return portal;
-}
-
-function createDynamicElement(
-  element: SinwanElement,
-  tag: unknown,
-): SinwanElement | null {
-  if (typeof tag !== "string" && typeof tag !== "function") {
-    return null;
-  }
-
-  const { component, ...props } = element.props as Record<string, unknown>;
-  const children = normalizeContent(props.children ?? element.children);
-
-  return {
-    tag: tag as SinwanElement["tag"],
-    props,
-    children,
-  };
 }
 
 export function renderBlockContent(
@@ -1336,23 +1416,12 @@ function withOptionalInstance<T>(
   return owner ? withInstance(owner, fn) : fn();
 }
 
-function readReactive(value: unknown): unknown {
-  return resolve(value as any);
-}
-
-function normalizeContent(content: unknown): SinwanNode[] {
-  if (content == null || typeof content === "boolean") {
-    return [];
-  }
-  return Array.isArray(content) ? content : [content as SinwanNode];
-}
-
 function isNonNegativeInt(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function resolvePortalTarget(value: unknown): Node | null {
-  const target = readReactive(value);
+  const target = resolve(value);
 
   if (target == null) {
     return typeof document === "undefined" ? null : document.body;
@@ -1525,7 +1594,7 @@ function renderActivityBlock(
 
   return effect(() => {
     const rawMode = (element.props as any).mode;
-    const mode = readReactive(rawMode) ?? "visible";
+    const mode = resolve(rawMode) ?? "visible";
     const hidden = mode === "hidden";
 
     if (!initialized) {

@@ -6,6 +6,7 @@ import type {
 } from "../types.ts";
 import { computed } from "../reactivity/computed.ts";
 import { resolve } from "../reactivity/index.ts";
+import { normalizeChildren } from "sinwan/jsx-runtime";
 
 export const SHOW_TYPE = Symbol.for("Sinwan.Show");
 export const FOR_TYPE = Symbol.for("Sinwan.For");
@@ -72,12 +73,19 @@ export interface ForProps<T> {
 
 /**
  * Props for the `<Switch>` control flow component.
- * @property fallback - Content to render if no `<Match>` is truthy.
+ * @template T - Type of the `when` value.
+ * @property when - Reactive gate; if provided and truthy, evaluate `<Match>` children.
+ * @property fallback - Content to render if `when` is falsy or no `<Match>` is truthy.
  * @property children - List of `<Match>` elements to evaluate.
  */
-export interface SwitchProps {
+export interface SwitchProps<T = unknown> {
   /**
-   * Content to render if no <Match> branch is truthy.
+   * Reactive gate. If provided and falsy, the switch renders `fallback`
+   * without evaluating any `<Match>` branches.
+   */
+  when?: Reactive<T | false | null | undefined>;
+  /**
+   * Content to render if `when` is falsy or no <Match> branch is truthy.
    */
   fallback?: SinwanNode;
   /**
@@ -131,6 +139,13 @@ export interface KeyProps<T> {
    */
   when: Reactive<T | null | undefined>;
   /**
+   * Whether to cache the subtree when the key changes.
+   * - `true` (default): keep-alive style — state and DOM are preserved
+   *   and reattached when the key switches back.
+   * - `false`: React-style — fully unmount and remount on every key change.
+   */
+  cache?: boolean;
+  /**
    * Content or render function receiving the value.
    */
   children?: SinwanNode | ((value: NonNullable<T>) => SinwanNode);
@@ -169,15 +184,20 @@ export type DynamicProps<P extends object = Record<string, unknown>> = P & {
  * @property [key: string] - Additional props passed to the rendered element.
  */
 export interface VisibleProps {
+  /** Reactive value that controls visibility. */
   when: Reactive<unknown>;
+  /** HTML tag to render (default: "span"). */
   as?: string;
+  /** Style object/string, can be reactive. */
   style?: Reactive<
     | Record<string, string | number | null | undefined>
     | string
     | null
     | undefined
   >;
+  /** Content to render inside the element. */
   children?: SinwanNode;
+  /** Additional props passed to the rendered element. */
   [key: string]: unknown;
 }
 
@@ -292,7 +312,7 @@ export function For<T>(props: ForProps<T>): SinwanElement {
  * Control flow primitive for exclusive branching.
  * Renders the first matching `<Match>` child, or fallback if none match.
  */
-export function Switch(props: SwitchProps): SinwanElement {
+export function Switch<T>(props: SwitchProps<T>): SinwanElement {
   return {
     tag: SWITCH_TYPE,
     props: props as unknown as Record<string, unknown>,
@@ -358,8 +378,8 @@ export function Visible(props: VisibleProps): SinwanElement {
   const { when, as = "span", style, children, ...rest } = props;
 
   const visibleStyle = computed(() => {
-    const base = readReactive(style);
-    const visible = Boolean(readReactive(when));
+    const base = resolve(style);
+    const visible = Boolean(resolve(when));
 
     if (typeof base === "string") {
       return visible ? base : appendHiddenDisplay(base);
@@ -479,16 +499,26 @@ export function isVirtualElement(element: SinwanElement): boolean {
 
 export function resolveSwitchContent(element: SinwanElement): SinwanNode {
   const props = element.props as {
+    when?: unknown;
     fallback?: SinwanNode;
     children?: SinwanNode;
   };
-  const children = normalizeContent(props.children ?? element.children);
 
+  // If a top-level `when` is provided, act as a reactive gate:
+  // falsy → render fallback immediately without evaluating matches.
+  if ("when" in props && props.when !== undefined) {
+    const gate = resolve(props.when);
+    if (!gate) {
+      return props.fallback;
+    }
+  }
+
+  const children = normalizeContent(props.children ?? element.children);
   const match = findTruthyMatch(children);
   return match !== undefined ? match : props.fallback;
 }
 
-function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
+export function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
   for (const node of nodes) {
     if (node == null || typeof node === "boolean") continue;
 
@@ -500,6 +530,11 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
 
     if (isElementLike(node)) {
       let element = node;
+
+      // Handle el(Match, ...) where tag is the Match function itself
+      if ((element as any).tag === Match) {
+        element = Match((element as any).props);
+      }
 
       // Expand functional control flow components if needed
       if (typeof element.tag === "function") {
@@ -528,12 +563,12 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
       }
 
       if (isMatchElement(element)) {
-        const when = readReactive((element.props as any).when);
+        const when = resolve((element.props as any).when);
         if (when) {
           return resolveMatchChildren(element, when);
         }
       } else if (isShowElement(element)) {
-        const when = readReactive((element.props as any).when);
+        const when = resolve((element.props as any).when);
         if (when) {
           const content = resolveShowChildren(element, when);
           const match = findTruthyMatch(normalizeContent(content));
@@ -550,7 +585,7 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
         if (match !== undefined) return match;
       } else if (isForElement(element)) {
         const props = element.props as any;
-        const items = readReactive(props.each);
+        const items = resolve(props.each);
         if (Array.isArray(items)) {
           for (let i = 0; i < items.length; i++) {
             const child = props.children(items[i], () => i);
@@ -560,7 +595,7 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
         }
       } else if (isIndexElement(element)) {
         const props = element.props as any;
-        const items = readReactive(props.each);
+        const items = resolve(props.each);
         if (Array.isArray(items)) {
           for (let i = 0; i < items.length; i++) {
             const child = props.children(() => items[i], i);
@@ -569,12 +604,12 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
           }
         }
       } else if (isKeyElement(element)) {
-        const key = readReactive((element.props as any).when);
+        const key = resolve((element.props as any).when);
         const child = resolveKeyChildren(element, key);
         const match = findTruthyMatch(normalizeContent(child));
         if (match !== undefined) return match;
       } else if (isDynamicElement(element)) {
-        const tag = readReactive((element.props as any).component);
+        const tag = resolve((element.props as any).component);
         if (typeof tag === "string" || typeof tag === "function") {
           const { component, ...rest } = element.props as Record<
             string,
@@ -591,7 +626,7 @@ function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
         }
       } else if (isVirtualElement(element)) {
         const props = element.props as any;
-        const items = readReactive(props.each);
+        const items = resolve(props.each);
         if (!Array.isArray(items) || items.length === 0) {
           if (props.fallback) {
             const match = findTruthyMatch(normalizeContent(props.fallback));
@@ -649,26 +684,33 @@ export function resolveKeyChildren(
   return children as SinwanNode;
 }
 
-function normalizeContent(content: unknown): SinwanNode[] {
-  if (content == null || typeof content === "boolean") {
-    return [];
-  }
-  return Array.isArray(content) ? content : [content as SinwanNode];
-}
-
-function normalizeChildren(children: SinwanNode | undefined): SinwanNode[] {
-  if (children == null || typeof children === "boolean") {
-    return [];
-  }
-  return Array.isArray(children) ? children : [children];
-}
-
-function readReactive(value: unknown): unknown {
-  return resolve(value as any);
-}
-
 function appendHiddenDisplay(style: string): string {
   const trimmed = style.trim();
   const separator = trimmed.length > 0 && !trimmed.endsWith(";") ? ";" : "";
   return `${trimmed}${separator}display:none`;
+}
+
+export function createDynamicElement(
+  element: SinwanElement,
+  tag: unknown,
+): SinwanElement | null {
+  if (typeof tag !== "string" && typeof tag !== "function") {
+    return null;
+  }
+
+  const { component, ...props } = element.props as Record<string, unknown>;
+  const children = normalizeContent(props.children ?? element.children);
+
+  return {
+    tag: tag as SinwanElement["tag"],
+    props,
+    children,
+  };
+}
+
+export function normalizeContent(content: unknown): SinwanNode[] {
+  if (content == null || typeof content === "boolean") {
+    return [];
+  }
+  return Array.isArray(content) ? content : [content as SinwanNode];
 }

@@ -195,7 +195,7 @@ describe("renderToString — Edge cases", () => {
       el(Fragment, {}, el("span", {}, "a"), el("span", {}, "b"));
 
     const html = await renderToString(el(Multi, {}));
-    expect(html).toBe("<span>a</span><span>b</span>");
+    expect(html).toBe('<span data-sinwan-id="c0">a</span><span>b</span>');
   });
 
   it("handles empty elements gracefully", async () => {

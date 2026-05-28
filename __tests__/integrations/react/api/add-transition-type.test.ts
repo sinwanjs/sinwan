@@ -9,13 +9,15 @@ import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
 import {
-  addTransitionType,
-  getActiveTransitionTypes,
   startTransition,
   useTransition,
   useState,
 } from "../../../../src/integrations/react/_client.ts";
-import { clearTransitionTypes } from "../../../../src/integrations/react/add-transition-type.ts";
+import {
+  addTransitionType,
+  clearTransitionTypes,
+  getActiveTransitionTypes,
+} from "../../../../src/integrations/react/_shared.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

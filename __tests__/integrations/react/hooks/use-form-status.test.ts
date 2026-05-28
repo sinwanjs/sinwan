@@ -19,6 +19,8 @@ import {
   setCurrentInstance,
 } from "../../../../src/component/instance.ts";
 
+globalThis.__DEV__ = false;
+
 let container: HTMLElement;
 let win: InstanceType<typeof Window>;
 

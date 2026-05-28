@@ -25,8 +25,8 @@ export interface Computed<T> {
   peek(): T;
 }
 
-// Brand for type-checking
-const COMPUTED_BRAND = Symbol("Sinwan:computed");
+// Brand for type-checking — Symbol.for ensures recognition across bundle boundaries
+const COMPUTED_BRAND = Symbol.for("Sinwan:computed");
 
 // ─── Implementation ────────────────────────────────────────
 

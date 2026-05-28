@@ -10,8 +10,9 @@
 
 import type { SinwanElement, SinwanNode } from "../types.ts";
 import type { MountedNode } from "../renderer/types.ts";
-import type { CleanupFn } from "../reactivity/index.ts";
+import { resolve, type CleanupFn } from "../reactivity/index.ts";
 import { isSignal } from "../reactivity/signal.ts";
+import { STATE_GETTER_MARKER } from "../integrations/react/_internal/bridge.ts";
 import { isComputed } from "../reactivity/computed.ts";
 import { effect } from "../reactivity/effect.ts";
 import { bindEvents, isEventProp } from "../renderer/events.ts";
@@ -35,7 +36,7 @@ import {
   clearChildren,
 } from "../renderer/render-control-flow.ts";
 import { renderNodeToDOM } from "../renderer/render-children.ts";
-import { renderElementToDOM } from "../renderer/render-element.ts";
+import { applyRef, renderElementToDOM } from "../renderer/render-element.ts";
 import { removeMountedNode, getMountedDomNodes } from "../renderer/unmount.ts";
 import type {
   MountedElement,
@@ -46,7 +47,6 @@ import {
   For,
   Index,
   Key,
-  Match,
   Portal,
   Switch,
   Visible,
@@ -56,7 +56,6 @@ import {
   isForElement,
   isIndexElement,
   isKeyElement,
-  isMatchElement,
   isPortalElement,
   isShowElement,
   isSwitchElement,
@@ -66,6 +65,10 @@ import {
   isActivityElement,
   isViewTransitionElement,
   resolveSwitchContent,
+  resolveKeyChildren,
+  resolveShowChildren,
+  createDynamicElement,
+  normalizeContent,
 } from "../component/control-flow.ts";
 import {
   parseTextOpenMarker,
@@ -78,6 +81,7 @@ import {
   setCurrentInstance,
   handleComponentError,
   queueUpdatedHooks,
+  fireMountedHooks,
 } from "../component/instance.ts";
 
 /**
@@ -138,6 +142,20 @@ export function hydrateNode(
   // Signal / Computed → reactive text with marker comments
   if (isSignal(node) || isComputed(node)) {
     return hydrateReactiveText(node as any, cursor);
+  }
+
+  // React-compatible state getter → treat as reactive text
+  if (typeof node === "function" && (node as any)[STATE_GETTER_MARKER]) {
+    const sig = (node as any).__signal__;
+    if (sig && (isSignal(sig) || isComputed(sig))) {
+      return hydrateReactiveText(sig, cursor);
+    }
+  }
+
+  // Plain function getter (0-arity) — resolve for hydration,
+  // attach effect so it stays reactive when dependencies change.
+  if (typeof node === "function" && (node as any).length === 0) {
+    return hydrateReactiveFunction(node as Function, cursor);
   }
 
   // Array → hydrate each child
@@ -237,6 +255,53 @@ function hydrateReactiveText(
   let initialized = false;
   const dispose = effect(() => {
     newText.data = String(reactive.value);
+    if (initialized) {
+      queueUpdatedHooks(owner);
+    }
+    initialized = true;
+  });
+  return { type: "reactive-text", node: newText, dispose };
+}
+
+/**
+ * Hydrate a plain function getter (0-arity) as reactive text.
+ * The server renders the resolved value as text without markers.
+ * We match the existing text node and attach an effect so updates
+ * are reflected when the function's signal dependencies change.
+ */
+function hydrateReactiveFunction(
+  fn: Function,
+  cursor: HydrationCursor,
+): MountedNode {
+  const textNode = advance(cursor) as Text;
+  const owner = getCurrentInstance();
+
+  if (textNode) {
+    let initialized = false;
+    const dispose = effect(() => {
+      textNode.data = String(fn());
+      if (initialized) {
+        queueUpdatedHooks(owner);
+      }
+      initialized = true;
+    });
+    return { type: "reactive-text", node: textNode, dispose };
+  }
+
+  // Last resort — create a new text node and insert it into the DOM
+  // at the current cursor position so it isn't orphaned.
+  const newText = document.createTextNode(String(fn()));
+  const parent = cursor.parent;
+  const anchor = cursor.current;
+  if (anchor) {
+    parent.insertBefore(newText, anchor);
+  } else {
+    parent.appendChild(newText);
+  }
+
+  let initialized = false;
+  const dispose = effect(() => {
+    newText.data = String(fn());
     if (initialized) {
       queueUpdatedHooks(owner);
     }
@@ -399,6 +464,24 @@ function hydrateAttributes(
       });
       if (!disposers) disposers = [];
       disposers.push(dispose);
+    } else if (
+      typeof value === "function" &&
+      (value as any)[STATE_GETTER_MARKER]
+    ) {
+      const sig = (value as any).__signal__;
+      if (sig && (isSignal(sig) || isComputed(sig))) {
+        const state = { previousStyleProps: new Set<string>() };
+        let initialized = false;
+        const dispose = effect(() => {
+          setSingleAttribute(el, key, sig.value, state);
+          if (initialized) {
+            queueUpdatedHooks(owner);
+          }
+          initialized = true;
+        });
+        if (!disposers) disposers = [];
+        disposers.push(dispose);
+      }
     }
     // Static attributes: already rendered by SSR — skip
   }
@@ -411,7 +494,7 @@ function hydrateControlFlow(
   cursor: HydrationCursor,
 ): MountedNode {
   if (isShowElement(element)) {
-    const when = readReactive((element.props as any).when);
+    const when = resolve((element.props as any).when);
     const content = when
       ? resolveShowChildren(element, when)
       : (element.props as any).fallback;
@@ -419,7 +502,7 @@ function hydrateControlFlow(
     return makeReactiveBlock(
       initialMounted,
       () => {
-        const newWhen = readReactive((element.props as any).when);
+        const newWhen = resolve((element.props as any).when);
         return newWhen
           ? resolveShowChildren(element, newWhen)
           : (element.props as any).fallback;
@@ -435,7 +518,7 @@ function hydrateControlFlow(
       children?: (item: unknown, index: () => number) => SinwanNode;
     };
     const resolveChildren = () => {
-      const items = readReactive(props.each);
+      const items = resolve(props.each);
       if (Array.isArray(items) && typeof props.children === "function") {
         const result: SinwanNode[] = [];
         for (let i = 0; i < items.length; i++) {
@@ -451,7 +534,7 @@ function hydrateControlFlow(
     return makeReactiveBlock(
       initialMounted,
       () => resolveChildren() as unknown as SinwanNode,
-      readReactive(props.each),
+      resolve(props.each),
     );
   }
 
@@ -472,7 +555,7 @@ function hydrateControlFlow(
       children?: (item: () => unknown, index: number) => SinwanNode;
     };
     const resolveChildren = () => {
-      const items = readReactive(props.each);
+      const items = resolve(props.each);
       if (Array.isArray(items) && typeof props.children === "function") {
         const result: SinwanNode[] = [];
         for (let i = 0; i < items.length; i++) {
@@ -488,28 +571,16 @@ function hydrateControlFlow(
     return makeReactiveBlock(
       initialMounted,
       () => resolveChildren() as unknown as SinwanNode,
-      readReactive(props.each),
+      resolve(props.each),
     );
   }
 
   if (isKeyElement(element)) {
-    const key = readReactive((element.props as any).when);
-    const initialMounted = hydrateContent(
-      resolveKeyChildren(element, key),
-      cursor,
-    );
-    return makeReactiveBlock(
-      initialMounted,
-      () => {
-        const newKey = readReactive((element.props as any).when);
-        return resolveKeyChildren(element, newKey);
-      },
-      key,
-    );
+    return hydrateKey(element, cursor);
   }
 
   if (isDynamicElement(element)) {
-    const tag = readReactive((element.props as any).component);
+    const tag = resolve((element.props as any).component);
     const dynamic = createDynamicElement(element, tag);
     const initialMounted = dynamic
       ? hydrateElement(dynamic, cursor)
@@ -517,7 +588,7 @@ function hydrateControlFlow(
     return makeReactiveBlock(
       initialMounted,
       () => {
-        const newTag = readReactive((element.props as any).component);
+        const newTag = resolve((element.props as any).component);
         const newDynamic = createDynamicElement(element, newTag);
         return newDynamic;
       },
@@ -537,7 +608,7 @@ function hydrateControlFlow(
       children?: (item: unknown, index: () => number) => SinwanNode;
     };
 
-    const items = readReactive(props.each);
+    const items = resolve(props.each);
     const list = Array.isArray(items) ? items : [];
 
     if (list.length === 0) {
@@ -678,7 +749,7 @@ function hydrateControlFlow(
 
         // Re-read list to handle signal updates
         const currentList = (() => {
-          const items = readReactive(props.each);
+          const items = resolve(props.each);
           return Array.isArray(items) ? items : [];
         })();
 
@@ -790,109 +861,6 @@ function hydrateContent(
     : hydrateNode(content as SinwanNode, cursor);
 }
 
-function resolveShowChildren(
-  element: SinwanElement,
-  value: unknown,
-): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function resolveMatchChildren(
-  element: SinwanElement,
-  value: unknown,
-): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function resolveKeyChildren(
-  element: SinwanElement,
-  value: unknown,
-): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function createDynamicElement(
-  element: SinwanElement,
-  tag: unknown,
-): SinwanElement | null {
-  if (typeof tag !== "string" && typeof tag !== "function") {
-    return null;
-  }
-
-  const { component, ...props } = element.props as Record<string, unknown>;
-  const children = normalizeContent(props.children ?? element.children);
-
-  return {
-    tag: tag as SinwanElement["tag"],
-    props,
-    children,
-  };
-}
-
-function readReactive(value: unknown): unknown {
-  return isSignal(value) || isComputed(value) ? (value as any).value : value;
-}
-
-function normalizeContent(content: unknown): SinwanNode[] {
-  if (content == null || typeof content === "boolean") {
-    return [];
-  }
-  return Array.isArray(content) ? content : [content as SinwanNode];
-}
-
-function isElementLike(value: unknown): value is SinwanElement {
-  return value != null && typeof value === "object" && "tag" in value;
-}
-
-function getMatchElement(value: unknown): SinwanElement | null {
-  if (!isElementLike(value)) {
-    return null;
-  }
-  if (isMatchElement(value)) {
-    return value;
-  }
-  return value.tag === Match ? Match(value.props as any) : null;
-}
-
-type RefValue =
-  | ((el: Element | null) => void)
-  | { current: Element | null }
-  | null
-  | undefined;
-
-function applyRef(el: Element, ref: unknown): CleanupFn | null {
-  const value = ref as RefValue;
-  if (!value) {
-    return null;
-  }
-
-  if (typeof value === "function") {
-    value(el);
-    return () => value(null);
-  }
-
-  if (typeof value === "object" && "current" in value) {
-    value.current = el;
-    return () => {
-      value.current = null;
-    };
-  }
-
-  return null;
-}
-
 /**
  * Hydrate a functional component.
  * Creates a ComponentInstance, runs setup, then hydrates the returned tree.
@@ -979,8 +947,15 @@ function hydrateArray(
     children.push(hydrateNode(child, cursor));
   }
 
-  // Use a placeholder anchor
+  // Insert the anchor after the last child node of the fragment.
+  // After hydrating all children, cursor.current points to the next sibling
+  // after the fragment, which is the correct insertion point for the anchor.
   const anchor = document.createComment("Sinwan-f");
+  if (cursor.current) {
+    cursor.parent.insertBefore(anchor, cursor.current);
+  } else {
+    cursor.parent.appendChild(anchor);
+  }
   return { type: "fragment", children, anchor };
 }
 
@@ -1300,7 +1275,7 @@ function hydrateActivity(
   let wrapperMounted: MountedElement | null = null;
 
   const dispose = effect(() => {
-    const currentMode = readReactive(props.mode) ?? "visible";
+    const currentMode = resolve(props.mode) ?? "visible";
     const hidden = currentMode === "hidden";
 
     if (initialized) {
@@ -1395,6 +1370,172 @@ function hydrateViewTransition(
   };
 
   return mounted;
+}
+
+interface HydratedKeyCacheEntry {
+  key: unknown;
+  mounted: MountedNode[];
+  fragment: DocumentFragment;
+}
+
+function fireMountedForSubtree(node: MountedNode): void {
+  if (node.type === "component" && node.instance) {
+    fireMountedHooks(node.instance);
+    return;
+  }
+  if ("children" in node && Array.isArray(node.children)) {
+    for (const child of node.children) {
+      fireMountedForSubtree(child);
+    }
+  }
+}
+
+function hydrateKey(
+  element: SinwanElement,
+  cursor: HydrationCursor,
+): MountedNode {
+  const key = resolve((element.props as any).when);
+  const owner = getCurrentInstance();
+
+  const startAnchor = document.createComment("Sinwan-b");
+  const endAnchor = document.createComment("/Sinwan-b");
+  const parent = cursor.parent;
+  const currentDOMNode = cursor.current;
+
+  parent.insertBefore(startAnchor, currentDOMNode);
+
+  const block: MountedReactiveBlock = {
+    type: "reactive-block",
+    dispose: () => {},
+    children: [],
+    startAnchor,
+    endAnchor,
+  };
+
+  let initialized = false;
+  let currentKey: unknown;
+  let currentEntry: HydratedKeyCacheEntry | null = null;
+  const cache = new Map<unknown, HydratedKeyCacheEntry>();
+  const useCache = (element.props as any).cache !== false;
+
+  // Hydrate initial content for the current key
+  const initialMounted = hydrateContent(
+    resolveKeyChildren(element, key),
+    cursor,
+  );
+  parent.insertBefore(endAnchor, cursor.current);
+  block.children = [initialMounted];
+
+  const entry: HydratedKeyCacheEntry = {
+    key,
+    mounted: [initialMounted],
+    fragment: document.createDocumentFragment(),
+  };
+  cache.set(key, entry);
+  currentEntry = entry;
+  currentKey = key;
+
+  const disposeEffect = effect(() => {
+    const newKey = resolve((element.props as any).when);
+    if (initialized && Object.is(currentKey, newKey)) {
+      return;
+    }
+
+    // When cache=false, fully unmount old content (React-style key behavior)
+    if (!useCache && currentEntry) {
+      for (const child of currentEntry.mounted) {
+        removeMountedNode(child);
+      }
+      currentEntry = null;
+    }
+
+    // Soft-hide and detach current entry (keep-alive path)
+    if (useCache && currentEntry) {
+      for (const child of currentEntry.mounted) {
+        softHideMountedTree(child);
+      }
+      for (const child of currentEntry.mounted) {
+        for (const node of getMountedDomNodes(child)) {
+          currentEntry.fragment.appendChild(node);
+        }
+      }
+    }
+
+    currentKey = newKey;
+    initialized = true;
+
+    if (!useCache) {
+      // React-style: always render fresh, never cache
+      const content = resolveKeyChildren(element, newKey);
+      const mounted = renderBlockContent(
+        content,
+        parent,
+        block.endAnchor,
+        null,
+        owner,
+      );
+      const nextEntry: HydratedKeyCacheEntry = {
+        key: newKey,
+        mounted,
+        fragment: document.createDocumentFragment(),
+      };
+      currentEntry = nextEntry;
+      block.children = nextEntry.mounted;
+
+      for (const child of nextEntry.mounted) {
+        fireMountedForSubtree(child);
+      }
+      if (owner) {
+        queueUpdatedHooks(owner);
+      }
+      return;
+    }
+
+    // Look up or create cache entry for this key
+    let nextEntry = cache.get(newKey);
+    if (!nextEntry) {
+      const content = resolveKeyChildren(element, newKey);
+      const mounted = renderBlockContent(
+        content,
+        parent,
+        block.endAnchor,
+        null,
+        owner,
+      );
+      nextEntry = {
+        key: newKey,
+        mounted,
+        fragment: document.createDocumentFragment(),
+      };
+      cache.set(newKey, nextEntry);
+
+      // Fire mounted hooks for newly created components
+      for (const child of nextEntry.mounted) {
+        fireMountedForSubtree(child);
+      }
+    } else {
+      // Reattach DOM nodes from the cached fragment
+      for (const child of nextEntry.mounted) {
+        for (const node of getMountedDomNodes(child)) {
+          parent.insertBefore(node, block.endAnchor);
+        }
+      }
+      // Soft-show to restore state and fire mounted hooks
+      for (const child of nextEntry.mounted) {
+        softShowMountedTree(child);
+      }
+    }
+
+    currentEntry = nextEntry;
+    block.children = nextEntry.mounted;
+
+    if (owner) {
+      queueUpdatedHooks(owner);
+    }
+  });
+
+  block.dispose = disposeEffect;
+  return block;
 }
 
 /**

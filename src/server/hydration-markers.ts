@@ -44,7 +44,6 @@ import {
   For,
   Index,
   Key,
-  Match,
   Portal,
   Switch,
   Visible,
@@ -63,7 +62,15 @@ import {
   isActivityElement,
   isSuspenseElement,
   isViewTransitionElement,
+  resolveMatchChildren,
+  resolveShowChildren,
+  resolveKeyChildren,
+  resolveSwitchContent,
+  createDynamicElement,
+  normalizeContent,
 } from "../component/control-flow.ts";
+import { resolve } from "../reactivity/normalization.ts";
+import { setSSRContext, createSSRContext } from "../event/ssr-context.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
 
@@ -87,7 +94,11 @@ function createHydrationContext(): HydrationContext {
 export async function renderToHydratableString(
   component: SinwanComponent<any>,
   props?: Record<string, unknown>,
-  options?: { identifierPrefix?: string },
+  options?: {
+    identifierPrefix?: string;
+    out?: { fetchData?: Record<string, any> };
+    baseUrl?: string;
+  },
 ): Promise<string> {
   const ctx = createHydrationContext();
   const mergedProps = props ?? {};
@@ -99,18 +110,50 @@ export async function renderToHydratableString(
   }
   const prev = setCurrentInstance(instance);
 
+  const ssrCtx = createSSRContext();
+  if (options?.baseUrl) {
+    ssrCtx.baseUrl = options.baseUrl;
+  }
+  const prevSSR = setSSRContext(ssrCtx);
+
   try {
-    // Call the component to get the element tree
-    const result = (await Promise.resolve(
+    // First pass: render to HTML to trigger fetches from nested sync components
+    let result = (await Promise.resolve(
       component(mergedProps) as unknown,
     )) as SinwanNode;
+
+    let html: string;
     if (result && typeof result === "object" && "tag" in result) {
-      return await renderElementH(result, ctx, true /* isComponentRoot */);
+      html = await renderElementH(result, ctx, true /* isComponentRoot */);
+    } else {
+      html = await renderNodeH(result as SinwanNode, ctx);
     }
 
-    return await renderNodeH(result as SinwanNode, ctx);
+    // Wait for any fetches started during rendering, then re-render
+    // with data populated so the HTML includes fetched content.
+    if (ssrCtx.pendingFetches.size > 0) {
+      const pending = Array.from(ssrCtx.pendingFetches);
+      ssrCtx.pendingFetches.clear();
+      await Promise.all(pending);
+
+      // Re-create context for second pass to avoid stale state
+      const ctx2 = createHydrationContext();
+      const result2 = (await Promise.resolve(
+        component(mergedProps) as unknown,
+      )) as SinwanNode;
+      if (result2 && typeof result2 === "object" && "tag" in result2) {
+        return await renderElementH(result2, ctx2, true);
+      }
+      return await renderNodeH(result2 as SinwanNode, ctx2);
+    }
+
+    return html;
   } finally {
+    if (options?.out && ssrCtx.fetchCache.size) {
+      options.out.fetchData = Object.fromEntries(ssrCtx.fetchCache);
+    }
     setCurrentInstance(prev);
+    setSSRContext(prevSSR);
   }
 }
 
@@ -136,10 +179,13 @@ export async function renderNodeToHydratableString(
   );
   dummy.identifierPrefix = prefix;
   const prev = setCurrentInstance(dummy);
+  const prevSSR = setSSRContext(createSSRContext());
+
   try {
     return await renderNodeH(node, ctx);
   } finally {
     setCurrentInstance(prev);
+    setSSRContext(prevSSR);
   }
 }
 
@@ -212,6 +258,11 @@ async function renderNodeH(
     return renderElementH(node, ctx, false);
   }
 
+  // Plain function getter (0-arity) — resolve and render as text
+  if (typeof node === "function" && (node as any).length === 0) {
+    return escapeHtml(String((node as any)()));
+  }
+
   return escapeHtml(String(node));
 }
 
@@ -231,15 +282,23 @@ async function renderElementH(
 
   // Fragment
   if (tag === "") {
-    // replace map/Promise.all with for loop to avoid creating an intermediate array
-    const promises: Promise<string>[] = [];
-    for (let i = 0; i < children.length; i++) {
-      promises.push(renderNodeH(children[i], ctx));
-    }
-    const results = await Promise.all(promises);
+    let rootMarked = false;
     let output = "";
-    for (let i = 0; i < results.length; i++) {
-      output += results[i];
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      const isRoot =
+        isComponentRoot &&
+        !rootMarked &&
+        child != null &&
+        typeof child === "object" &&
+        "tag" in child &&
+        typeof (child as SinwanElement).tag === "string";
+      if (isRoot) rootMarked = true;
+      if (child != null && typeof child === "object" && "tag" in child) {
+        output += await renderElementH(child as SinwanElement, ctx, isRoot);
+      } else {
+        output += await renderNodeH(child, ctx);
+      }
     }
     return output;
   }
@@ -263,7 +322,7 @@ async function renderElementH(
   }
 
   if (isShowElement(element)) {
-    const when = readReactive(props.when);
+    const when = resolve(props.when);
     const content = when
       ? resolveShowChildren(element, when)
       : (props.fallback as SinwanNode);
@@ -283,7 +342,7 @@ async function renderElementH(
   }
 
   if (isMatchElement(element)) {
-    const when = readReactive(props.when);
+    const when = resolve(props.when);
     return await renderNodeMaybeRoot(
       when ? resolveMatchChildren(element, when) : null,
       ctx,
@@ -296,7 +355,7 @@ async function renderElementH(
   }
 
   if (isKeyElement(element)) {
-    const key = readReactive(props.when);
+    const key = resolve(props.when);
     return await renderNodeMaybeRoot(
       resolveKeyChildren(element, key),
       ctx,
@@ -305,7 +364,7 @@ async function renderElementH(
   }
 
   if (isDynamicElement(element)) {
-    const dynamicTag = readReactive(props.component);
+    const dynamicTag = resolve(props.component);
     const dynamic = createDynamicElement(element, dynamicTag);
     return dynamic ? await renderElementH(dynamic, ctx, isComponentRoot) : "";
   }
@@ -358,7 +417,7 @@ async function renderElementH(
   }
 
   if (isActivityElement(element)) {
-    const mode = readReactive(props.mode) ?? "visible";
+    const mode = resolve(props.mode) ?? "visible";
     const activityChildren = (props as any).children as SinwanNode;
     const tag = (element.props as any).as ?? "div";
     const hidden = mode === "hidden";
@@ -584,7 +643,7 @@ async function renderForElementH(
     fallback?: SinwanNode;
     children?: (item: unknown, index: () => number) => SinwanNode;
   };
-  const each = readReactive(props.each);
+  const each = resolve(props.each);
   if (!Array.isArray(each) || typeof props.children !== "function") {
     return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
   }
@@ -593,21 +652,14 @@ async function renderForElementH(
     return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
   }
 
-  // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
-  const promises: Promise<string>[] = [];
+  // sequential render to avoid race condition on mutable context indices (textIndex, eventIndex, componentIndex)
+  let output = "";
   for (let i = 0; i < each.length; i++) {
     const index = i;
-    promises.push(
-      renderNodeH(
-        props.children!(each[i], () => index),
-        ctx,
-      ),
+    output += await renderNodeH(
+      props.children!(each[i], () => index),
+      ctx,
     );
-  }
-  const results = await Promise.all(promises);
-  let output = "";
-  for (let i = 0; i < results.length; i++) {
-    output += results[i];
   }
   return output;
 }
@@ -621,7 +673,7 @@ async function renderIndexElementH(
     fallback?: SinwanNode;
     children?: (item: () => unknown, index: number) => SinwanNode;
   };
-  const each = readReactive(props.each);
+  const each = resolve(props.each);
   if (!Array.isArray(each) || typeof props.children !== "function") {
     return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
   }
@@ -630,21 +682,14 @@ async function renderIndexElementH(
     return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
   }
 
-  // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
-  const promises: Promise<string>[] = [];
+  // sequential render to avoid race condition on mutable context indices (textIndex, eventIndex, componentIndex)
+  let output = "";
   for (let i = 0; i < each.length; i++) {
     const item = each[i];
-    promises.push(
-      renderNodeH(
-        props.children!(() => item, i),
-        ctx,
-      ),
+    output += await renderNodeH(
+      props.children!(() => item, i),
+      ctx,
     );
-  }
-  const results = await Promise.all(promises);
-  let output = "";
-  for (let i = 0; i < results.length; i++) {
-    output += results[i];
   }
   return output;
 }
@@ -664,7 +709,7 @@ async function renderVirtualElementH(
     children?: (item: unknown, index: () => number) => SinwanNode;
   };
 
-  const items = readReactive(props.each);
+  const items = resolve(props.each);
   const list = Array.isArray(items) ? items : [];
 
   if (list.length === 0) {
@@ -708,127 +753,17 @@ async function renderVirtualElementH(
 
   let itemsHtml = "";
   if (typeof renderChild === "function") {
-    const promises: Promise<string>[] = [];
+    // sequential render to avoid race condition on mutable context indices (textIndex, eventIndex, componentIndex)
     for (let i = startIndex; i < endIndex; i++) {
       const index = i;
       const top = i * itemHeight;
-      // Wrap each item in a div with absolute positioning at the correct top
-      promises.push(
-        renderNodeH(renderChild(list[i], () => index), ctx).then(
-          (html) =>
-            `<div style="position:absolute;top:${top}px;left:0;right:0">${html}</div>`,
-        ),
+      const html = await renderNodeH(
+        renderChild(list[i], () => index),
+        ctx,
       );
-    }
-    const results = await Promise.all(promises);
-    for (let i = 0; i < results.length; i++) {
-      itemsHtml += results[i];
+      itemsHtml += `<div style="position:absolute;top:${top}px;left:0;right:0">${html}</div>`;
     }
   }
 
   return `<div style="overflow:auto;height:${containerHeight}px"><div style="position:relative;height:${totalHeight}px">${itemsHtml}</div></div>`;
-}
-
-function resolveShowChildren(
-  element: SinwanElement,
-  value: unknown,
-): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function resolveSwitchContent(element: SinwanElement): SinwanNode {
-  const props = element.props as {
-    fallback?: SinwanNode;
-    children?: SinwanNode;
-  };
-  const children = normalizeContent(props.children ?? element.children);
-
-  for (const child of children) {
-    const match = getMatchElement(child);
-    if (!match) {
-      continue;
-    }
-
-    const when = readReactive((match.props as any).when);
-    if (when) {
-      return resolveMatchChildren(match, when);
-    }
-  }
-
-  return props.fallback;
-}
-
-function resolveMatchChildren(
-  element: SinwanElement,
-  value: unknown,
-): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function resolveKeyChildren(
-  element: SinwanElement,
-  value: unknown,
-): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function createDynamicElement(
-  element: SinwanElement,
-  tag: unknown,
-): SinwanElement | null {
-  if (typeof tag !== "string" && typeof tag !== "function") {
-    return null;
-  }
-
-  const { component, ...props } = element.props as Record<string, unknown>;
-  const children = normalizeContent(props.children ?? element.children);
-
-  return {
-    tag: tag as SinwanElement["tag"],
-    props,
-    children,
-  };
-}
-
-function readReactive(value: unknown): unknown {
-  if (isSignal(value) || isComputed(value)) {
-    return (value as any).value;
-  }
-  if (typeof value === "function" && (value as any)[STATE_GETTER_MARKER]) {
-    return (value as any)();
-  }
-  return value;
-}
-
-function normalizeContent(content: unknown): SinwanNode[] {
-  if (content == null || typeof content === "boolean") {
-    return [];
-  }
-  return Array.isArray(content) ? content : [content as SinwanNode];
-}
-
-function isElementLike(value: unknown): value is SinwanElement {
-  return value != null && typeof value === "object" && "tag" in value;
-}
-
-function getMatchElement(value: unknown): SinwanElement | null {
-  if (!isElementLike(value)) {
-    return null;
-  }
-  if (isMatchElement(value)) {
-    return value;
-  }
-  return value.tag === Match ? Match(value.props as any) : null;
 }

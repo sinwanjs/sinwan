@@ -1,62 +1,70 @@
-import { cc, For } from "sinwan/component";
-import { signal } from "sinwan/reactivity";
-import { Link } from "../Router.tsx";
+import { cc, For, Show } from "sinwan/component";
+import { signal, effect } from "sinwan/reactivity";
+import NavBar from "./NavBar";
+import { useEffect, useState } from "sinwan/react-client";
+import { useFetch } from "sinwan/hook";
 
 interface Database {
   name: string;
   sizeOnDisk: number;
 }
 
-// Get initial data from SSR if available
-const getInitialData = (): { databases: Database[] } => {
-  if (typeof window !== "undefined" && (window as any).__INITIAL_DATA__) {
-    return (window as any).__INITIAL_DATA__;
-  }
-  return { databases: [] };
-};
+interface DatabasesData {
+  databases: Database[];
+}
 
-export const Home = cc(() => {
-  const data = signal<{ databases: Database[] }>(getInitialData());
+const Home = cc(() => {
+  const fetch = useFetch<DatabasesData>("/api/dbs").json();
+
+  const databases = signal<Database[]>([]);
+
+  effect(() => {
+    if (fetch.data.value?.databases) {
+      databases.value = fetch.data.value.databases;
+    }
+  });
+
+  const [test, setTest] = useState(0);
+  const [user, setUser] = useState({ name: "", age: 20 });
+
+  useEffect(() => {
+    console.log("test change");
+  }, [test]);
 
   return (
     <div style="padding: 20px;">
       <h1>SPA with Full Hydration</h1>
       <p>Server-rendered, fully hydrated single page app</p>
 
-      <nav style="margin: 20px 0; display: flex; gap: 20px;">
-        <Link href="/">
-          <span style="color: blue; text-decoration: underline; cursor: pointer;">
-            Home
-          </span>
-        </Link>
-        <Link href="/about">
-          <span style="color: blue; text-decoration: underline; cursor: pointer;">
-            About
-          </span>
-        </Link>
-        <Link href="/counter">
-          <span style="color: blue; text-decoration: underline; cursor: pointer;">
-            Counter
-          </span>
-        </Link>
-      </nav>
+      <NavBar />
 
       <h2>Databases from Server</h2>
-      <ul>
-        <For each={() => data.value.databases}>
-          {(db) => (
-            <li>
-              {db.name} - {(db.sizeOnDisk / 1024 / 1024).toFixed(2)} MB
-            </li>
-          )}
-        </For>
-      </ul>
+      <Show when={fetch.isFetching}>
+        <p>Loading databases...</p>
+      </Show>
+      <Show when={fetch.error}>
+        <p style="color: #e74c3c;">Error loading databases</p>
+      </Show>
+      <Show when={fetch.data}>
+        <ul>
+          <For each={databases}>
+            {(db) => (
+              <li>
+                {db.name} - {(db.sizeOnDisk / 1024 / 1024).toFixed(2)} MB
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
+      <button onClick={() => setTest((p) => p + 1)}>Click me</button>
+      <button onClick={() => setUser({ name: "mohammed", age: 30 })}>
+        Set User
+      </button>
+      <button onClick={() => setUser({ name: "", age: 40 })}>resit User</button>
+      <p>{test}</p>
+      <pre>{() => JSON.stringify(user())}</pre>
     </div>
   );
 });
 
-export async function homeLoader() {
-  const res = await fetch("/api/dbs");
-  const data = await res.json();
-  return { databases: data.databases || [] };
-}
+export default Home;

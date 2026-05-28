@@ -94,6 +94,11 @@ function registerPage<D>(name: string, page: SinwanComponent<D>): void;
 function getPage<D>(name: string): SinwanComponent<D> | undefined;
 function hasPage(name: string): boolean;
 function renderPage<D>(name: string, data: D): Promise<string>;
+function renderToHydratablePage<D>(
+  name: string,
+  data: D,
+  options?: { identifierPrefix?: string },
+): Promise<string>;
 ```
 
 Usage:
@@ -109,6 +114,28 @@ registerPage("home", HomePage);
 
 // in your route handler:
 const html = await renderPage("home", { title: "Home" });
+```
+
+### Hydratable variant
+
+```ts
+function renderToHydratablePage<D>(
+  name: string,
+  data: D,
+  options?: { identifierPrefix?: string },
+): Promise<string>;
+```
+
+Same as `renderPage`, but emits HTML with hydration markers for client-side hydration. Use this when the registered page will be hydrated on the client.
+
+```ts
+import { registerPage, renderToHydratablePage } from "sinwan/server";
+
+registerPage("home", HomePage);
+
+// in your route handler:
+const html = await renderToHydratablePage("home", { title: "Home" });
+// '<div data-sinwan-id="c0">...</div>'
 ```
 
 Throws `Error: Page "<name>" not found in registry` if the name was never registered. Pages are stored in a process-global `Map`; if you need request-scoped pages, register them before each render or skip the registry and call `renderToString(<HomePage data={...} />)` directly.
@@ -336,7 +363,8 @@ The client bundle simply re-exports `App` (and `hydrate`) so the auto boot snipp
 
 ```ts
 // client.ts
-export { hydrate } from "sinwan/hydration";export { default } from "./App";
+export { hydrate } from "sinwan/hydration";
+export { default } from "./App";
 ```
 
 That’s it — no manual `<script>` or `hydrate()` calls.

@@ -17,7 +17,6 @@ import {
   For,
   Index,
   Key,
-  Match,
   Portal,
   Switch,
   Visible,
@@ -33,6 +32,15 @@ import {
   isShowElement,
   isSwitchElement,
   isVirtualElement,
+  isSuspenseElement,
+  isActivityElement,
+  isViewTransitionElement,
+  resolveSwitchContent,
+  resolveKeyChildren,
+  resolveMatchChildren,
+  resolveShowChildren,
+  createDynamicElement,
+  normalizeContent,
 } from "../component/control-flow.ts";
 import {
   createComponentInstance,
@@ -55,6 +63,7 @@ import {
   type IslandElement,
 } from "../component/island.ts";
 import { renderToHydratableString as renderHydratableComponent } from "./hydration-markers.ts";
+import { resolve } from "../reactivity/index.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
 
@@ -236,6 +245,12 @@ async function streamNode(
     return;
   }
 
+  // Plain function getter (0-arity) — resolve and stream as text
+  if (typeof node === "function" && (node as any).length === 0) {
+    controller.enqueue(encoder.encode(escapeHtml(String((node as any)()))));
+    return;
+  }
+
   // Handle arrays - stream each child
   if (Array.isArray(node)) {
     for (const child of node) {
@@ -298,7 +313,7 @@ async function streamElement(
   }
 
   if (isShowElement(element)) {
-    const when = readReactive(props.when);
+    const when = resolve(props.when);
     await streamNode(
       when
         ? resolveShowChildren(element, when)
@@ -320,7 +335,7 @@ async function streamElement(
   }
 
   if (isMatchElement(element)) {
-    const when = readReactive(props.when);
+    const when = resolve(props.when);
     await streamNode(
       when ? resolveMatchChildren(element, when) : null,
       controller,
@@ -335,13 +350,13 @@ async function streamElement(
   }
 
   if (isKeyElement(element)) {
-    const key = readReactive(props.when);
+    const key = resolve(props.when);
     await streamNode(resolveKeyChildren(element, key), controller, encoder);
     return;
   }
 
   if (isDynamicElement(element)) {
-    const dynamicTag = readReactive(props.component);
+    const dynamicTag = resolve(props.component);
     const dynamic = createDynamicElement(element, dynamicTag);
     if (dynamic) {
       await streamElement(dynamic, controller, encoder);
@@ -449,7 +464,7 @@ function renderAttributes(props: Record<string, unknown>): string {
       continue;
     }
 
-    const resolvedValue = readReactive(value);
+    const resolvedValue = resolve(value);
     if (resolvedValue == null || resolvedValue === false) continue;
 
     attrs += renderServerAttribute(key, resolvedValue);
@@ -504,6 +519,17 @@ async function streamHydratableNodeToController(
     return;
   }
 
+  // Plain function getter (0-arity) — resolve and stream as text
+  if (typeof node === "function" && (node as any).length === 0) {
+    const idx = ctx.textIndex++;
+    enqueue(
+      controller,
+      encoder,
+      `${textMarkerOpen(idx)}${escapeHtml(String((node as any)()))}${textMarkerCloseStr()}`,
+    );
+    return;
+  }
+
   if (Array.isArray(node)) {
     for (const child of node) {
       await streamHydratableNodeToController(child, controller, encoder, ctx);
@@ -547,8 +573,27 @@ async function streamHydratableElement(
   }
 
   if (tag === "") {
+    let rootMarked = false;
     for (const child of children) {
-      await streamHydratableNodeToController(child, controller, encoder, ctx);
+      const isRoot =
+        isComponentRoot &&
+        !rootMarked &&
+        child != null &&
+        typeof child === "object" &&
+        "tag" in child &&
+        typeof (child as SinwanElement).tag === "string";
+      if (isRoot) rootMarked = true;
+      if (child != null && typeof child === "object" && "tag" in child) {
+        await streamHydratableElement(
+          child as SinwanElement,
+          controller,
+          encoder,
+          ctx,
+          isRoot,
+        );
+      } else {
+        await streamHydratableNodeToController(child, controller, encoder, ctx);
+      }
     }
     return;
   }
@@ -585,7 +630,7 @@ async function streamHydratableElement(
   }
 
   if (isShowElement(element)) {
-    const when = readReactive(props.when);
+    const when = resolve(props.when);
     await streamHydratableNodeToController(
       when
         ? resolveShowChildren(element, when)
@@ -615,7 +660,7 @@ async function streamHydratableElement(
   }
 
   if (isMatchElement(element)) {
-    const when = readReactive(props.when);
+    const when = resolve(props.when);
     await streamHydratableNodeToController(
       when ? resolveMatchChildren(element, when) : null,
       controller,
@@ -632,7 +677,7 @@ async function streamHydratableElement(
   }
 
   if (isKeyElement(element)) {
-    const key = readReactive(props.when);
+    const key = resolve(props.when);
     await streamHydratableNodeToController(
       resolveKeyChildren(element, key),
       controller,
@@ -644,7 +689,7 @@ async function streamHydratableElement(
   }
 
   if (isDynamicElement(element)) {
-    const dynamicTag = readReactive(props.component);
+    const dynamicTag = resolve(props.component);
     const dynamic = createDynamicElement(element, dynamicTag);
     if (dynamic) {
       await streamHydratableElement(
@@ -697,6 +742,72 @@ async function streamHydratableElement(
     return;
   }
 
+  if (isSuspenseElement(element)) {
+    await streamHydratableNodeToController(
+      props.children as SinwanNode,
+      controller,
+      encoder,
+      ctx,
+      isComponentRoot,
+    );
+    return;
+  }
+
+  if (isViewTransitionElement(element)) {
+    const name = props.name;
+    const viewChildren = (props as any).children as SinwanNode;
+    if (!name) {
+      await streamHydratableNodeToController(
+        viewChildren,
+        controller,
+        encoder,
+        ctx,
+        isComponentRoot,
+      );
+      return;
+    }
+    const wrapperTag = (props as any).as ?? "div";
+    await streamHydratableElement(
+      {
+        tag: wrapperTag,
+        props: {
+          style: { viewTransitionName: name },
+          children: viewChildren,
+        },
+        children: normalizeContent(viewChildren),
+      },
+      controller,
+      encoder,
+      ctx,
+      isComponentRoot,
+    );
+    return;
+  }
+
+  if (isActivityElement(element)) {
+    const mode = resolve(props.mode) ?? "visible";
+    const activityChildren = (props as any).children as SinwanNode;
+    const tag = (element.props as any).as ?? "div";
+    const hidden = mode === "hidden";
+
+    await streamHydratableElement(
+      {
+        tag,
+        props: {
+          "data-sinwan-activity": hidden ? "hidden" : "visible",
+          ...(hidden ? { hidden: true } : {}),
+          children: activityChildren,
+        },
+        children: normalizeContent(activityChildren),
+      },
+      controller,
+      encoder,
+      ctx,
+      isComponentRoot,
+    );
+    return;
+  }
+
   if (typeof tag === "function") {
     await streamHydratableComponent(
       tag as SinwanComponent<any>,
@@ -704,7 +815,7 @@ async function streamHydratableElement(
       controller,
       encoder,
       ctx,
-      false,
+      true,
     );
     return;
   }
@@ -800,7 +911,7 @@ async function streamHydratableForElement(
     fallback?: SinwanNode;
     children?: (item: unknown, index: () => number) => SinwanNode;
   };
-  const each = readReactive(props.each);
+  const each = resolve(props.each);
   if (!Array.isArray(each) || typeof props.children !== "function") {
     if (props.fallback) {
       await streamHydratableNodeToController(
@@ -847,7 +958,7 @@ async function streamHydratableIndexElement(
     fallback?: SinwanNode;
     children?: (item: () => unknown, index: number) => SinwanNode;
   };
-  const each = readReactive(props.each);
+  const each = resolve(props.each);
   if (!Array.isArray(each) || typeof props.children !== "function") {
     if (props.fallback) {
       await streamHydratableNodeToController(
@@ -900,7 +1011,7 @@ async function streamHydratableVirtualElement(
     children?: (item: unknown, index: () => number) => SinwanNode;
   };
 
-  const items = readReactive(props.each);
+  const items = resolve(props.each);
   const list = Array.isArray(items) ? items : [];
 
   if (list.length === 0) {
@@ -1010,7 +1121,7 @@ function renderHydratableAttributes(
       continue;
     }
 
-    const resolvedValue = readReactive(value);
+    const resolvedValue = resolve(value);
     if (resolvedValue == null || resolvedValue === false) continue;
 
     attrs += renderServerAttribute(key, resolvedValue);
@@ -1041,7 +1152,7 @@ async function streamForElement(
     fallback?: SinwanNode;
     children?: (item: unknown, index: () => number) => SinwanNode;
   };
-  const each = readReactive(props.each);
+  const each = resolve(props.each);
   if (!Array.isArray(each) || typeof props.children !== "function") {
     if (props.fallback) {
       await streamNode(props.fallback, controller, encoder);
@@ -1076,7 +1187,7 @@ async function streamIndexElement(
     fallback?: SinwanNode;
     children?: (item: () => unknown, index: number) => SinwanNode;
   };
-  const each = readReactive(props.each);
+  const each = resolve(props.each);
   if (!Array.isArray(each) || typeof props.children !== "function") {
     if (props.fallback) {
       await streamNode(props.fallback, controller, encoder);
@@ -1117,7 +1228,7 @@ async function streamVirtualElement(
     children?: (item: unknown, index: () => number) => SinwanNode;
   };
 
-  const items = readReactive(props.each);
+  const items = resolve(props.each);
   const list = Array.isArray(items) ? items : [];
 
   if (list.length === 0) {
@@ -1193,79 +1304,6 @@ async function streamVirtualElement(
   controller.enqueue(encoder.encode("</div></div>"));
 }
 
-function resolveShowChildren(
-  element: SinwanElement,
-  value: unknown,
-): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function resolveSwitchContent(element: SinwanElement): SinwanNode {
-  const props = element.props as {
-    fallback?: SinwanNode;
-    children?: SinwanNode;
-  };
-  const children = normalizeContent(props.children ?? element.children);
-
-  for (const child of children) {
-    const match = getMatchElement(child);
-    if (!match) {
-      continue;
-    }
-
-    const when = readReactive((match.props as any).when);
-    if (when) {
-      return resolveMatchChildren(match, when);
-    }
-  }
-
-  return props.fallback;
-}
-
-function resolveMatchChildren(
-  element: SinwanElement,
-  value: unknown,
-): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function resolveKeyChildren(
-  element: SinwanElement,
-  value: unknown,
-): SinwanNode {
-  const children = (element.props as any).children ?? element.children;
-  if (typeof children === "function") {
-    return children(value);
-  }
-  return children as SinwanNode;
-}
-
-function createDynamicElement(
-  element: SinwanElement,
-  tag: unknown,
-): SinwanElement | null {
-  if (typeof tag !== "string" && typeof tag !== "function") {
-    return null;
-  }
-
-  const { component, ...props } = element.props as Record<string, unknown>;
-  const children = normalizeContent(props.children ?? element.children);
-
-  return {
-    tag: tag as SinwanElement["tag"],
-    props,
-    children,
-  };
-}
-
 /**
  * Stream an island element: emit the static wrapper tag with hydration
  * markers inside, plus the embedded props JSON the client needs to hydrate.
@@ -1298,35 +1336,4 @@ async function streamIsland(
       `<${__island.tag} ${ISLAND_ATTR}="${safeName}" ${ISLAND_PROPS_ATTR}="${safeProps}">${inner}</${__island.tag}>`,
     ),
   );
-}
-
-function readReactive(value: unknown): unknown {
-  if (isSignal(value) || isComputed(value)) {
-    return (value as any).value;
-  }
-  if (typeof value === "function" && (value as any)[STATE_GETTER_MARKER]) {
-    return (value as any)();
-  }
-  return value;
-}
-
-function normalizeContent(content: unknown): SinwanNode[] {
-  if (content == null || typeof content === "boolean") {
-    return [];
-  }
-  return Array.isArray(content) ? content : [content as SinwanNode];
-}
-
-function isElementLike(value: unknown): value is SinwanElement {
-  return value != null && typeof value === "object" && "tag" in value;
-}
-
-function getMatchElement(value: unknown): SinwanElement | null {
-  if (!isElementLike(value)) {
-    return null;
-  }
-  if (isMatchElement(value)) {
-    return value;
-  }
-  return value.tag === Match ? Match(value.props as any) : null;
 }
