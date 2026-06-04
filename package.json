@@ -238,6 +238,8 @@
     "reactive",
     "ui",
     "ssr",
+    "front-end",
+    "web",
     "hydration",
     "jsx",
     "signals",
