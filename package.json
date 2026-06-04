@@ -242,7 +242,11 @@
     "web",
     "hydration",
     "jsx",
+    "css",
+    "tailwind",
+    "tailwindcss",
     "signals",
+    "reactivity",
     "components",
     "framework",
     "bun"
