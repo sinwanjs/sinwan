@@ -13,7 +13,13 @@ import { unwrap } from "./unwrap.ts";
 
 function deepClone<T>(value: T): T {
   if (Array.isArray(value)) {
-    return (value as any[]).map(deepClone) as T;
+    const arr = value as any[];
+    const len = arr.length;
+    const clone = new Array(len);
+    for (let i = 0; i < len; i++) {
+      clone[i] = deepClone(arr[i]);
+    }
+    return clone as T;
   }
   if (value !== null && typeof value === "object") {
     const clone: any = {};
@@ -29,7 +35,6 @@ function deepClone<T>(value: T): T {
   }
   return value;
 }
-
 /**
  * Create a store modifier that applies changes by mutating a draft proxy.
  *

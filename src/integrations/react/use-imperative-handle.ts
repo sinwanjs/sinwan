@@ -4,7 +4,7 @@ import {
   onUnmounted,
 } from "../../component/lifecycle.ts";
 import { isServer } from "./_internal/is-server.ts";
-import { useSlot, STATE_GETTER_MARKER } from "./_internal/bridge.ts";
+import { resolveDeps, useSlot } from "./_internal/bridge.ts";
 import { effect as sinwanEffect } from "../../reactivity/effect.ts";
 import { depsAreEqual } from "./use-memo.ts";
 import type { Ref, RefCallback } from "./_types/core.ts";
@@ -14,18 +14,6 @@ interface ImperativeHandleSlot {
   deps: GetterDependencyList | undefined;
   dispose: (() => void) | undefined;
   cleanup: (() => void) | undefined;
-}
-
-function resolveDeps(
-  deps: GetterDependencyList | undefined,
-): any[] | undefined {
-  if (deps === undefined) return undefined;
-  return deps.map((d) => {
-    if (typeof d === "function" && (d as any)[STATE_GETTER_MARKER]) {
-      return d();
-    }
-    return d;
-  });
 }
 
 /**

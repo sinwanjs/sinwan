@@ -1,4 +1,4 @@
-import { useSlot, STATE_GETTER_MARKER } from "./_internal/bridge.ts";
+import { resolveDeps, useSlot } from "./_internal/bridge.ts";
 import { onUnmounted } from "../../component/lifecycle.ts";
 import { isServer } from "./_internal/is-server.ts";
 import { effect as sinwanEffect } from "../../reactivity/effect.ts";
@@ -9,18 +9,6 @@ interface LayoutEffectSlot {
   deps: any[] | undefined;
   cleanup: (() => void) | void;
   dispose: (() => void) | undefined;
-}
-
-function resolveDeps(
-  deps: GetterDependencyList | undefined,
-): any[] | undefined {
-  if (deps === undefined) return undefined;
-  return deps.map((d) => {
-    if (typeof d === "function" && (d as any)[STATE_GETTER_MARKER]) {
-      return d();
-    }
-    return d;
-  });
 }
 
 /**

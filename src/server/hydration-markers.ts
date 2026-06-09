@@ -447,9 +447,12 @@ async function renderElementH(
     return await renderIntrinsicH(tag, props, children, ctx, isComponentRoot);
   }
 
-  const results = await Promise.all(
-    children.map((child) => renderNodeH(child, ctx)),
-  );
+  const results: any[] = new Array(children.length);
+  for (let i = 0; i < children.length; i++) {
+    results[i] = renderNodeH(children[i], ctx);
+  }
+  await Promise.all(results);
+
   return results.join("");
 }
 
