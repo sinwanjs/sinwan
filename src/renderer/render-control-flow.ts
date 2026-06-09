@@ -57,11 +57,23 @@ import {
   popSuspenseBoundary,
 } from "./suspense-boundary.ts";
 
-interface ForRecord<T> {
+export interface ForRecord<T> {
   key: unknown;
   item: T;
   index: number;
   mounted: MountedNode;
+}
+
+/**
+ * Seed state for hydrating a `<For>` block. When provided to
+ * {@link renderForBlock}, the reconciler adopts the already-hydrated records
+ * instead of rendering from scratch and skips its first effect run (the DOM is
+ * already present from SSR). All subsequent updates reuse the exact same keyed
+ * reconciliation as the client renderer.
+ */
+export interface ForHydrationSeed<T> {
+  records: ForRecord<T>[];
+  lastList: readonly T[];
 }
 
 interface IndexRecord<T> {
@@ -494,18 +506,28 @@ function renderVirtualBlock<T>(
   };
 }
 
-function renderForBlock<T>(
+export function renderForBlock<T>(
   element: SinwanElement,
   block: MountedReactiveBlock,
   parent: Node,
   namespace: string | null,
   owner: ComponentInstance | null,
+  seed?: ForHydrationSeed<T>,
 ): () => void {
-  let initialized = false;
-  let records: ForRecord<T>[] = [];
-  let lastList: readonly T[] | null = null; // optimisation: detects if the array changed
+  let initialized = seed != null;
+  let records: ForRecord<T>[] = seed ? seed.records : [];
+  let lastList: readonly T[] | null = seed ? seed.lastList : null; // optimisation: detects if the array changed
   let recordsByKey: Map<unknown, ForRecord<T>> | null = new Map(); // optimisation: O(1) lookup by key
   let recordsByNumericKey: Array<ForRecord<T> | undefined> | null = null;
+  // When hydrating, the DOM already exists — skip the first effect run after
+  // establishing dependency tracking so we don't re-render the SSR'd list.
+  let skipFirstRun = seed != null;
+
+  if (seed) {
+    for (const record of seed.records) {
+      recordsByKey.set(record.key, record);
+    }
+  }
 
   return effect(() => {
     const props = element.props as {
@@ -517,6 +539,12 @@ function renderForBlock<T>(
     const items = resolve(props.each) as readonly T[] | null | undefined;
     const list = Array.isArray(items) ? items : [];
     const renderChild = props.children;
+
+    if (skipFirstRun) {
+      skipFirstRun = false;
+      lastList = list;
+      return;
+    }
 
     if (typeof renderChild !== "function") {
       clearChildren(block);
@@ -715,46 +743,33 @@ function renderForBlock<T>(
             typeof newContent === "number"
           ) {
             updateTextNodeContent(oldRecord.mounted, String(newContent));
-          } else if (
-            typeof newContent === "object" &&
-            newContent !== null &&
-            "tag" in newContent
-          ) {
-            // if it's an element, try to update in-place if the structure matches
-            const element = newContent as SinwanElement;
-            if (
-              oldRecord.mounted.type === "element" &&
-              oldRecord.mounted.node.tagName.toLowerCase() ===
-                String(element.tag)
-            ) {
-              // identical structure - update text nodes recursively
-              updateTextNodeContent(oldRecord.mounted, "");
-              // re-render content to get the new values
-              removeMountedNode(oldRecord.mounted);
-              oldRecord.mounted = withOptionalInstance(owner, () =>
-                renderNodeToDOM(newContent, parent, block.endAnchor, namespace),
-              );
-              block.children[changedIndex] = oldRecord.mounted;
-            } else {
-              // different structure - full re-render
-              removeMountedNode(oldRecord.mounted);
-              oldRecord.mounted = withOptionalInstance(owner, () =>
-                renderNodeToDOM(newContent, parent, block.endAnchor, namespace),
-              );
-              block.children[changedIndex] = oldRecord.mounted;
-            }
           } else {
-            // full re-render for other types
+            // Re-render this row. Capture its current DOM position BEFORE
+            // removing it so the replacement is inserted at the same spot.
+            // Inserting at block.endAnchor would move the row to the end of
+            // the list — incorrect for any row that isn't last.
+            const oldNodes = getMountedDomNodes(oldRecord.mounted);
+            const insertAnchor =
+              oldNodes.length > 0
+                ? oldNodes[oldNodes.length - 1]!.nextSibling
+                : block.endAnchor;
             removeMountedNode(oldRecord.mounted);
             oldRecord.mounted = withOptionalInstance(owner, () =>
-              renderNodeToDOM(newContent, parent, block.endAnchor, namespace),
+              renderNodeToDOM(
+                newContent,
+                parent,
+                insertAnchor ?? block.endAnchor,
+                namespace,
+              ),
             );
             block.children[changedIndex] = oldRecord.mounted;
           }
         }
         lastList = list;
         if (initialized) {
-          queueUpdatedHooks(owner);
+          // Fire mounted hooks for any newly-created row component (no-op for
+          // the in-place text update path), plus updated hooks for the owner.
+          fireMountedAndQueueUpdated(owner);
         }
         initialized = true;
         return;
