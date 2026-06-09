@@ -3,7 +3,8 @@ import { Window } from "happy-dom";
 import { hydrate } from "../src/hydration/hydrate.ts";
 import { renderToHydratableString } from "../src/server/hydration-markers.ts";
 import { cc } from "../src/component/create.ts";
-import { signal, nextTick } from "../src/reactivity/index.ts";
+import { onMounted, onUnmounted } from "../src/component/lifecycle.ts";
+import { signal, computed, nextTick } from "../src/reactivity/index.ts";
 import { useState } from "../src/integrations/react/_client.ts";
 import {
   Show,
@@ -135,6 +136,151 @@ describe("hydrateElement control flow", () => {
     container.innerHTML = html;
     const app = hydrate(App, container);
     expect(container.querySelectorAll("span").length).toBe(2);
+    app.unmount();
+  });
+
+  it("hydrates Index with granular signal updates after hydration", async () => {
+    const items = signal(["a", "b"]);
+    const mountLog: string[] = [];
+
+    const ListItem = cc<{ item: () => string }>(({ item }) => {
+      onMounted(() => {
+        mountLog.push("mount:" + item());
+      });
+      return el("span", {}, item);
+    });
+
+    const App = cc(() =>
+      el(Index, { each: items }, (item: () => string, _index: number) =>
+        el(ListItem, { item }),
+      ),
+    );
+
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+    const app = hydrate(App, container);
+
+    expect(container.querySelectorAll("span").length).toBe(2);
+    expect(container.textContent).toContain("ab");
+
+    // Mounted hooks fire during hydration
+    expect(mountLog).toEqual(["mount:a", "mount:b"]);
+    mountLog.length = 0;
+
+    // Granular update — only one item changes
+    items.value = ["a", "c"];
+    await nextTick();
+
+    expect(container.querySelectorAll("span").length).toBe(2);
+    expect(container.textContent).toContain("ac");
+    expect(mountLog.length).toBe(0); // No remounts
+
+    app.unmount();
+  });
+
+  it("hydrated Index mounts only added items and removes only dropped items", async () => {
+    const items = signal(["a", "b"]);
+    const mountLog: string[] = [];
+    const unmountLog: string[] = [];
+
+    const ListItem = cc<{ item: () => string }>(({ item }) => {
+      const initial = item();
+      onMounted(() => {
+        mountLog.push("mount:" + initial);
+      });
+      onUnmounted(() => {
+        unmountLog.push("unmount:" + initial);
+      });
+      return el("span", {}, item);
+    });
+
+    const App = cc(() =>
+      el(Index, { each: items }, (item: () => string, _index: number) =>
+        el(ListItem, { item }),
+      ),
+    );
+
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+    const app = hydrate(App, container);
+
+    expect(mountLog).toEqual(["mount:a", "mount:b"]);
+    mountLog.length = 0;
+
+    // Add an item — only the new item should mount, no remounts of a/b.
+    items.value = ["a", "b", "c"];
+    await nextTick();
+
+    expect(container.querySelectorAll("span").length).toBe(3);
+    expect(container.textContent).toContain("abc");
+    expect(mountLog).toEqual(["mount:c"]);
+    expect(unmountLog.length).toBe(0);
+    mountLog.length = 0;
+
+    // Remove an item — only the dropped item's DOM is destroyed, no remounts.
+    items.value = ["a", "b"];
+    await nextTick();
+
+    expect(container.querySelectorAll("span").length).toBe(2);
+    expect(container.textContent).toContain("ab");
+    expect(mountLog.length).toBe(0);
+    expect(unmountLog).toEqual(["unmount:c"]);
+
+    app.unmount();
+  });
+
+  it("does not re-render an Index wrapped in a Show when the computed `when` is unchanged", async () => {
+    const items = signal(["a", "b", "c"]);
+    const isNotEmpty = computed(() => items.value.length > 0);
+    const callbackLog: number[] = [];
+    const mountLog: string[] = [];
+
+    const ListItem = cc<{ item: () => string }>(({ item }) => {
+      const initial = item();
+      onMounted(() => {
+        mountLog.push("mount:" + initial);
+      });
+      return el("span", {}, item);
+    });
+
+    const App = cc(() =>
+      el(
+        Show,
+        { when: isNotEmpty, fallback: el("p", {}, "empty") },
+        el(
+          "ul",
+          {},
+          el(Index, { each: items }, (item: () => string, index: number) => {
+            callbackLog.push(index);
+            return el(ListItem, { item });
+          }),
+        ),
+      ),
+    );
+
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+    // Reset logs captured during the (same-process) server render so we only
+    // measure client-side hydration behavior.
+    callbackLog.length = 0;
+    const app = hydrate(App, container);
+
+    expect(container.querySelectorAll("span").length).toBe(3);
+    expect(callbackLog).toEqual([0, 1, 2]);
+    expect(mountLog).toEqual(["mount:a", "mount:b", "mount:c"]);
+    callbackLog.length = 0;
+    mountLog.length = 0;
+
+    // Edit the first item — `isNotEmpty` stays true, so the Show must NOT
+    // re-render. Only the changed item signal updates its text node.
+    items.value = items.value.map((v, i) => (i === 0 ? "z" : v));
+    await nextTick();
+
+    expect(container.querySelectorAll("span").length).toBe(3);
+    expect(container.textContent).toContain("zbc");
+    expect(callbackLog.length).toBe(0); // No <Index> callbacks re-executed
+    expect(mountLog.length).toBe(0); // No ListItem re-mounts
+
     app.unmount();
   });
 

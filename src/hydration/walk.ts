@@ -20,6 +20,8 @@ import { setSingleAttribute } from "../renderer/attributes.ts";
 import {
   renderBlockContent,
   renderControlFlowToDOM,
+  renderForBlock,
+  type ForRecord,
 } from "../renderer/render-control-flow.ts";
 import { HtmlEscapedString } from "../jsx/jsx-runtime.ts";
 import { signal } from "../reactivity/signal.ts";
@@ -82,6 +84,7 @@ import {
   handleComponentError,
   queueUpdatedHooks,
   fireMountedHooks,
+  withInstance,
 } from "../component/instance.ts";
 
 /**
@@ -507,44 +510,101 @@ function hydrateControlFlow(
           ? resolveShowChildren(element, newWhen)
           : (element.props as any).fallback;
       },
-      when,
+      () => resolve((element.props as any).when),
     );
   }
 
   if (isForElement(element)) {
     const props = element.props as {
       each?: unknown;
+      key?: (item: unknown, index: number) => string | number | symbol;
       fallback?: SinwanNode;
       children?: (item: unknown, index: () => number) => SinwanNode;
     };
-    const resolveChildren = () => {
-      const items = resolve(props.each);
-      if (Array.isArray(items) && typeof props.children === "function") {
-        const result: SinwanNode[] = [];
-        for (let i = 0; i < items.length; i++) {
-          const index = i;
-          result.push(props.children!(items[i], () => index));
+    const items = resolve(props.each);
+    const list = Array.isArray(items) ? items : [];
+    const renderChild = props.children;
+
+    // Empty list (or no children fn) at hydration: there is nothing to
+    // reconcile, so keep the generic reactive block which correctly handles
+    // the empty → non-empty transition. This matches prior <For> behavior.
+    if (typeof renderChild !== "function" || list.length === 0) {
+      const resolveChildren = () => {
+        const its = resolve(props.each);
+        if (Array.isArray(its) && typeof props.children === "function") {
+          const result: SinwanNode[] = [];
+          for (let i = 0; i < its.length; i++) {
+            const index = i;
+            result.push(props.children!(its[i], () => index));
+          }
+          return result;
         }
-        return result;
-      }
-      return props.fallback ? [props.fallback] : [];
-    };
-    const children = resolveChildren();
-    const initialMounted = hydrateArray(children, cursor);
-    return makeReactiveBlock(
-      initialMounted,
-      () => resolveChildren() as unknown as SinwanNode,
-      resolve(props.each),
+        return props.fallback ? [props.fallback] : [];
+      };
+      const initialMounted = hydrateArray(resolveChildren(), cursor);
+      return makeReactiveBlock(
+        initialMounted,
+        () => resolveChildren() as unknown as SinwanNode,
+      );
+    }
+
+    // Non-empty list: hydrate each child into a keyed record, then delegate
+    // updates to the same keyed reconciler the client renderer uses. This
+    // preserves DOM nodes / component state on update instead of recreating
+    // the whole list (parity with client-side <For>).
+    const records: ForRecord<unknown>[] = [];
+    for (let i = 0; i < list.length; i++) {
+      const item = list[i];
+      const key = props.key ? props.key(item, i) : item;
+      const record: ForRecord<unknown> = {
+        key,
+        item,
+        index: i,
+        mounted: undefined as unknown as MountedNode,
+      };
+      const childNode = renderChild(item, () => record.index);
+      record.mounted = hydrateNode(childNode, cursor);
+      records.push(record);
+    }
+
+    const domNodes = records.flatMap((r) => getMountedDomNodes(r.mounted));
+    const firstNode = domNodes[0]!;
+    const parentNode = firstNode.parentNode!;
+    const startAnchor = (parentNode.ownerDocument || document).createComment(
+      "Sinwan-hyd-for",
     );
+    const endAnchor = (parentNode.ownerDocument || document).createComment(
+      "/Sinwan-hyd-for",
+    );
+    parentNode.insertBefore(startAnchor, firstNode);
+    const lastNode = domNodes[domNodes.length - 1]!;
+    if (lastNode.nextSibling) {
+      parentNode.insertBefore(endAnchor, lastNode.nextSibling);
+    } else {
+      parentNode.appendChild(endAnchor);
+    }
+
+    const block: MountedReactiveBlock = {
+      type: "reactive-block",
+      dispose: () => {},
+      children: records.map((r) => r.mounted),
+      startAnchor,
+      endAnchor,
+    };
+
+    const owner = getCurrentInstance();
+    block.dispose = renderForBlock(element, block, parentNode, null, owner, {
+      records,
+      lastList: list,
+    });
+    return block;
   }
 
   if (isSwitchElement(element)) {
     const content = resolveSwitchContent(element);
     const initialMounted = hydrateContent(content, cursor);
-    return makeReactiveBlock(
-      initialMounted,
-      () => resolveSwitchContent(element),
-      content,
+    return makeReactiveBlock(initialMounted, () =>
+      resolveSwitchContent(element),
     );
   }
 
@@ -554,25 +614,136 @@ function hydrateControlFlow(
       fallback?: SinwanNode;
       children?: (item: () => unknown, index: number) => SinwanNode;
     };
-    const resolveChildren = () => {
-      const items = resolve(props.each);
-      if (Array.isArray(items) && typeof props.children === "function") {
-        const result: SinwanNode[] = [];
-        for (let i = 0; i < items.length; i++) {
-          const item = items[i];
-          result.push(props.children!(() => item, i));
-        }
-        return result;
-      }
-      return props.fallback ? [props.fallback] : [];
-    };
-    const children = resolveChildren();
-    const initialMounted = hydrateArray(children, cursor);
-    return makeReactiveBlock(
-      initialMounted,
-      () => resolveChildren() as unknown as SinwanNode,
-      resolve(props.each),
+    const items = resolve(props.each);
+    const list = Array.isArray(items) ? items : [];
+    const renderChild = props.children;
+
+    if (typeof renderChild !== "function") {
+      return hydrateContent(props.fallback ?? null, cursor);
+    }
+
+    if (list.length === 0) {
+      return hydrateContent(props.fallback ?? null, cursor);
+    }
+
+    // Create item signals and hydrate children with reactive getters
+    const records: { item: any; mounted: MountedNode }[] = [];
+    for (let i = 0; i < list.length; i++) {
+      const itemSignal = signal(list[i]);
+      const childNode = renderChild(() => itemSignal.value, i);
+      records.push({
+        item: itemSignal,
+        mounted: hydrateNode(childNode, cursor),
+      });
+    }
+
+    // Build reactive block with anchors
+    const domNodes = records.flatMap((r) => getMountedDomNodes(r.mounted));
+    const firstNode = domNodes[0]!;
+    const parentNode = firstNode.parentNode!;
+    const startAnchor = (parentNode.ownerDocument || document).createComment(
+      "Sinwan-hyd-idx",
     );
+    const endAnchor = (parentNode.ownerDocument || document).createComment(
+      "/Sinwan-hyd-idx",
+    );
+    parentNode.insertBefore(startAnchor, firstNode);
+    const lastNode = domNodes[domNodes.length - 1]!;
+    if (lastNode.nextSibling) {
+      parentNode.insertBefore(endAnchor, lastNode.nextSibling);
+    } else {
+      parentNode.appendChild(endAnchor);
+    }
+
+    const block: MountedReactiveBlock = {
+      type: "reactive-block",
+      dispose: () => {},
+      children: records.map((r) => r.mounted),
+      startAnchor,
+      endAnchor,
+    };
+
+    const owner = getCurrentInstance();
+    let initialized = false;
+
+    const disposeEffect = effect(() => {
+      const newItems = resolve(props.each);
+      const newList = Array.isArray(newItems) ? newItems : [];
+      const currentRenderChild = props.children;
+
+      if (!initialized) {
+        initialized = true;
+        return;
+      }
+
+      if (typeof currentRenderChild !== "function") {
+        clearChildren(block);
+        while (records.length > 0) {
+          removeMountedNode(records.pop()!.mounted);
+        }
+        block.children = [];
+        if (owner) {
+          queueUpdatedHooks(owner);
+        }
+        return;
+      }
+
+      if (newList.length === 0) {
+        clearChildren(block);
+        while (records.length > 0) {
+          removeMountedNode(records.pop()!.mounted);
+        }
+        block.children = renderBlockContent(
+          props.fallback ?? null,
+          parentNode,
+          endAnchor,
+          null,
+          owner,
+        );
+        if (owner) {
+          fireMountedAndQueueUpdated(owner);
+        }
+        return;
+      }
+
+      if (records.length === 0 && block.children.length > 0) {
+        clearChildren(block);
+      }
+
+      // Update existing item signals (granular — only changed values trigger DOM updates)
+      const minLen = Math.min(records.length, newList.length);
+      for (let i = 0; i < minLen; i++) {
+        records[i].item.value = newList[i];
+      }
+
+      // Remove extra items
+      while (records.length > newList.length) {
+        const removed = records.pop()!;
+        removeMountedNode(removed.mounted);
+      }
+
+      // Add new items
+      for (let i = records.length; i < newList.length; i++) {
+        const itemSignal = signal(newList[i]);
+        const childNode = currentRenderChild(() => itemSignal.value, i);
+        const mounted = owner
+          ? withInstance(owner, () =>
+              renderNodeToDOM(childNode, parentNode, endAnchor, null),
+            )
+          : renderNodeToDOM(childNode, parentNode, endAnchor, null);
+        records.push({ item: itemSignal, mounted });
+      }
+
+      // Update block children references
+      block.children = records.map((r) => r.mounted);
+
+      if (owner) {
+        fireMountedAndQueueUpdated(owner);
+      }
+    });
+
+    block.dispose = disposeEffect;
+    return block;
   }
 
   if (isKeyElement(element)) {
@@ -592,7 +763,7 @@ function hydrateControlFlow(
         const newDynamic = createDynamicElement(element, newTag);
         return newDynamic;
       },
-      tag,
+      () => resolve((element.props as any).component),
     );
   }
 
@@ -1552,7 +1723,7 @@ function hydrateKey(
 function makeReactiveBlock(
   initialMounted: MountedNode,
   getContent: () => SinwanNode | null,
-  _initialValue: unknown,
+  getCompareValue?: () => unknown,
 ): MountedNode {
   // Get all DOM nodes belonging to the initial hydrated content
   const domNodes = getMountedDomNodes(initialMounted);
@@ -1584,6 +1755,7 @@ function makeReactiveBlock(
 
   const owner = getCurrentInstance();
   let isFirstRun = true;
+  let prevValue: unknown;
 
   const block: MountedReactiveBlock = {
     type: "reactive-block",
@@ -1594,6 +1766,50 @@ function makeReactiveBlock(
   };
 
   const disposeEffect = effect(() => {
+    // When a comparison getter is provided (Show, Dynamic), track only the
+    // value that should trigger a re-render. This mirrors the client-side
+    // renderShowBlock/renderDynamicBlock optimization and prevents a wrapping
+    // block from destroying/recreating its subtree when a computed `when`
+    // (or component `tag`) re-evaluates to the same value — e.g. a <Show>
+    // wrapping an <Index>/<For> whose `when` depends on the same list.
+    if (getCompareValue) {
+      const value = getCompareValue();
+
+      // Skip first run - DOM is already hydrated
+      if (isFirstRun) {
+        isFirstRun = false;
+        prevValue = value;
+        return;
+      }
+
+      // Value unchanged — leave the existing subtree (and its fine-grained
+      // reactivity) intact instead of re-rendering.
+      if (Object.is(value, prevValue)) {
+        return;
+      }
+      prevValue = value;
+
+      const content = getContent();
+      try {
+        clearChildren(block);
+        if (content != null) {
+          block.children = renderBlockContent(
+            content as SinwanNode,
+            parent,
+            endAnchor,
+            null,
+            owner,
+          );
+        } else {
+          block.children = [];
+        }
+        fireMountedAndQueueUpdated(owner);
+      } catch (e) {
+        console.error("[Sinwan hydration reactive block]", e);
+      }
+      return;
+    }
+
     // Calling getContent() reads reactive values, tracking dependencies
     const content = getContent();
 

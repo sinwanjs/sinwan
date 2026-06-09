@@ -182,12 +182,14 @@ context.eventBus.emit("request:event", data); // Isolated to this request
 ### When to Use Event Bus
 
 **Good use cases:**
+
 - Cross-component communication (far apart in tree)
 - Global signals (auth, notifications, socket messages)
 - Decoupled architecture patterns
 - Toast notifications, modal triggers
 
 **Avoid when:**
+
 - Simple parent-child communication → use props
 - UI state synchronization → use signals/stores
 - Predictable data flow needed → use store (Zustand, Redux, Sinwan stores)
@@ -197,10 +199,10 @@ context.eventBus.emit("request:event", data); // Isolated to this request
 Use `namespace:action` pattern for clarity:
 
 ```typescript
-"user:login" // User-related events
-"toast:show" // Toast notifications
-"socket:message" // Socket events
-"route:change" // Navigation events
+"user:login"; // User-related events
+"toast:show"; // Toast notifications
+"socket:message"; // Socket events
+"route:change"; // Navigation events
 ```
 
 ### Memory Management
@@ -227,17 +229,14 @@ interface UserEvents {
 }
 
 // Type-safe emitter
-function emit<K extends keyof UserEvents>(
-  event: K,
-  data: UserEvents[K]
-) {
+function emit<K extends keyof UserEvents>(event: K, data: UserEvents[K]) {
   globalEventBus.emit(event, data);
 }
 
 // Type-safe listener
 function on<K extends keyof UserEvents>(
   event: K,
-  handler: (data: UserEvents[K]) => void
+  handler: (data: UserEvents[K]) => void,
 ) {
   globalEventBus.on(event, handler);
 }
@@ -276,13 +275,13 @@ const LoginButton = cc(() => {
 
 // Component B - listens to event
 const UserProfile = cc(() => {
-  const [user, setUser] = signal<User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEvent("user:login", (userData) => {
     setUser(userData);
   });
 
-  return user ? <div>Welcome, {user.name}</div> : <div>Not logged in</div>;
+  return user ? <div>Welcome, {user().name}</div> : <div>Not logged in</div>;
 });
 ```
 
@@ -292,39 +291,47 @@ const UserProfile = cc(() => {
 
 ```typescript
 class SinwanEventBus {
-  on(event: string, listener: Listener): () => void
-  onNamespace(pattern: string, listener: Listener): () => void
-  off(event: string, listener: Listener): void
-  offNamespace(pattern: string, listener: Listener): void
-  emit(event: string, ...args: unknown[]): void
-  once(event: string, listener: Listener): () => void
-  clear(event?: string): void
-  listenerCount(event: string): number
-  hasListeners(event: string): boolean
+  on(event: string, listener: Listener): () => void;
+  onNamespace(pattern: string, listener: Listener): () => void;
+  off(event: string, listener: Listener): void;
+  offNamespace(pattern: string, listener: Listener): void;
+  emit(event: string, ...args: unknown[]): void;
+  once(event: string, listener: Listener): () => void;
+  clear(event?: string): void;
+  listenerCount(event: string): number;
+  hasListeners(event: string): boolean;
 }
 ```
 
 ### Hooks
 
 ```typescript
-function useEvent(event: string, handler: Listener, bus?: SinwanEventBus): void
-function useEventNamespace(pattern: string, handler: Listener, bus?: SinwanEventBus): void
-function useEventOnce(event: string, handler: Listener, bus?: SinwanEventBus): void
+function useEvent(event: string, handler: Listener, bus?: SinwanEventBus): void;
+function useEventNamespace(
+  pattern: string,
+  handler: Listener,
+  bus?: SinwanEventBus,
+): void;
+function useEventOnce(
+  event: string,
+  handler: Listener,
+  bus?: SinwanEventBus,
+): void;
 ```
 
 ### SSR Context
 
 ```typescript
 interface SSRContext {
-  eventBus: SinwanEventBus
-  state: Map<string, unknown>
+  eventBus: SinwanEventBus;
+  state: Map<string, unknown>;
 }
 
-function createSSRContext(): SSRContext
-function getSSRContext(): SSRContext | null
-function setSSRContext(context: SSRContext | null): SSRContext | null
-function withSSRContext<T>(context: SSRContext, fn: () => T): T
-function getCurrentEventBus(fallback: SinwanEventBus): SinwanEventBus
+function createSSRContext(): SSRContext;
+function getSSRContext(): SSRContext | null;
+function setSSRContext(context: SSRContext | null): SSRContext | null;
+function withSSRContext<T>(context: SSRContext, fn: () => T): T;
+function getCurrentEventBus(fallback: SinwanEventBus): SinwanEventBus;
 ```
 
 ## Examples
@@ -344,16 +351,16 @@ import { cc } from "sinwan/component";
 import { useEvent } from "sinwan/event";
 
 const ToastContainer = cc(() => {
-  const [toasts, setToasts] = signal<Toast[]>([]);
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
   useEvent("toast:show", (toast) => {
-    setToasts([...toasts, toast]);
+    setToasts([...toasts(), toast]);
   });
 
   return (
     <div>
       {toasts.map(toast => (
-        <div key={toast.id}>{toast.message}</div>
+        <div key={toast().id}>{() => toast().message}</div>
       ))}
     </div>
   );
@@ -375,11 +382,11 @@ import { cc } from "sinwan/component";
 import { useEventNamespace } from "sinwan/event";
 
 const ChatComponent = cc(() => {
-  const [messages, setMessages] = signal<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
 
   useEventNamespace("socket:*", (event, data) => {
     if (event === "socket:message") {
-      setMessages([...messages, data]);
+      setMessages([...messages(), data]);
     }
   });
 

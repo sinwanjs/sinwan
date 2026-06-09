@@ -632,6 +632,30 @@ const posts = useFetch<Post[]>("/api/posts", {
 }).json<Post[]>();
 ```
 
+### Relative URLs during SSR
+
+Server-side `fetch()` cannot resolve relative URLs like `/api/posts`. When using `renderToHydratableString`, pass `baseUrl` so `useFetch` can resolve relative URLs on the server:
+
+```ts
+const html = await renderToHydratableString(
+  App,
+  { initialPath: "/" },
+  { baseUrl: "http://localhost:3000" },
+);
+```
+
+`useFetch` automatically prepends the SSR `baseUrl` to relative URLs. Absolute URLs are left unchanged.
+
+### Two-pass SSR rendering
+
+`renderToHydratableString` uses a two-pass approach for `useFetch`:
+
+1. **First pass:** Renders the component tree, triggering `useFetch` executions. Pending promises are collected.
+2. **Await:** All pending fetches resolve and populate the SSR cache.
+3. **Second pass:** Re-renders the component tree with cached data available. The HTML now contains the fetched content instead of loading fallbacks.
+
+This means `useFetch` with `immediate: true` (the default) will automatically populate data during SSR without manual `execute()` calls.
+
 ---
 
 ## Type reference

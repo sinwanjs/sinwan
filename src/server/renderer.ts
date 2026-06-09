@@ -200,6 +200,11 @@ async function renderElement(element: SinwanElement): Promise<string> {
     return renderIsland(element as IslandElement);
   }
 
+  // Fragments — render children without wrapper
+  if (tag === "") {
+    return renderToString(children);
+  }
+
   if (
     tag === Show ||
     tag === For ||

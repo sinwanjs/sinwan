@@ -209,6 +209,11 @@ Hydration-aware functions emit HTML with **hydration markers** so the client `hy
 function renderToHydratableString<P>(
   component: SinwanComponent<P>,
   props?: P,
+  options?: {
+    identifierPrefix?: string;
+    out?: { fetchData?: Record<string, any> };
+    baseUrl?: string;
+  },
 ): Promise<string>;
 
 function renderNodeToHydratableString(node: SinwanNode): Promise<string>;
@@ -220,6 +225,12 @@ function streamHydratablePage(
 
 function streamHydratableNode(node: SinwanNode): ReadableStream<Uint8Array>;
 ```
+
+The `options` object on `renderToHydratableString` supports:
+
+- **`identifierPrefix`** — prefix for hydration markers when rendering multiple trees.
+- **`out.fetchData`** — receives serialized fetch cache data from `useFetch` calls during rendering. Useful for embedding hydration cache in the HTML response.
+- **`baseUrl`** — base URL for resolving relative fetch URLs during SSR. Required when `useFetch` uses relative URLs like `/api/posts`, because server-side `fetch()` cannot resolve them without a full origin.
 
 ```tsx
 import { renderToHydratableString } from "sinwan/react-server";

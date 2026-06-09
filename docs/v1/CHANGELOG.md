@@ -2,6 +2,21 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
 
+## [1.2.5] — Fragment SSR & Hydration Control-Flow Fixes
+
+Sinwan 1.2.5 fixes a bug where JSX Fragments (`<>...</>`) were incorrectly rendered as literal text in the non-hydratable SSR string renderer, and brings hydrated control-flow components to parity with client-side rendering. After SSR hydration, editing, adding, or removing a single list item no longer destroys and recreates the whole subtree — preserving focus, scroll position, component state, and event bindings.
+
+### Fixed
+
+- **Fragment Rendering in `renderer.ts`**: JSX Fragments (`tag === ""`) were falling through to the intrinsic element path in `renderElement`, producing escaped HTML like `&lt;&gt;...&lt;/&gt;`. Added an explicit fragment check to `renderElement` in `renderer.ts` so fragments render their children directly without a wrapper, matching the behavior of the streaming (`stream.ts`) and hydratable (`hydration-markers.ts`) renderers.
+- **`<Index>` Hydration Granular Updates**: Fixed hydrated `<Index>` re-executing its children callback and re-mounting every item whenever the source array changed. The hydration walker (`walk.ts`) now creates a per-position `Signal<T>` for each item and, on update, writes only the changed signals (`records[i].item.value = newList[i]`) — matching the client-side `renderIndexBlock`. Adding or removing items now only mounts/unmounts the affected rows.
+- **`<Show>` / `<Dynamic>` Hydration Re-render Guard**: Fixed hydrated `<Show>` (and `<Dynamic>`) destroying and recreating their entire subtree whenever an effect re-ran, even if the resolved value was unchanged. For example, a `<Show when={computed(() => items.length > 0)}>` wrapping a list would nuke the list on every item edit. `makeReactiveBlock` now accepts a comparison getter and skips re-rendering when the value (`when` / component `tag`) is unchanged via `Object.is`, mirroring the existing `renderShowBlock` / `renderDynamicBlock` optimizations.
+- **`<For>` Hydration Keyed Reconciliation**: Fixed hydrated `<For>` performing a full list destroy/recreate on any array change. `renderForBlock` now accepts an optional hydration seed (`ForHydrationSeed`) so the hydration walker can adopt the server-rendered DOM into keyed records and reuse the exact same keyed reconciler as the client renderer — reusing unchanged rows by key and re-rendering only changed/added/removed rows.
+- **`<For>` Single-Item Update Ordering**: Fixed the `renderForBlock` single-item fast path re-inserting a re-rendered row at the block end anchor, which moved any non-last edited row to the end of the list (e.g. `Abc` became `bcA`). The replacement is now inserted at the row's original DOM position. Affected both client-side and hydrated `<For>`.
+- **`<For>` Single-Item Update Missing `onMounted`**: Fixed the `renderForBlock` single-item fast path firing only updated hooks, so a newly-created row component never fired `onMounted`. It now calls `fireMountedAndQueueUpdated`, consistent with the initial-render and full-diff paths.
+
+---
+
 ## [1.2.4] — SSR Hydration & Streaming Renderer Fixes
 
 Sinwan 1.2.4 fixes critical race conditions in the SSR hydration renderer and hardens the streaming renderer with missing element type support and proper component root propagation.
