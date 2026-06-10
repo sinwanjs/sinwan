@@ -45,28 +45,33 @@ export function on<T extends (() => any) | Array<() => any>, U>(
 ): (prevValue?: U) => U | undefined {
   const isArray = Array.isArray(deps);
   const depArray: Array<() => any> = isArray ? deps : [deps];
+  const len = depArray.length;
 
-  let prevInputs: any[] = [];
+  const inputs: any[] = new Array(len);
+  const prevInputs: any[] = new Array(len);
   let initial = true;
 
   return (prevValue?: U): U | undefined => {
-    const inputs = depArray.map((dep) => dep());
+    for (let i = 0; i < len; i++) {
+      inputs[i] = depArray[i]();
+    }
 
     if (initial) {
       initial = false;
-      prevInputs = inputs;
-      if (options?.defer) {
-        return undefined;
-      }
+      for (let i = 0; i < len; i++) prevInputs[i] = inputs[i];
+      if (options?.defer) return undefined;
     } else if (depsAreEqual(inputs, prevInputs)) {
       return prevValue;
     }
 
-    const prev = prevInputs;
-    prevInputs = inputs;
+    const prevSnapshot: any[] = new Array(len);
+    for (let i = 0; i < len; i++) {
+      prevSnapshot[i] = prevInputs[i];
+      prevInputs[i] = inputs[i];
+    }
 
     const currentInput = isArray ? inputs : inputs[0];
-    const previousInput = isArray ? prev : prev[0];
+    const previousInput = isArray ? prevSnapshot : prevSnapshot[0];
 
     return untrack(() => fn(currentInput, previousInput, prevValue));
   };

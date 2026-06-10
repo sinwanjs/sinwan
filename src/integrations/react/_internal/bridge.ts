@@ -16,6 +16,7 @@ import {
 } from "../../../component/instance.ts";
 import { signal, type Signal } from "../../../reactivity/signal.ts";
 import type { Computed } from "../../../reactivity/computed.ts";
+import { GetterDependencyList } from "../_client.ts";
 
 // ─── Hook slot storage on the component instance ───────────
 
@@ -34,8 +35,8 @@ function getSlots(): HookSlots {
     if (typeof __DEV__ !== "undefined" && __DEV__) {
       console.warn(
         "Warning: Invalid hook call. Hooks can only be called inside the body of a component setup function.\n" +
-        "In SinwanJS, make sure you are not calling hooks inside event handlers, inside `setTimeout`/`setInterval`, " +
-        "or after an `await` in an async component. Hooks must be called synchronously at the top level of the component."
+          "In SinwanJS, make sure you are not calling hooks inside event handlers, inside `setTimeout`/`setInterval`, " +
+          "or after an `await` in an async component. Hooks must be called synchronously at the top level of the component.",
       );
     }
     throw new Error(
@@ -135,4 +136,24 @@ export function createStateGetter<T>(
     return Number(val);
   };
   return getter as StateGetter<T>;
+}
+
+/**
+ * Resolve dependencies for effects.
+ * @param deps
+ * @returns
+ */
+export function resolveDeps(
+  deps: GetterDependencyList | undefined,
+): any[] | undefined {
+  if (deps === undefined) return undefined;
+
+  const len = deps.length;
+  const resolved = new Array(len);
+  for (let i = 0; i < len; i++) {
+    const d = deps[i];
+    resolved[i] =
+      typeof d === "function" && (d as any)[STATE_GETTER_MARKER] ? d() : d;
+  }
+  return resolved;
 }

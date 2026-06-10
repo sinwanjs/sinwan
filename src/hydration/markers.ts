@@ -77,10 +77,17 @@ export function isTextCloseMarker(node: Comment): boolean {
  * Returns array of `[eventName, handlerIndex]` tuples.
  */
 export function parseEventAttr(value: string): [string, number][] {
-  return value.split(",").map((pair) => {
-    const [event, idx] = pair.split(":");
-    return [event!, parseInt(idx!, 10)];
-  });
+  const pairs = value.split(",");
+  const result = new Array<[string, number]>(pairs.length);
+
+  for (let i = 0; i < pairs.length; i++) {
+    const pair = pairs[i];
+    const colonIndex = pair.indexOf(":");
+
+    result[i] = [pair.slice(0, colonIndex), Number(pair.slice(colonIndex + 1))];
+  }
+
+  return result;
 }
 
 /**

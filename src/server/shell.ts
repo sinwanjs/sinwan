@@ -182,6 +182,13 @@ function normaliseOptions<P extends Record<string, unknown>>(
     );
   }
 
+  const rawScripts = options.scripts ?? [];
+  const len = rawScripts.length;
+  const scripts = new Array(len);
+  for (let i = 0; i < len; i++) {
+    scripts[i] = normaliseScript(rawScripts[i]);
+  }
+
   return {
     component: options.component,
     props: (options.props ?? ({} as P)) as P,
@@ -198,7 +205,7 @@ function normaliseOptions<P extends Record<string, unknown>>(
     containerTag: options.containerTag ?? "div",
     htmlAttrs: options.htmlAttrs ?? {},
     bodyAttrs: options.bodyAttrs ?? {},
-    scripts: (options.scripts ?? []).map(normaliseScript),
+    scripts,
     bootScript: options.bootScript ?? true,
     embedProps: options.embedProps !== false,
     serializeProps: options.serializeProps ?? defaultSerializeProps,

@@ -584,10 +584,15 @@ function hydrateControlFlow(
       parentNode.appendChild(endAnchor);
     }
 
+    const childrenArr = new Array(records.length);
+    for (let i = 0; i < records.length; i++) {
+      childrenArr[i] = records[i].mounted;
+    }
+
     const block: MountedReactiveBlock = {
       type: "reactive-block",
       dispose: () => {},
-      children: records.map((r) => r.mounted),
+      children: childrenArr,
       startAnchor,
       endAnchor,
     };
@@ -655,10 +660,15 @@ function hydrateControlFlow(
       parentNode.appendChild(endAnchor);
     }
 
+    const childrenArr = new Array(records.length);
+    for (let i = 0; i < records.length; i++) {
+      childrenArr[i] = records[i].mounted;
+    }
+
     const block: MountedReactiveBlock = {
       type: "reactive-block",
       dispose: () => {},
-      children: records.map((r) => r.mounted),
+      children: childrenArr,
       startAnchor,
       endAnchor,
     };
@@ -735,7 +745,11 @@ function hydrateControlFlow(
       }
 
       // Update block children references
-      block.children = records.map((r) => r.mounted);
+      const childrenArr = new Array(records.length);
+      for (let i = 0; i < records.length; i++) {
+        childrenArr[i] = records[i].mounted;
+      }
+      block.children = childrenArr;
 
       if (owner) {
         fireMountedAndQueueUpdated(owner);
