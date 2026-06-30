@@ -51,6 +51,7 @@ import {
   type ComponentInstance,
 } from "../component/instance.ts";
 import { getActiveSuspenseBoundary } from "./suspense-boundary.ts";
+import { resolveLatestComponent } from "../hmr/component-registry.ts";
 
 // Void elements — no children, self-closing
 const VOID_ELEMENTS = new Set([
@@ -229,6 +230,14 @@ function renderComponentToDOM(
   anchor: Node | null,
   namespace: string | null,
 ): MountedComponent {
+  // DEV only: Fast Refresh — resolve to the latest hot-swapped version of this
+  // component. A parent module may still reference the pre-edit function via a
+  // stale ESM import binding; this maps it to the freshest code. In production
+  // this branch is dead-code-eliminated.
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    component = resolveLatestComponent(component);
+  }
+
   // Create instance with parent context
   const parentInstance = getCurrentInstance();
   const instance: ComponentInstance = createComponentInstance(
@@ -240,6 +249,15 @@ function renderComponentToDOM(
   // Register as child of parent
   if (parentInstance) {
     parentInstance.children.push(instance);
+  }
+
+  // DEV only: HMR hook — inject saved hook_slots / signal_slots into newly
+  // created child instances BEFORE the component function runs.
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    const hmrHook = (globalThis as any)[
+      Symbol.for("sinwan.hmr.onChildCreated")
+    ];
+    if (hmrHook) hmrHook(instance);
   }
 
   // Set this instance as current during BOTH setup AND rendering,

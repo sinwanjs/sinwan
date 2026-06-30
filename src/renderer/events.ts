@@ -13,13 +13,6 @@ import { domOps } from "./dom-ops.ts";
 import type { CleanupFn } from "../reactivity/index.ts";
 
 /**
- * React-to-DOM event name overrides.
- */
-const EVENT_NAME_MAP: Record<string, string> = {
-  doubleclick: "dblclick",
-};
-
-/**
  * Check if a prop key is an event handler (starts with "on").
  * Note: this will match any prop beginning with "on", but bindEvents()
  * guards against false positives by requiring the value to be a function.
@@ -30,11 +23,10 @@ export function isEventProp(key: string): boolean {
 
 /**
  * Extract the DOM event name from a prop key.
- * e.g., "onClick" → "click", "onMouseEnter" → "mouseenter"
+ * e.g., "onclick" → "click", "onmouseenter" → "mouseenter"
  */
 export function toEventName(key: string): string {
-  const raw = key.slice(2).toLowerCase();
-  return EVENT_NAME_MAP[raw] ?? raw;
+  return key.slice(2).toLowerCase();
 }
 
 /**

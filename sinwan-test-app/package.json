@@ -4,13 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --hot src/index.ts",
-    "spa": "bun --hot src/spa/server.ts",
-    "start": "NODE_ENV=production bun src/index.ts",
-    "build": "bun run build.ts"
+    "dev": "bun --hot src/server.ts"
   },
   "dependencies": {
-    "bun-plugin-sinwan": "file:../packages/bun-plugin-sinwan",
+    "bun-plugin-sinwan": "link:bun-plugin-sinwan",
     "bun-plugin-tailwind": "^0.1.2",
     "mongoose": "^9.6.2",
     "sinwan": "link:sinwan",

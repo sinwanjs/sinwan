@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { signal, computed } from "../src/reactivity/index.ts";
+import { signal } from "../src/reactivity/signal.ts";
+import { computed } from "../src/reactivity/index.ts";
 import { cc } from "../src/component/create.ts";
 import {
   Show,

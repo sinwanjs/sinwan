@@ -1,7 +1,14 @@
 import { domOps } from "./dom-ops.ts";
 import { isReactive, effect, resolve } from "../reactivity/index.ts";
 import type { CleanupFn } from "../reactivity/index.ts";
-import { getCurrentInstance } from "../component/instance.ts";
+import { renderNodeToDOM } from "./render-children.ts";
+import { setSingleAttribute } from "./attributes.ts";
+import {
+  DEFAULT_TEMPLATE_SLOT_PROTOCOL,
+  type TemplateSlot,
+  type TemplateDef,
+} from "./template-protocol.ts";
+import type { SinwanNode } from "../types.ts";
 
 /** Runtime symbol to identify compiler-generated template results. */
 export const SINWAN_TEMPLATE = Symbol.for("sinwan.template");
@@ -13,20 +20,6 @@ export interface SinwanTemplateResult {
   /** Disposer functions for reactive bindings and event listeners. */
   disposers: CleanupFn[];
 }
-
-interface TemplateSlot {
-  path: number[];
-  type: string;
-  name?: string;
-}
-
-interface TemplateDef {
-  html: string;
-  slots: TemplateSlot[];
-}
-
-const templateEl =
-  typeof document !== "undefined" ? document.createElement("template") : null;
 
 /** Check if a value is a compiler-generated template result. */
 export function isTemplateResult(
@@ -44,10 +37,14 @@ export function _$createTemplate(
   def: TemplateDef,
   dynamics: unknown[],
 ): SinwanTemplateResult {
-  if (!templateEl) {
+  if (typeof document === "undefined") {
     throw new Error("_$createTemplate can only be used in the browser");
   }
 
+  // Create a fresh template element each call so it belongs to the current
+  // document. A module-level cache is risky in tests / SSR environments where
+  // the global document is swapped between calls.
+  const templateEl = document.createElement("template");
   templateEl.innerHTML = def.html;
   const root = templateEl.content.cloneNode(true) as DocumentFragment;
   const disposers: CleanupFn[] = [];
@@ -62,48 +59,39 @@ export function _$createTemplate(
 
     if (slot.type === "child") {
       const comment = findCommentMarker(target, slot.path);
-      if (comment && value != null) {
-        if (isReactive(value)) {
-          const text = domOps.createTextNode("");
-          comment.parentNode?.replaceChild(text, comment);
-          const dispose = effect(() => {
-            text.textContent = String(resolve(value));
-          });
-          disposers.push(dispose);
-          const instance = getCurrentInstance();
-          if (instance) instance.effects.push(dispose);
-        } else if (typeof value === "string" || typeof value === "number") {
-          const text = domOps.createTextNode(String(value));
-          comment.parentNode?.replaceChild(text, comment);
-        } else if (value instanceof Node) {
-          comment.parentNode?.replaceChild(value, comment);
+      if (comment) {
+        const parent = comment.parentNode;
+        if (parent) {
+          const mounted = renderNodeToDOM(
+            value as SinwanNode,
+            parent,
+            comment,
+            null,
+          );
+          comment.parentNode?.removeChild(comment);
+          if (
+            mounted &&
+            "dispose" in mounted &&
+            typeof (mounted as any).dispose === "function"
+          ) {
+            disposers.push((mounted as any).dispose);
+          }
         }
       }
     } else if (slot.type === "attr" && slot.name) {
       if (target instanceof Element) {
         const attrName = slot.name;
+        const state =
+          attrName === "style" || attrName === "class"
+            ? { previousStyleProps: new Set<string>() }
+            : undefined;
         if (isReactive(value)) {
           const dispose = effect(() => {
-            const resolved = resolve(value);
-            if (resolved == null || resolved === false) {
-              domOps.removeAttribute(target, attrName);
-            } else if (resolved === true) {
-              domOps.setAttribute(target, attrName, "");
-            } else {
-              domOps.setAttribute(target, attrName, String(resolved));
-            }
+            setSingleAttribute(target, attrName, resolve(value), state);
           });
           disposers.push(dispose);
-          const instance = getCurrentInstance();
-          if (instance) instance.effects.push(dispose);
         } else {
-          if (value == null || value === false) {
-            domOps.removeAttribute(target, attrName);
-          } else if (value === true) {
-            domOps.setAttribute(target, attrName, "");
-          } else {
-            domOps.setAttribute(target, attrName, String(value));
-          }
+          setSingleAttribute(target, attrName, value, state);
         }
       }
     } else if (slot.type === "event" && slot.name) {
@@ -136,13 +124,19 @@ function walkToSlot(root: Node, path: number[]): Node {
   return node;
 }
 
-function findCommentMarker(node: Node, path: number[]): Comment | null {
-  if (node instanceof Comment && /^s:\d+$/.test(node.data)) {
+function findCommentMarker(node: Node, _path: number[]): Comment | null {
+  if (
+    node instanceof Comment &&
+    DEFAULT_TEMPLATE_SLOT_PROTOCOL.decodeSlot(node) !== null
+  ) {
     return node;
   }
   if (node instanceof Element) {
     for (const child of node.childNodes) {
-      if (child instanceof Comment && /^s:\d+$/.test(child.data)) {
+      if (
+        child instanceof Comment &&
+        DEFAULT_TEMPLATE_SLOT_PROTOCOL.decodeSlot(child) !== null
+      ) {
         return child;
       }
     }

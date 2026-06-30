@@ -472,13 +472,6 @@ describe("renderToReadableStream — Attributes", () => {
     );
     expect(await streamToString(stream)).toContain('aria-label="label"');
   });
-
-  it("preserves className as class attribute", async () => {
-    const stream = await renderToReadableStream(
-      div({ className: "foo" }, "cls"),
-    );
-    expect(await streamToString(stream)).toContain('class="foo"');
-  });
 });
 
 // ─── Hydration markers ──────────────────────────────────────────────────────

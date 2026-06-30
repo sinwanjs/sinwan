@@ -7,7 +7,8 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
-import { signal, nextTick } from "../../../../src/reactivity/index.ts";
+import { signal } from "../../../../src/reactivity/signal.ts";
+import { nextTick } from "../../../../src/reactivity/index.ts";
 import {
   Key,
   Switch,

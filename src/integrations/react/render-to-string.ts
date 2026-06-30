@@ -1,4 +1,8 @@
 import { renderNodeToHydratableString } from "../../server/hydration-markers.ts";
+import {
+  createComponentInstance,
+  setCurrentInstance,
+} from "../../component/instance.ts";
 import type { ReactNode } from "./_types/core.ts";
 import type { SinwanNode } from "../../types.ts";
 
@@ -25,5 +29,15 @@ export function renderToString(
   node: ReactNode,
   options?: { identifierPrefix?: string },
 ): Promise<string> {
-  return renderNodeToHydratableString(node as SinwanNode, options);
+  // Create a temporary root instance so `useId` works even when the
+  // rendered tree is a plain function component (not a cc component).
+  const dummy = createComponentInstance(() => null, {}, null);
+  dummy.identifierPrefix = options?.identifierPrefix ?? "";
+  const prev = setCurrentInstance(dummy);
+
+  try {
+    return renderNodeToHydratableString(node as SinwanNode, options);
+  } finally {
+    setCurrentInstance(prev);
+  }
 }

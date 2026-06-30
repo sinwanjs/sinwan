@@ -1,11 +1,16 @@
 import { escapeHtml } from "../common/escaper.ts";
 
-const PROP_ALIASES: Record<string, string> = {
-  className: "class",
-  htmlFor: "for",
-  tabIndex: "tabindex",
-  crossOrigin: "crossorigin",
-};
+// HTML enumerated attributes that accept "true" / "false" rather than being
+// boolean presence/absence attributes. For these, value === true must render as
+// the string "true" (e.g. draggable="true"), not a bare attribute name.
+const ENUMERATED_BOOLEAN_ATTRIBUTES = new Set([
+  "draggable",
+  "contentEditable",
+  "contenteditable",
+  "spellcheck",
+  "autocorrect",
+  "writingsuggestions",
+]);
 
 // Attributes that accept URLs and should have dangerous protocols blocked.
 const URL_ATTRIBUTES = new Set([
@@ -36,14 +41,19 @@ function hasDangerousProtocol(value: string): boolean {
 }
 
 export function renderServerAttribute(key: string, value: unknown): string {
-  const attrName = PROP_ALIASES[key] ?? key;
+  // JSX writes the label association attribute as htmlFor; render the
+  // standard HTML attribute name.
+  if (key === "htmlFor") key = "for";
 
   if (value == null || value === false) {
     return "";
   }
 
   if (value === true) {
-    return ` ${attrName}`;
+    if (ENUMERATED_BOOLEAN_ATTRIBUTES.has(key)) {
+      return ` ${key}="true"`;
+    }
+    return ` ${key}`;
   }
 
   // Skip non-renderable values
@@ -56,32 +66,28 @@ export function renderServerAttribute(key: string, value: unknown): string {
   if (typeof value === "number" && !Number.isFinite(value)) {
     return "";
   }
-  if (
-    typeof value === "object" &&
-    attrName !== "class" &&
-    attrName !== "style"
-  ) {
+  if (typeof value === "object" && key !== "class" && key !== "style") {
     return "";
   }
 
   const attrValue =
-    attrName === "class" && typeof value === "object"
+    key === "class" && typeof value === "object"
       ? stringifyClass(value)
-      : attrName === "style" && typeof value === "object"
+      : key === "style" && typeof value === "object"
         ? stringifyStyle(value)
         : String(value);
 
   // Block dangerous URLs in sensitive attributes (XSS prevention)
   if (
-    URL_ATTRIBUTES.has(attrName) &&
+    URL_ATTRIBUTES.has(key) &&
     typeof attrValue === "string" &&
     hasDangerousProtocol(attrValue)
   ) {
-    console.warn(`[Sinwan] Blocked dangerous URL in ${attrName}:`, attrValue);
+    console.warn(`[Sinwan] Blocked dangerous URL in ${key}:`, attrValue);
     return "";
   }
 
-  return ` ${attrName}="${escapeHtml(attrValue)}"`;
+  return ` ${key}="${escapeHtml(attrValue)}"`;
 }
 
 function stringifyClass(value: object): string {

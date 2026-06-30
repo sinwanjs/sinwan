@@ -20,6 +20,12 @@ export {
   SINWAN_TEMPLATE,
 } from "./template.ts";
 export type { SinwanTemplateResult } from "./template.ts";
+export { DEFAULT_TEMPLATE_SLOT_PROTOCOL } from "./template-protocol.ts";
+export type {
+  TemplateSlot,
+  TemplateDef,
+  TemplateSlotProtocol,
+} from "./template-protocol.ts";
 
 // Attribute & event helpers
 export { applyAttributes } from "./attributes.ts";

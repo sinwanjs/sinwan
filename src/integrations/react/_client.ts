@@ -52,40 +52,19 @@ export type {
   PreinitModuleOptions,
 } from "./resource-hints.ts";
 export { useFormStatus } from "./use-form-status.ts";
-export {
-  Form,
-  Input,
-  Button,
-  Select,
-  Textarea,
-  Option,
-  Progress,
-  Link,
-  Meta,
-  Script,
-  Style,
-  Title,
-  _resetLinkRegistry,
-  _resetStyleRegistry,
-} from "./elements.ts";
-export type {
-  FormActionProps,
-  InputProps,
-  ButtonProps,
-  OptionProps,
-  SelectProps,
-  TextareaProps,
-  ProgressProps,
-  LinkProps,
-  MetaProps,
-  ScriptProps,
-  StyleProps,
-  TitleProps,
-} from "./elements.ts";
 export { createRoot } from "./create-root.ts";
 export type { Root, CreateRootOptions } from "./create-root.ts";
 export { hydrateRoot } from "./hydrate-root.ts";
 export type { CreateRootOptions as HydrateRootOptions } from "./create-root.ts";
+
+// Fast Refresh runtime — used ONLY by the Vite/Bun plugin's injected HMR
+// footer (DEV). `$$sinwanReplace(oldFn, newFn)` records a hot-swapped
+// component; `$$sinwanRefresh()` re-renders every mounted root with the
+// latest code. Not part of the public API surface; safe no-ops if misused.
+export {
+  replaceComponent as $$sinwanReplace,
+  rerenderRefreshRoots as $$sinwanRefresh,
+} from "../../hmr/component-registry.ts";
 
 // Islands client runtime — `hydrateIslands(registry, root?)` finds every
 // `<… data-sinwan-island="name">` and calls `hydrate()` against the matching

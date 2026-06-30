@@ -259,6 +259,9 @@
     "type": "git",
     "url": "https://github.com/sinwanjs/sinwan"
   },
+  "dependencies": {
+    "csstype": "^3.1.3"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "happy-dom": "^20.9.0"

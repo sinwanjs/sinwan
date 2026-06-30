@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { signal } from "../src/reactivity/index.ts";
+import { signal } from "../src/reactivity/signal.ts";
 import { nextTick } from "../src/reactivity/scheduler.ts";
 import { createFetch, useFetch } from "../src/hook/index.ts";
 

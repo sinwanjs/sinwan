@@ -21,8 +21,6 @@ import {
   preinit,
   preinitModule,
   useFormStatus,
-  Form,
-  Input,
   createRoot,
   hydrateRoot,
   act,
@@ -166,23 +164,6 @@ describe("useFormStatus", () => {
     expect(status.data()).toBeNull();
     expect(status.method()).toBeNull();
     expect(status.action()).toBeNull();
-  });
-});
-
-describe("element wrappers", () => {
-  it("Input passes through to <input>", () => {
-    const App = cc(() => Input({ type: "text", value: "hi" } as any));
-    mount(App, container);
-    const input = container.querySelector(
-      "input",
-    ) as unknown as HTMLInputElement;
-    expect(input?.tagName.toLowerCase()).toBe("input");
-  });
-
-  it("Form with string action renders a form element", () => {
-    const App = cc(() => Form({ action: "/submit", children: el("button") }));
-    mount(App, container);
-    expect(container.querySelector("form")).toBeTruthy();
   });
 });
 

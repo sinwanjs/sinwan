@@ -1,5 +1,12 @@
 import { describe, it, expect } from "bun:test";
-import { jsx, jsxs, jsxDEV, Fragment, HtmlEscapedString, raw } from "../src/jsx/jsx-runtime.ts";
+import {
+  jsx,
+  jsxs,
+  jsxDEV,
+  Fragment,
+  HtmlEscapedString,
+  raw,
+} from "../src/jsx/jsx-runtime.ts";
 
 describe("HtmlEscapedString", () => {
   it("returns the value via toString()", () => {
@@ -31,13 +38,23 @@ describe("jsxDEV", () => {
   });
 
   it("flattens static children", () => {
-    const element = jsxDEV("div", { children: ["a", ["b", "c"]] }, null, true);
-    expect(element.children).toEqual(["a", "b", "c"]);
+    const element = jsxDEV(
+      "div",
+      { children: ["a", [jsx("span", {}), "c"]] },
+      null,
+      true,
+    );
+    expect(element.children).toEqual(["a", jsx("span", {}), "c"]);
   });
 
   it("normalizes non-static children", () => {
     const element = jsxDEV("div", { children: "text" }, null, false);
     expect(element.children).toEqual(["text"]);
+  });
+
+  it("merges adjacent text children", () => {
+    const element = jsxDEV("div", { children: ["a", "b", "c"] }, null, true);
+    expect(element.children).toEqual(["abc"]);
   });
 });
 
@@ -48,32 +65,47 @@ describe("jsx", () => {
   });
 
   it("normalizes nested arrays", () => {
-    const element = jsx("div", { children: ["a", ["b", ["c"]]] });
-    expect(element.children).toEqual(["a", "b", "c"]);
+    const element = jsx("div", { children: ["a", [jsx("span", {}), ["c"]]] });
+    expect(element.children).toEqual(["a", jsx("span", {}), "c"]);
   });
 
   it("normalizes null children", () => {
     const element = jsx("div", {});
     expect(element.children).toEqual([]);
   });
+
+  it("merges adjacent text children", () => {
+    const element = jsx("div", { children: ["a", ["b", "c"]] });
+    expect(element.children).toEqual(["abc"]);
+  });
 });
 
 describe("jsxs", () => {
   it("flattens array children", () => {
-    const element = jsxs("ul", { children: ["a", ["b", "c"]] });
-    expect(element.children).toEqual(["a", "b", "c"]);
+    const element = jsxs("ul", { children: ["a", [jsx("span", {}), "c"]] });
+    expect(element.children).toEqual(["a", jsx("span", {}), "c"]);
   });
 
   it("normalizes non-array children", () => {
     const element = jsxs("p", { children: "text" });
     expect(element.children).toEqual(["text"]);
   });
+
+  it("merges adjacent text children", () => {
+    const element = jsxs("ul", { children: ["a", ["b", "c"]] });
+    expect(element.children).toEqual(["abc"]);
+  });
 });
 
 describe("buildElement fragments", () => {
   it("returns an empty tag for Fragment", () => {
-    const element = jsx(Fragment, { children: ["a", "b"] });
+    const element = jsx(Fragment, { children: ["a", jsx("span", {}), "b"] });
     expect(element.tag).toBe("");
-    expect(element.children).toEqual(["a", "b"]);
+    expect(element.children).toEqual(["a", jsx("span", {}), "b"]);
+  });
+
+  it("merges adjacent text children in fragments", () => {
+    const element = jsx(Fragment, { children: ["a", "b"] });
+    expect(element.children).toEqual(["ab"]);
   });
 });

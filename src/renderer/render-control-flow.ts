@@ -679,11 +679,13 @@ export function renderForBlock<T>(
         const nodesI = getMountedDomNodes(recordI.mounted);
         const nodesJ = getMountedDomNodes(recordJ.mounted);
         if (nodesI.length === 1 && nodesJ.length === 1) {
-          const nodeI = nodesI[0]!;
-          const nodeJ = nodesJ[0]!;
+          const nodeI = nodesI[0];
+          const nodeJ = nodesJ[0];
+          if (!nodeI || !nodeJ) return;
           const nextI = nodeI.nextSibling;
           const nextJ = nodeJ.nextSibling;
-          const parentNode = nodeI.parentNode!;
+          const parentNode = nodeI.parentNode;
+          if (!parentNode) return;
           // determine if I is before J
           let iBeforeJ = false;
           let n: Node | null = nodeI;
@@ -749,10 +751,11 @@ export function renderForBlock<T>(
             // Inserting at block.endAnchor would move the row to the end of
             // the list — incorrect for any row that isn't last.
             const oldNodes = getMountedDomNodes(oldRecord.mounted);
-            const insertAnchor =
-              oldNodes.length > 0
-                ? oldNodes[oldNodes.length - 1]!.nextSibling
-                : block.endAnchor;
+            const lastOldNode =
+              oldNodes.length > 0 ? oldNodes[oldNodes.length - 1] : null;
+            const insertAnchor = lastOldNode
+              ? lastOldNode.nextSibling
+              : block.endAnchor;
             removeMountedNode(oldRecord.mounted);
             oldRecord.mounted = withOptionalInstance(owner, () =>
               renderNodeToDOM(

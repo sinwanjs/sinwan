@@ -108,4 +108,6 @@ export interface AppInstance {
   root: MountedNode;
   /** Unmount the entire app — cleans up effects, events, and DOM. */
   unmount(): void;
+  /** The root ComponentInstance (used internally by HMR hot-swap). */
+  _instance?: ComponentInstance;
 }

@@ -32,12 +32,23 @@ import {
  * // later...
  * app.unmount();
  */
+interface AppContainer extends Element {
+  __sinwan_app__?: AppInstance;
+}
+
 export function mount(
   component: SinwanComponent<any>,
   container: Element,
   props?: Record<string, unknown>,
   options?: { identifierPrefix?: string },
 ): AppInstance {
+  const appContainer = container as AppContainer;
+
+  // Unmount previous instance if this container is being reused (e.g., during HMR)
+  if (appContainer.__sinwan_app__) {
+    appContainer.__sinwan_app__.unmount();
+  }
+
   // Clear the container
   container.innerHTML = "";
 
@@ -86,14 +97,18 @@ export function mount(
         },
       );
 
-      return {
+      const app: AppInstance = {
         root: rootRef.current,
         unmount() {
           fireUnmountedHooks(instance);
           unmountNode(rootRef.current);
           container.innerHTML = "";
+          delete appContainer.__sinwan_app__;
         },
+        _instance: instance,
       };
+      appContainer.__sinwan_app__ = app;
+      return app;
     } else if (result && typeof result === "object" && "tag" in result) {
       root = renderElementToDOM(result, container);
     } else {
@@ -116,7 +131,7 @@ export function mount(
   // Fire onMounted hooks (bottom-up: children first, then parent)
   fireMountedHooks(instance);
 
-  return {
+  const app: AppInstance = {
     root,
     unmount() {
       // Fire onUnmounted hooks and dispose all effects
@@ -124,8 +139,12 @@ export function mount(
       // Clean up DOM tree
       unmountNode(root);
       container.innerHTML = "";
+      delete appContainer.__sinwan_app__;
     },
+    _instance: instance,
   };
+  appContainer.__sinwan_app__ = app;
+  return app;
 }
 
 /**
@@ -133,17 +152,25 @@ export function mount(
  * Lower-level than mount() — doesn't call a component function.
  */
 export function render(node: SinwanNode, container: Element): AppInstance {
+  const appContainer = container as AppContainer;
+
+  if (appContainer.__sinwan_app__) {
+    appContainer.__sinwan_app__.unmount();
+  }
   container.innerHTML = "";
 
   const root = renderNodeToDOM(node, container);
 
-  return {
+  const app: AppInstance = {
     root,
     unmount() {
       unmountNode(root);
       container.innerHTML = "";
+      delete appContainer.__sinwan_app__;
     },
   };
+  appContainer.__sinwan_app__ = app;
+  return app;
 }
 
 export { unmountNode } from "./unmount.ts";

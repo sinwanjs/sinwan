@@ -164,14 +164,16 @@ describe("useTitle — Caveats", () => {
       useTitle("New Title");
       return el("div");
     });
-    mount(App, container);
+    const container1 = win.document.createElement("div") as unknown as HTMLElement;
+    mount(App, container1);
     expect(win.document.title).toBe("New Title");
 
     // Simulate external title change
     win.document.title = "Externally Changed";
 
     // A new mount captures the CURRENT title at mount time
-    const app = mount(App, container);
+    const container2 = win.document.createElement("div") as unknown as HTMLElement;
+    const app = mount(App, container2);
     app.unmount();
     // Restores to the title captured at THIS mount time
     expect(win.document.title).toBe("Externally Changed");
@@ -225,10 +227,13 @@ describe("useTitle — Edge cases", () => {
       return el("div");
     });
 
-    const appA = mount(A, container);
+    const container1 = win.document.createElement("div") as unknown as HTMLElement;
+    const container2 = win.document.createElement("div") as unknown as HTMLElement;
+
+    const appA = mount(A, container1);
     expect(win.document.title).toBe("Title A");
 
-    const appB = mount(B, container);
+    const appB = mount(B, container2);
     expect(win.document.title).toBe("Title B");
 
     appB.unmount();

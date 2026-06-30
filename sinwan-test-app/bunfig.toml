@@ -1,4 +1,5 @@
+preload = ["./src/sinwan-preload.ts"]
 
 [serve.static]
-plugins = ["bun-plugin-tailwind"]
+plugins = ["bun-plugin-tailwind", "bun-plugin-sinwan"]
 env = "BUN_PUBLIC_*"

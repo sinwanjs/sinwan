@@ -1,6 +1,7 @@
 
 import { describe, it, expect } from "bun:test";
-import { signal, computed, effect, batch, nextTick } from "../src/reactivity/index.ts";
+import { signal } from "../src/reactivity/signal.ts";
+import { computed, effect, batch, nextTick } from "../src/reactivity/index.ts";
 
 describe("Reactivity — Stress Tests", () => {
   it("should handle deep dependency chains (1000 nodes)", async () => {

@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
-import { signal } from "../src/reactivity/index.ts";
+import { signal } from "../src/reactivity/signal.ts";
 import { cc } from "../src/component/create.ts";
 import { mount } from "../src/renderer/mount.ts";
 import { useState } from "../src/integrations/react/use-state.ts";

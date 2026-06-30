@@ -9,11 +9,9 @@ import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import {
-  useFormStatus,
-  Form,
-} from "../../../../src/integrations/react/_client.ts";
+import { useFormStatus } from "../../../../src/integrations/react/_client.ts";
 import { _setFormStatus } from "../../../../src/integrations/react/use-form-status.ts";
+import { jsx } from "../../../../src/jsx/jsx-runtime.ts";
 import {
   getCurrentInstance,
   setCurrentInstance,
@@ -93,7 +91,7 @@ describe("useFormStatus — Usage / Display a pending state", () => {
     });
 
     const App = cc(() =>
-      Form({
+      jsx("form", {
         action: async () => {
           await new Promise<void>((res) => {
             resolveAction = res;
@@ -145,7 +143,7 @@ describe("useFormStatus — Usage / Read the form data", () => {
     });
 
     const App = cc(() =>
-      Form({
+      jsx("form", {
         action: async () => {},
         method: "post",
         children: el(Submit as any, {}),
@@ -190,7 +188,7 @@ describe("useFormStatus — Caveats", () => {
     let status: any;
     const App = cc(() => {
       status = useFormStatus();
-      return Form({
+      return jsx("form", {
         action: "/submit",
         children: el("button", { type: "submit" }, "Go"),
       });
@@ -209,7 +207,7 @@ describe("useFormStatus — Caveats", () => {
 
     const InnerForm = cc(() => {
       childStatus = useFormStatus();
-      return Form({
+      return jsx("form", {
         action: "/inner",
         children: el("button", { type: "submit" }, "Inner"),
       });
@@ -217,7 +215,7 @@ describe("useFormStatus — Caveats", () => {
 
     const App = cc(() => {
       parentStatus = useFormStatus();
-      return Form({
+      return jsx("form", {
         action: "/outer",
         children: el(InnerForm as any, {}),
       });
@@ -258,7 +256,7 @@ describe("useFormStatus — Edge cases", () => {
     });
 
     const App = cc(() =>
-      Form({
+      jsx("form", {
         action: async () => {
           callCount++;
           await new Promise<void>((res) => queueMicrotask(() => res()));
@@ -295,7 +293,7 @@ describe("useFormStatus — Edge cases", () => {
     let status: any;
     const App = cc(() => {
       status = useFormStatus();
-      return Form({
+      return jsx("form", {
         action: "/post",
         children: el("button", { type: "submit" }, "Go"),
       });

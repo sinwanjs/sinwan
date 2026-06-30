@@ -10,18 +10,27 @@ export type {
   HydratedIsland,
 } from "./islands.ts";
 
+export type { HydrationAdapter } from "./adapter.ts";
+export { DEFAULT_HYDRATION_ADAPTER } from "./markers.ts";
+
 export {
   COMP_ID_ATTR,
   COMP_ID_PREFIX,
   TEXT_MARKER_OPEN,
   TEXT_MARKER_CLOSE,
+  FUNCTION_MARKER_OPEN,
+  FUNCTION_MARKER_CLOSE,
   EVENT_ATTR,
   compId,
   textMarkerOpen,
   textMarkerCloseStr,
+  functionMarkerOpen,
+  functionMarkerCloseStr,
   eventAttrValue,
   parseTextOpenMarker,
   isTextCloseMarker,
+  isFunctionOpenMarker,
+  isFunctionCloseMarker,
   parseEventAttr,
   parseCompId,
 } from "./markers.ts";

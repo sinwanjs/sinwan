@@ -6,7 +6,8 @@
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
-import { signal, computed, nextTick } from "../src/reactivity/index.ts";
+import { signal } from "../src/reactivity/signal.ts";
+import { computed, nextTick } from "../src/reactivity/index.ts";
 import { mount } from "../src/renderer/mount.ts";
 import { cc } from "../src/component/create.ts";
 import { onMounted, onUnmounted } from "../src/component/lifecycle.ts";

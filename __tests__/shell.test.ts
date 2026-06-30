@@ -16,7 +16,7 @@
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
-import { signal } from "../src/reactivity/index.ts";
+import { signal } from "../src/reactivity/signal.ts";
 import { hydrate } from "../src/hydration/hydrate.ts";
 import { cc } from "../src/component/create.ts";
 import { renderShell, streamShell } from "../src/server/shell.ts";
@@ -197,7 +197,7 @@ describe("renderShell", () => {
       component: App,
       lang: "fr",
       htmlAttrs: { dir: "rtl" },
-      bodyAttrs: { className: "dark" },
+      bodyAttrs: { class: "dark" },
     });
     expect(html).toContain('<html lang="fr" dir="rtl">');
     expect(html).toContain('<body class="dark">');

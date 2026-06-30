@@ -3,9 +3,8 @@
 /**
  * SinwanJS Client Renderer — Attribute Handling
  *
- * Maps JSX props to DOM attributes and properties.
- * Handles special cases: className→class, htmlFor→for,
- * style objects, boolean attributes, and reactive attributes.
+ * Applies native DOM props to elements.
+ * Handles special cases: style objects, boolean attributes, and reactive attributes.
  */
 
 import { domOps } from "./dom-ops.ts";
@@ -36,14 +35,17 @@ export const DOM_PROPERTIES = new Set([
   "indeterminate",
 ]);
 
-// Prop name aliases
-export const PROP_ALIASES: Record<string, string> = {
-  className: "class",
-  htmlFor: "for",
-  tabIndex: "tabindex",
-  crossOrigin: "crossorigin",
-  httpEquiv: "http-equiv",
-};
+// HTML enumerated attributes that accept "true" / "false" rather than being
+// boolean presence/absence attributes. For these, value === true must render as
+// the string "true" (e.g. draggable="true"), not a bare attribute name.
+const ENUMERATED_BOOLEAN_ATTRIBUTES = new Set([
+  "draggable",
+  "contentEditable",
+  "contenteditable",
+  "spellcheck",
+  "autocorrect",
+  "writingsuggestions",
+]);
 
 interface AttributeBindingState {
   previousStyleProps: Set<string>;
@@ -78,11 +80,9 @@ export function applyAttributes(
 
     const value = props[key];
 
-    const attrName = resolveAttributeName(key);
-    const isComplex = attrName === "class" || attrName === "style";
+    const isComplex = key === "class" || key === "style";
 
     if (isReactive(value) || (isComplex && containsReactive(value))) {
-      // Reactive attribute — wrap in an effect
       const state: AttributeBindingState = { previousStyleProps: new Set() };
       let initialized = false;
       const dispose = effect(() => {
@@ -111,94 +111,114 @@ export function setSingleAttribute(
   value: unknown,
   state?: AttributeBindingState,
 ): void {
-  // Resolve alias
-  const attrName = resolveAttributeName(key);
-
-  // Handle style objects
-  if (attrName === "style" && typeof value === "object" && value !== null) {
-    applyStyle(
-      el as HTMLElement,
-      value as Record<string, string | number | null | undefined>,
-      state,
-    );
+  // Handle style values (object, string, null, etc.) without parsing CSS strings
+  if (key === "style") {
+    patchStyle(el as HTMLElement, value, state);
     return;
   }
 
   // Handle class arrays/objects
-  if (attrName === "class" && typeof value === "object" && value !== null) {
+  if (key === "class" && typeof value === "object" && value !== null) {
     applyClass(el, value);
     return;
   }
 
   // Handle null/undefined/false — remove attribute
   if (value == null || value === false) {
-    domOps.removeAttribute(el, attrName);
-    if (attrName === "style" && state) {
-      state.previousStyleProps.clear();
-    }
-    // Also clear the property if it's a DOM property
-    if (DOM_PROPERTIES.has(attrName)) {
-      domOps.setProperty(el, attrName, attrName === "value" ? "" : false);
+    domOps.removeAttribute(el, key);
+    if (DOM_PROPERTIES.has(key)) {
+      domOps.setProperty(el, key, key === "value" ? "" : false);
     }
     return;
   }
 
-  // Handle boolean true — set as attribute name only
+  // Handle boolean true — set as attribute name only, except for enumerated
+  // HTML attributes like draggable which require "true" as a string value.
   if (value === true) {
-    domOps.setAttribute(el, attrName, "");
-    if (attrName === "style" && state) {
-      state.previousStyleProps.clear();
-    }
-    if (DOM_PROPERTIES.has(attrName)) {
-      domOps.setProperty(el, attrName, true);
+    const attrValue = ENUMERATED_BOOLEAN_ATTRIBUTES.has(key) ? "true" : "";
+    domOps.setAttribute(el, key, attrValue);
+    if (DOM_PROPERTIES.has(key)) {
+      domOps.setProperty(el, key, true);
     }
     return;
   }
 
   // DOM properties — set directly on the element
-  if (DOM_PROPERTIES.has(attrName)) {
-    if (attrName === "style" && state) {
-      state.previousStyleProps.clear();
-    }
-    domOps.setProperty(el, attrName, value);
+  if (DOM_PROPERTIES.has(key)) {
+    domOps.setProperty(el, key, value);
     return;
   }
 
   // Default — set as string attribute
-  if (attrName === "style" && state) {
-    state.previousStyleProps.clear();
-  }
-  domOps.setAttribute(el, attrName, String(value));
-}
-
-export function resolveAttributeName(key: string): string {
-  return PROP_ALIASES[key] ?? key;
+  domOps.setAttribute(el, key, String(value));
 }
 
 /**
- * Apply a style object to an element.
+ * Apply a style value to an element without parsing CSS strings.
+ *
+ * - Strings are assigned directly to `el.style.cssText`.
+ * - Objects/arrays are applied property-by-property with `el.style.setProperty`.
+ * - Falsy values clear the element's styles.
  */
-/**
- * Apply a style object to an element.
- */
-function applyStyle(
+function patchStyle(
   el: HTMLElement,
   value: unknown,
   state?: AttributeBindingState,
 ): void {
-  const styleObj = normalizeStyle(value);
+  // Clear styles for null/undefined/false/true/empty string
+  if (value == null || value === false || value === true || value === "") {
+    el.style.cssText = "";
+    if (state) {
+      state.previousStyleProps.clear();
+    }
+    return;
+  }
+
+  // String: let the browser parse the CSS directly
+  if (typeof value === "string") {
+    el.style.cssText = value;
+    if (state) {
+      state.previousStyleProps.clear();
+    }
+    return;
+  }
+
+  // Object or array of objects/strings: apply properties individually.
+  // Strings inside arrays are still parsed so they can be merged with objects
+  // and so stale properties are correctly removed on updates.
   const nextProps = new Set<string>();
+  const sources = Array.isArray(value) ? value : [value];
 
-  for (const [prop, val] of Object.entries(styleObj)) {
-    nextProps.add(prop);
+  for (let i = 0; i < sources.length; i++) {
+    const source = sources[i];
+    if (source == null) continue;
 
-    if (val == null) {
-      removeStyleProperty(el, prop);
+    if (typeof source === "string") {
+      const parsed = parseStyleString(source);
+      for (const key in parsed) {
+        if (!Object.prototype.hasOwnProperty.call(parsed, key)) continue;
+        nextProps.add(key);
+        el.style.setProperty(key, parsed[key]);
+      }
       continue;
     }
 
-    const kebabProp = prop.startsWith("--") ? prop : camelToKebab(prop);
-    el.style.setProperty(kebabProp, String(val));
+    if (typeof source !== "object") continue;
+
+    const obj = source as Record<string, unknown>;
+    for (const key in obj) {
+      if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+      nextProps.add(key);
+
+      const val = resolve(obj[key]);
+      if (val == null || val === false) {
+        removeStyleProperty(el, key);
+        continue;
+      }
+
+      const kebabProp = key.startsWith("--") ? key : camelToKebab(key);
+      el.style.setProperty(kebabProp, String(val));
+    }
   }
 
   if (!state) {
@@ -214,44 +234,18 @@ function applyStyle(
   state.previousStyleProps = nextProps;
 }
 
-function normalizeStyle(
-  value: unknown,
-): Record<string, string | number | null | undefined> {
-  const resolved = resolve(value);
-  if (!resolved) return {};
-
-  if (typeof resolved === "string") {
-    return parseStyleString(resolved);
-  }
-
-  if (Array.isArray(resolved)) {
-    // replace reduce with for loop to avoid function call overhead
-    const result: Record<string, any> = {};
-    for (let i = 0; i < resolved.length; i++) {
-      const normalized = normalizeStyle(resolved[i]);
-      for (const key in normalized) {
-        if (Object.prototype.hasOwnProperty.call(normalized, key)) {
-          result[key] = normalized[key];
-        }
-      }
-    }
-    return result;
-  }
-
-  if (typeof resolved === "object") {
-    const result: Record<string, any> = {};
-    for (const [k, v] of Object.entries(resolved)) {
-      result[k] = resolve(v);
-    }
-    return result;
-  }
-
-  return {};
+function removeStyleProperty(el: HTMLElement, prop: string): void {
+  const kebabProp = prop.startsWith("--") ? prop : camelToKebab(prop);
+  el.style.removeProperty(kebabProp);
 }
 
+/**
+ * Parse a CSS string into property/value pairs.
+ * Only used for string elements inside style arrays; top-level strings are
+ * assigned directly to `el.style.cssText` without parsing.
+ */
 function parseStyleString(style: string): Record<string, string> {
   const result: Record<string, string> = {};
-  // replace forEach with for loop to avoid creating a callback function
   const rules = style.split(";");
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i];
@@ -265,11 +259,6 @@ function parseStyleString(style: string): Record<string, string> {
     }
   }
   return result;
-}
-
-function removeStyleProperty(el: HTMLElement, prop: string): void {
-  const kebabProp = prop.startsWith("--") ? prop : camelToKebab(prop);
-  el.style.removeProperty(kebabProp);
 }
 
 /**

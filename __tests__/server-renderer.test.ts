@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { signal, computed } from "../src/reactivity/index.ts";
+import { signal } from "../src/reactivity/signal.ts";
+import { computed } from "../src/reactivity/index.ts";
 import {
   registerPage,
   getPage,
@@ -122,6 +123,11 @@ describe("renderToString elements", () => {
 
   it("renders intrinsic elements with children", async () => {
     expect(await renderToString(el("p", {}, "hello"))).toBe("<p>hello</p>");
+  });
+
+  it("renders enumerated boolean attributes as true/false strings", async () => {
+    const html = await renderToString(el("div", { draggable: true }));
+    expect(html).toBe('<div draggable="true"></div>');
   });
 
   it("strips event props", async () => {

@@ -9,7 +9,8 @@ import { Window } from "happy-dom";
 import { cc } from "../../../../src/component/create.ts";
 import { hydrateRoot } from "../../../../src/integrations/react/hydrate-root.ts";
 import { renderToHydratableString } from "../../../../src/server/hydration-markers.ts";
-import { signal, nextTick } from "../../../../src/reactivity/index.ts";
+import { signal } from "../../../../src/reactivity/signal.ts";
+import { nextTick } from "../../../../src/reactivity/index.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 globalThis.__DEV__ = false;

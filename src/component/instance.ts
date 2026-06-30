@@ -231,12 +231,20 @@ export function fireUnmountedHooks(instance: ComponentInstance): void {
 }
 
 const REACT_HOOK_KEY = Symbol.for("sinwan.react.hook_slots");
+const SIGNAL_SLOTS_KEY = Symbol.for("sinwan.signal_slots");
 
-function resetHookCursorLocal(instance: ComponentInstance): void {
-  const slots = (instance as unknown as Record<symbol, { cursor?: number }>)[
-    REACT_HOOK_KEY
+export function resetHookCursorLocal(instance: ComponentInstance): void {
+  const hookSlots = (
+    instance as unknown as Record<symbol, { cursor?: number }>
+  )[REACT_HOOK_KEY];
+  if (hookSlots) hookSlots.cursor = 0;
+
+  // Also reset the native signal slot cursor so signal() reuses existing
+  // signals on the next component setup run (HMR hot-swap).
+  const sigSlots = (instance as unknown as Record<symbol, { cursor?: number }>)[
+    SIGNAL_SLOTS_KEY
   ];
-  if (slots) slots.cursor = 0;
+  if (sigSlots) sigSlots.cursor = 0;
 }
 
 function clearReactEffectSlots(instance: ComponentInstance): void {

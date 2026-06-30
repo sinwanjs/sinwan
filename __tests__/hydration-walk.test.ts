@@ -4,7 +4,8 @@ import { hydrate } from "../src/hydration/hydrate.ts";
 import { renderToHydratableString } from "../src/server/hydration-markers.ts";
 import { cc } from "../src/component/create.ts";
 import { onMounted, onUnmounted } from "../src/component/lifecycle.ts";
-import { signal, computed, nextTick } from "../src/reactivity/index.ts";
+import { signal } from "../src/reactivity/signal.ts";
+import { computed, nextTick } from "../src/reactivity/index.ts";
 import { useState } from "../src/integrations/react/_client.ts";
 import {
   Show,
@@ -19,6 +20,7 @@ import {
   Virtual,
 } from "../src/component/control-flow.ts";
 import { raw } from "../src/common/escaper.ts";
+import { jsxs } from "../src/jsx/jsx-runtime.ts";
 import type { SinwanElement } from "../src/types.ts";
 
 function el(
@@ -710,6 +712,93 @@ describe("React-compatible state getters", () => {
     expect(container.querySelector("div")?.getAttribute("data-count")).toBe(
       "10",
     );
+
+    app.unmount();
+  });
+});
+
+// ─── Reactive functions returning complex values ────────────────────────────
+
+describe("hydrateReactiveFunction complex values", () => {
+  it("hydrates a reactive function that returns an element", async () => {
+    const showSignal = signal(false);
+    const child = () =>
+      showSignal.value ? el("p", {}, "visible") : (false as any);
+
+    const App = cc(() =>
+      el("div", {}, el("span", {}, "before"), child, el("span", {}, "after")),
+    );
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+
+    const app = hydrate(App, container);
+    expect(container.textContent).toBe("beforeafter");
+
+    showSignal.value = true;
+    await Bun.sleep(0);
+    expect(container.textContent).toBe("beforevisibleafter");
+    expect(container.querySelectorAll("p").length).toBe(1);
+
+    app.unmount();
+  });
+
+  it("hydrates a reactive function that returns an array of elements", async () => {
+    const listSignal = signal(["a", "b"]);
+    const child = () =>
+      listSignal.value.map((item) => el("span", { key: item }, item));
+
+    const App = cc(() => el("div", {}, child));
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+
+    const app = hydrate(App, container);
+    expect(container.querySelectorAll("span").length).toBe(2);
+    expect(container.textContent).toBe("ab");
+
+    listSignal.value = [...listSignal.value, "c"];
+    await Bun.sleep(0);
+    expect(container.querySelectorAll("span").length).toBe(3);
+    expect(container.textContent).toBe("abc");
+
+    app.unmount();
+  });
+});
+
+// ─── Adjacent text node hydration ───────────────────────────────────────────
+
+describe("hydrate adjacent text nodes", () => {
+  it("hydrates JSXText + explicit space + JSXText without mismatches", async () => {
+    const App = cc(() =>
+      jsxs("p", {
+        children: [
+          "\n          Progression globale du Sprint :",
+          " ",
+          "\n          ",
+          jsxs("strong", { children: ["0%"] }),
+          "\n        ",
+        ],
+      }),
+    );
+
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+
+    const consoleSpy: any[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: any[]) => consoleSpy.push(args);
+
+    const app = hydrate(App, container);
+
+    console.warn = originalWarn;
+
+    expect(container.querySelector("strong")?.textContent).toBe("0%");
+    expect(container.textContent).toContain("Progression globale du Sprint :");
+    expect(container.textContent).toContain("0%");
+    expect(
+      consoleSpy.some((args) =>
+        String(args[0]).includes("[Sinwan hydration] expected"),
+      ),
+    ).toBe(false);
 
     app.unmount();
   });

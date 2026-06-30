@@ -17,13 +17,7 @@ import { HtmlEscapedString, escapeHtml } from "../common/escaper.ts";
 import { renderServerAttribute } from "./attribute-utils.ts";
 import { isSignal } from "../reactivity/signal.ts";
 import { isComputed } from "../reactivity/computed.ts";
-import {
-  compId,
-  textMarkerOpen,
-  textMarkerCloseStr,
-  COMP_ID_ATTR,
-  EVENT_ATTR,
-} from "../hydration/markers.ts";
+import { DEFAULT_HYDRATION_ADAPTER as adapter } from "../hydration/markers.ts";
 import { isEventProp, toEventName } from "../renderer/events.ts";
 import {
   createComponentInstance,
@@ -76,7 +70,7 @@ const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
 
 // ─── Hydration context ─────────────────────────────────────
 
-interface HydrationContext {
+export interface HydrationContext {
   componentIndex: number;
   textIndex: number;
   eventIndex: number;
@@ -167,11 +161,9 @@ export async function renderNodeToHydratableString(
   const ctx = createHydrationContext();
   const prefix = options?.identifierPrefix ?? "";
 
-  if (!prefix) {
-    return await renderNodeH(node, ctx);
-  }
-
-  // Create a temporary root instance so child components inherit the prefix
+  // Create a temporary root instance so useId works correctly even when the
+  // rendered tree is a plain function component (not a cc component), and so
+  // child components inherit an identifierPrefix.
   const dummy = createComponentInstance(
     (() => null) as unknown as SinwanComponent<any>,
     {},
@@ -226,14 +218,17 @@ async function renderNodeH(
   if (isSignal(node) || isComputed(node)) {
     const value = (node as any).value;
     const idx = ctx.textIndex++;
-    return `${textMarkerOpen(idx)}${escapeHtml(String(value))}${textMarkerCloseStr()}`;
+    return `${adapter.emitTextOpenMarker(idx)}${escapeHtml(String(value))}${adapter.emitTextCloseMarker()}`;
   }
 
   // React-compatible state getters (useState / useReducer)
   if (typeof node === "function" && (node as any)[STATE_GETTER_MARKER]) {
     const value = (node as any)();
-    const idx = ctx.textIndex++;
-    return `${textMarkerOpen(idx)}${escapeHtml(String(value))}${textMarkerCloseStr()}`;
+    if (typeof value === "string" || typeof value === "number") {
+      const idx = ctx.textIndex++;
+      return `${adapter.emitTextOpenMarker(idx)}${escapeHtml(String(value))}${adapter.emitTextCloseMarker()}`;
+    }
+    return await renderNodeH(value, ctx);
   }
 
   if (Array.isArray(node)) {
@@ -258,9 +253,18 @@ async function renderNodeH(
     return renderElementH(node, ctx, false);
   }
 
-  // Plain function getter (0-arity) — resolve and render as text
+  // Plain function getter (0-arity) — resolve and render. Wrap scalar values
+  // with function block markers so they are not collapsed into adjacent text
+  // nodes and the client can hydrate them as reactive blocks.
   if (typeof node === "function" && (node as any).length === 0) {
-    return escapeHtml(String((node as any)()));
+    const value = (node as any)();
+    if (value == null || typeof value === "boolean") {
+      return `${adapter.emitFunctionOpenMarker()}${adapter.emitFunctionCloseMarker()}`;
+    }
+    if (typeof value === "string" || typeof value === "number") {
+      return `${adapter.emitFunctionOpenMarker()}${escapeHtml(String(value))}${adapter.emitFunctionCloseMarker()}`;
+    }
+    return await renderNodeH(value, ctx);
   }
 
   return escapeHtml(String(node));
@@ -269,7 +273,7 @@ async function renderNodeH(
 /**
  * Render an element with hydration markers.
  */
-async function renderElementH(
+export async function renderElementH(
   element: SinwanElement,
   ctx: HydrationContext,
   isComponentRoot: boolean,
@@ -519,11 +523,11 @@ async function renderIntrinsicH(
 
   // Component boundary marker
   if (isComponentRoot) {
-    attrs += ` ${COMP_ID_ATTR}="${compId(ctx.componentIndex++)}"`;
+    attrs += ` ${adapter.emitComponentMarker(ctx.componentIndex++)}`;
   }
 
   // Event markers + regular attributes
-  const eventParts: string[] = [];
+  const eventBindings: [event: string, index: number][] = [];
 
   for (const [key, value] of Object.entries(props)) {
     if (
@@ -538,13 +542,14 @@ async function renderIntrinsicH(
     if (isEventProp(key)) {
       // Collect event markers
       const eventName = toEventName(key);
-      eventParts.push(`${eventName}:${ctx.eventIndex++}`);
+      eventBindings.push([eventName, ctx.eventIndex++]);
       continue;
     }
 
     if (value == null || value === false) continue;
 
-    // Resolve signal/computed values and state getters to current values for SSR
+    // Resolve signal/computed values, state getters, and plain 0-arity
+    // function getters to current values for SSR.
     let resolvedValue = value;
     if (isSignal(value) || isComputed(value)) {
       resolvedValue = (value as any).value;
@@ -553,14 +558,16 @@ async function renderIntrinsicH(
       (value as any)[STATE_GETTER_MARKER]
     ) {
       resolvedValue = (value as any)();
+    } else if (typeof value === "function" && (value as any).length === 0) {
+      resolvedValue = (value as any)();
     }
 
     attrs += renderServerAttribute(key, resolvedValue);
   }
 
   // Add event attribute
-  if (eventParts.length > 0) {
-    attrs += ` ${EVENT_ATTR}="${eventParts.join(",")}"`;
+  if (eventBindings.length > 0) {
+    attrs += ` ${adapter.emitEventMarker(eventBindings)}`;
   }
 
   // Void elements
@@ -591,6 +598,23 @@ async function renderIntrinsicH(
   return `<${tag}${attrs}>${childrenHtml}</${tag}>`;
 }
 
+async function renderNodeMaybeRoot(
+  node: SinwanNode,
+  ctx: HydrationContext,
+  isComponentRoot: boolean,
+): Promise<string> {
+  if (
+    isComponentRoot &&
+    node &&
+    typeof node === "object" &&
+    !Array.isArray(node) &&
+    "tag" in node
+  ) {
+    return await renderElementH(node as SinwanElement, ctx, true);
+  }
+  return await renderNodeH(node, ctx);
+}
+
 /**
  * Render an island within an already-hydratable document. The island's own
  * subtree gets a fresh hydration context (component / text / event indices
@@ -618,23 +642,6 @@ async function renderIslandH(element: IslandElement): Promise<string> {
   const safeName = escapeHtml(__island.name);
   const safeProps = escapeIslandPropsJson(json);
   return `<${__island.tag} ${ISLAND_ATTR}="${safeName}" ${ISLAND_PROPS_ATTR}="${safeProps}">${inner}</${__island.tag}>`;
-}
-
-async function renderNodeMaybeRoot(
-  node: SinwanNode,
-  ctx: HydrationContext,
-  isComponentRoot: boolean,
-): Promise<string> {
-  if (
-    isComponentRoot &&
-    node &&
-    typeof node === "object" &&
-    !Array.isArray(node) &&
-    "tag" in node
-  ) {
-    return await renderElementH(node as SinwanElement, ctx, true);
-  }
-  return await renderNodeH(node, ctx);
 }
 
 async function renderForElementH(

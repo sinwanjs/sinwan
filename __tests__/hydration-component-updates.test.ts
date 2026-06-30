@@ -4,7 +4,8 @@ import { hydrate } from "../src/hydration/hydrate.ts";
 import { renderToHydratableString } from "../src/server/hydration-markers.ts";
 import { cc } from "../src/component/create.ts";
 import { onMounted, onUnmounted } from "../src/component/lifecycle.ts";
-import { signal, computed, nextTick } from "../src/reactivity/index.ts";
+import { signal } from "../src/reactivity/signal.ts";
+import { computed, nextTick } from "../src/reactivity/index.ts";
 import {
   Show,
   For,

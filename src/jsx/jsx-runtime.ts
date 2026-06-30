@@ -6,7 +6,7 @@
  */
 
 import type { SinwanElement, SinwanNode } from "../types.ts";
-import type { SinwanIntrinsicElements } from "./jsx-types";
+import type { SinwanIntrinsicElements, SinwanSVGElements } from "./jsx-types";
 
 /**
  * React-compatible `Fragment` — `[SHARED]`.
@@ -63,16 +63,65 @@ const VOID_ELEMENTS = new Set([
   "wbr",
 ]);
 
+function isTextNode(node: SinwanNode): node is string | number {
+  return node != null && (typeof node === "string" || typeof node === "number");
+}
+
+/** Merge adjacent string/number children into a single text node.
+ *
+ * Browsers parse HTML by collapsing adjacent text runs into one Text node. If
+ * the virtual child list keeps them split (e.g. JSXText + {" "} + JSXText), the
+ * hydration walker consumes too many DOM nodes and ends up past the element
+ * boundaries. Merging them here makes the Sinwan tree match the DOM. */
+function mergeAdjacentText(children: SinwanNode[]): SinwanNode[] {
+  const merged: SinwanNode[] = [];
+  for (const child of children) {
+    const last = merged[merged.length - 1];
+    if (isTextNode(child) && isTextNode(last)) {
+      merged[merged.length - 1] = String(last) + String(child);
+    } else {
+      merged.push(child);
+    }
+  }
+  return merged;
+}
+
 /**
  * Normalize children into an array of SinwanNode.
  */
 export function normalizeChildren(children: any): SinwanNode[] {
   if (children == null || typeof children === "boolean") return [];
-  if (Array.isArray(children)) return children.flat(Infinity);
+  if (Array.isArray(children))
+    return mergeAdjacentText(children.flat(Infinity));
   return [children];
 }
 
 const EMPTY_PROPS: Record<string, unknown> = {};
+
+/** Registry populated by enhanced-elements.ts (side-effect import at bottom).
+ * Declared with `var` because the import is hoisted and runs while this module
+ * is still in its temporal dead zone; `var` is hoisted and safe to assign. */
+var enhancedRegistry:
+  | Record<string, (props: any) => Record<string, unknown> | SinwanElement>
+  | undefined;
+
+/** Register enhanced element wrappers — called once by enhanced-elements.ts.
+ * Each enhancer receives props (including `children`) and returns either
+ * modified props for the same tag, or a full SinwanElement replacement. */
+export function registerEnhancedElements(
+  registry: Record<
+    string,
+    (props: any) => Record<string, unknown> | SinwanElement
+  >,
+): void {
+  enhancedRegistry = registry;
+}
+
+/** Build a plain intrinsic element, skipping the enhanced-element interceptor.
+ * Used by enhanced element wrappers to avoid infinite recursion. */
+export function jsxIntrinsic(type: any, props: any): SinwanElement {
+  return buildElement(type, props, normalizeChildren(props?.children), true);
+}
 
 function stripChildrenProp(props: any): Record<string, unknown> {
   if (!props) return EMPTY_PROPS;
@@ -94,10 +143,22 @@ function buildElement(
   type: any,
   props: any,
   children: SinwanNode[],
+  skipEnhance = false,
 ): SinwanElement {
   // Handle Fragment
   if (type === Fragment) {
     return { tag: "", props: {}, children };
+  }
+
+  // Enhanced intrinsic elements — e.g. <form action={fn}> is intercepted
+  // and routed to the Form wrapper so users never need to import it.
+  if (!skipEnhance && typeof type === "string" && enhancedRegistry?.[type]) {
+    const result = enhancedRegistry[type]({ ...props, children });
+    if (result && typeof result === "object" && "tag" in result) {
+      return result as SinwanElement;
+    }
+    const finalProps = stripChildrenProp(result);
+    return { tag: type, props: finalProps, children };
   }
 
   // Functional components and intrinsic HTML elements both pass the type
@@ -133,18 +194,9 @@ export function jsx(type: any, props: any, key?: any): SinwanElement {
 
 /**
  * JSX static factory — called for elements with 2+ children.
- * `props.children` is **already an array**, so we skip normalizeChildren.
  */
 export function jsxs(type: any, props: any, key?: any): SinwanElement {
-  const children = props?.children;
-  // Children is guaranteed to be an array by the compiler
-  return buildElement(
-    type,
-    props,
-    Array.isArray(children)
-      ? children.flat(Infinity)
-      : normalizeChildren(children),
-  );
+  return buildElement(type, props, normalizeChildren(props?.children));
 }
 
 /**
@@ -168,13 +220,7 @@ export function jsxDEV(
   source?: JSXSource,
   self?: unknown,
 ): SinwanElement {
-  const children = isStaticChildren
-    ? Array.isArray(props?.children)
-      ? props.children.flat(Infinity)
-      : normalizeChildren(props?.children)
-    : normalizeChildren(props?.children);
-
-  const element = buildElement(type, props, children);
+  const element = buildElement(type, props, normalizeChildren(props?.children));
 
   // Attach debug metadata (useful for dev-tools / error traces)
   if (source) {
@@ -186,20 +232,18 @@ export function jsxDEV(
 
 export namespace JSX {
   export type Element = SinwanNode;
-  export interface IntrinsicAttributes {}
+  export interface IntrinsicAttributes {
+    key?: string | number;
+    ref?: unknown;
+  }
   export interface ElementChildrenAttribute {
     children: {};
   }
-  export interface IntrinsicElements extends SinwanIntrinsicElements {}
+  export interface IntrinsicElements
+    extends SinwanIntrinsicElements, SinwanSVGElements {}
 }
 
-declare global {
-  namespace JSX {
-    type Element = SinwanNode;
-    interface IntrinsicAttributes {}
-    interface ElementChildrenAttribute {
-      children: {};
-    }
-    interface IntrinsicElements extends SinwanIntrinsicElements {}
-  }
-}
+// Load enhanced element wrappers (Form, Input, Button, etc.) so the JSX
+// factory can intercept matching lowercase tags automatically. This is a
+// side-effect import — the module registers itself via registerEnhancedElements.
+import "./enhanced-elements.ts";

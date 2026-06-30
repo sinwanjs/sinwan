@@ -227,14 +227,6 @@ describe("renderElementToDOM", () => {
     expect(inputs[0]!.getAttribute("placeholder")).toBe("Name");
   });
 
-  it("handles className → class alias", () => {
-    const element = el("div", { className: "foo bar" });
-    renderElementToDOM(element, container);
-
-    const div = firstEl(container);
-    expect(div.getAttribute("class")).toBe("foo bar");
-  });
-
   it("handles boolean attributes", () => {
     const element = el("input", { disabled: true });
     renderElementToDOM(element, container);

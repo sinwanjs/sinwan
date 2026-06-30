@@ -24,11 +24,11 @@ function collectDomNodes(node: MountedNode, out: Node[]): void {
   switch (node.type) {
     case "text":
     case "reactive-text":
-      out.push(node.node);
+      if (node.node) out.push(node.node);
       break;
 
     case "element":
-      out.push(node.node);
+      if (node.node) out.push(node.node);
       break;
 
     case "fragment":
@@ -37,9 +37,9 @@ function collectDomNodes(node: MountedNode, out: Node[]): void {
       break;
 
     case "reactive-block":
-      out.push(node.startAnchor);
+      if (node.startAnchor) out.push(node.startAnchor);
       for (const child of node.children) collectDomNodes(child, out);
-      out.push(node.endAnchor);
+      if (node.endAnchor) out.push(node.endAnchor);
       break;
 
     case "component":
@@ -47,17 +47,17 @@ function collectDomNodes(node: MountedNode, out: Node[]): void {
       break;
 
     case "async":
-      out.push(node.startAnchor);
+      if (node.startAnchor) out.push(node.startAnchor);
       if (node.children.length > 0) {
         for (const child of node.children) collectDomNodes(child, out);
-      } else {
+      } else if (node.placeholder) {
         out.push(node.placeholder);
       }
-      out.push(node.endAnchor);
+      if (node.endAnchor) out.push(node.endAnchor);
       break;
 
     case "portal":
-      out.push(node.anchor);
+      if (node.anchor) out.push(node.anchor);
       break;
   }
 }

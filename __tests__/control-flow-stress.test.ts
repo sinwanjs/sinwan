@@ -13,7 +13,8 @@
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
-import { signal, computed, batch } from "../src/reactivity/index.ts";
+import { signal } from "../src/reactivity/signal.ts";
+import { computed, batch } from "../src/reactivity/index.ts";
 import { cc } from "../src/component/create.ts";
 import { onMounted, onUnmounted } from "../src/component/lifecycle.ts";
 import {

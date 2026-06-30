@@ -38,6 +38,10 @@ import {
   clearChildren,
 } from "../renderer/render-control-flow.ts";
 import { renderNodeToDOM } from "../renderer/render-children.ts";
+import {
+  isTemplateResult,
+  type SinwanTemplateResult,
+} from "../renderer/template.ts";
 import { applyRef, renderElementToDOM } from "../renderer/render-element.ts";
 import { removeMountedNode, getMountedDomNodes } from "../renderer/unmount.ts";
 import type {
@@ -72,11 +76,7 @@ import {
   createDynamicElement,
   normalizeContent,
 } from "../component/control-flow.ts";
-import {
-  parseTextOpenMarker,
-  isTextCloseMarker,
-  COMP_ID_ATTR,
-} from "./markers.ts";
+import { DEFAULT_HYDRATION_ADAPTER, type HydrationAdapter } from "./markers.ts";
 import {
   createComponentInstance,
   getCurrentInstance,
@@ -95,6 +95,8 @@ export interface HydrationCursor {
   parent: Node;
   /** The next child node to process (null = exhausted). */
   current: Node | null;
+  /** Adapter used to parse hydration markers. */
+  adapter: HydrationAdapter;
 }
 
 /**
@@ -166,6 +168,14 @@ export function hydrateNode(
     return hydrateArray(node, cursor);
   }
 
+  // Compiler-generated template result — replace SSR nodes with live template
+  if (isTemplateResult(node as unknown)) {
+    return hydrateTemplateResult(
+      node as unknown as SinwanTemplateResult,
+      cursor,
+    );
+  }
+
   // SinwanElement
   if (typeof node === "object" && node !== null && "tag" in node) {
     return hydrateElement(node as SinwanElement, cursor);
@@ -199,7 +209,7 @@ function hydrateReactiveText(
   if (
     openComment &&
     openComment.nodeType === 8 /* COMMENT_NODE */ &&
-    parseTextOpenMarker(openComment as Comment) >= 0
+    cursor.adapter.parseTextOpenMarker(openComment as Comment) >= 0
   ) {
     // Skip the opening marker
     advance(cursor);
@@ -212,7 +222,7 @@ function hydrateReactiveText(
     if (
       closeComment &&
       closeComment.nodeType === 8 &&
-      isTextCloseMarker(closeComment as Comment)
+      cursor.adapter.isTextCloseMarker(closeComment as Comment)
     ) {
       advance(cursor);
     }
@@ -267,50 +277,191 @@ function hydrateReactiveText(
 }
 
 /**
- * Hydrate a plain function getter (0-arity) as reactive text.
- * The server renders the resolved value as text without markers.
- * We match the existing text node and attach an effect so updates
- * are reflected when the function's signal dependencies change.
+ * Hydrate a plain function getter (0-arity) that may return any SinwanNode.
+ *
+ * The server renders the resolved value directly. We hydrate the existing
+ * DOM nodes, insert boundary anchors, and attach an effect so the whole
+ * block is re-rendered when the function's signal dependencies change.
  */
 function hydrateReactiveFunction(
   fn: Function,
   cursor: HydrationCursor,
 ): MountedNode {
-  const textNode = advance(cursor) as Text;
   const owner = getCurrentInstance();
-
-  if (textNode) {
-    let initialized = false;
-    const dispose = effect(() => {
-      textNode.data = String(fn());
-      if (initialized) {
-        queueUpdatedHooks(owner);
-      }
-      initialized = true;
-    });
-    return { type: "reactive-text", node: textNode, dispose };
-  }
-
-  // Last resort — create a new text node and insert it into the DOM
-  // at the current cursor position so it isn't orphaned.
-  const newText = document.createTextNode(String(fn()));
   const parent = cursor.parent;
-  const anchor = cursor.current;
-  if (anchor) {
-    parent.insertBefore(newText, anchor);
+  const firstNode = cursor.current;
+
+  // If the server rendered function block markers, reuse them instead of
+  // inserting our own. This avoids collapsing scalar function values into
+  // adjacent text nodes during SSR.
+  const hasServerMarkers =
+    firstNode &&
+    firstNode.nodeType === 8 /* COMMENT_NODE */ &&
+    cursor.adapter.isFunctionOpenMarker(firstNode as Comment);
+
+  let startAnchor: Comment;
+  if (hasServerMarkers) {
+    startAnchor = firstNode as Comment;
+    advance(cursor);
   } else {
-    parent.appendChild(newText);
+    startAnchor = document.createComment("Sinwan-r");
+    if (firstNode) {
+      parent.insertBefore(startAnchor, firstNode);
+    } else {
+      parent.appendChild(startAnchor);
+    }
   }
+
+  const initialValue = fn();
+
+  // Hydrate the resolved content. Boolean/null values have no SSR nodes,
+  // so create a placeholder text node that will be replaced on update.
+  let mountedContent: MountedNode;
+  if (initialValue == null || typeof initialValue === "boolean") {
+    const placeholder = document.createTextNode("");
+    if (!hasServerMarkers) {
+      parent.insertBefore(placeholder, cursor.current);
+    }
+    mountedContent = { type: "text", node: placeholder };
+  } else {
+    mountedContent = hydrateNode(initialValue as SinwanNode, cursor);
+  }
+
+  // Resolve or insert the end anchor after the hydrated content.
+  let endAnchor: Comment;
+  if (hasServerMarkers) {
+    const endMarker = cursor.current;
+    if (
+      endMarker &&
+      endMarker.nodeType === 8 &&
+      cursor.adapter.isFunctionCloseMarker(endMarker as Comment)
+    ) {
+      endAnchor = endMarker as Comment;
+      advance(cursor);
+    } else {
+      // Fallback if the close marker is missing.
+      endAnchor = document.createComment("/Sinwan-r");
+      const contentNodes = getMountedDomNodes(mountedContent);
+      const lastNode = contentNodes[contentNodes.length - 1];
+      if (lastNode && lastNode.nextSibling) {
+        parent.insertBefore(endAnchor, lastNode.nextSibling);
+      } else {
+        parent.appendChild(endAnchor);
+      }
+    }
+  } else {
+    endAnchor = document.createComment("/Sinwan-r");
+    const contentNodes = getMountedDomNodes(mountedContent);
+    const lastNode = contentNodes[contentNodes.length - 1];
+    if (lastNode && lastNode.nextSibling) {
+      parent.insertBefore(endAnchor, lastNode.nextSibling);
+    } else {
+      parent.appendChild(endAnchor);
+    }
+  }
+
+  let currentMounted = mountedContent;
+
+  const block: MountedReactiveBlock = {
+    type: "reactive-block",
+    startAnchor,
+    endAnchor,
+    children: [mountedContent],
+    dispose: () => {},
+  };
 
   let initialized = false;
-  const dispose = effect(() => {
-    newText.data = String(fn());
-    if (initialized) {
-      queueUpdatedHooks(owner);
+  block.dispose = effect(() => {
+    const newValue = fn();
+    if (!initialized) {
+      initialized = true;
+      return;
     }
-    initialized = true;
+    if (currentMounted) {
+      removeMountedNode(currentMounted);
+    }
+    currentMounted = renderNodeToDOM(
+      newValue as SinwanNode,
+      parent,
+      endAnchor,
+      null,
+    );
+    block.children = [currentMounted];
+    if (owner) fireMountedHooks(owner);
+    queueUpdatedHooks(owner);
   });
-  return { type: "reactive-text", node: newText, dispose };
+
+  return block;
+}
+
+// ─── Template result hydration ────────────────────────────
+
+/**
+ * Hydrate a compiler-generated template result.
+ *
+ * `_$createTemplate` already built a live DOM fragment with events and
+ * reactive effects bound. During hydration we simply swap the SSR-rendered
+ * subtree for the live fragment so the component is immediately interactive.
+ * The number of top-level nodes in the fragment determines how many SSR
+ * nodes we consume from the cursor.
+ */
+function hydrateTemplateResult(
+  result: SinwanTemplateResult,
+  cursor: HydrationCursor,
+): MountedNode {
+  const parent = cursor.parent;
+  const fragment = result.fragment;
+
+  // Count top-level nodes in the template fragment
+  const liveNodes: Node[] = [];
+  let child = fragment.firstChild;
+  while (child) {
+    liveNodes.push(child);
+    child = child.nextSibling;
+  }
+
+  // Insert a positioning anchor comment (mirrors renderTemplateResultToDOM)
+  // so getMountedDomNodes / removeMountedNode track this fragment correctly.
+  const anchorComment = document.createComment("Sinwan-t");
+  const insertBefore = cursor.current;
+  if (insertBefore) {
+    parent.insertBefore(anchorComment, insertBefore);
+  } else {
+    parent.appendChild(anchorComment);
+  }
+
+  // Replace SSR-rendered nodes 1-for-1 with live template nodes
+  // (which already have events and reactive effects bound).
+  for (let i = 0; i < liveNodes.length; i++) {
+    const ssrNode = cursor.current;
+    if (ssrNode) {
+      advance(cursor);
+      parent.replaceChild(liveNodes[i]!, ssrNode);
+    } else {
+      parent.insertBefore(liveNodes[i]!, null);
+    }
+  }
+
+  const mountedChildren: MountedNode[] = liveNodes.map((n) => {
+    if (n.nodeType === 1) {
+      return {
+        type: "element" as const,
+        node: n as Element,
+        children: [],
+        eventCleanups: null,
+        attrDisposers: null,
+        refCleanup: null,
+      };
+    }
+    return { type: "text" as const, node: n as Text };
+  });
+
+  return {
+    type: "fragment" as const,
+    children: mountedChildren,
+    anchor: anchorComment,
+    disposers: result.disposers,
+  };
 }
 
 // ─── Element hydration ────────────────────────────────────
@@ -402,8 +553,8 @@ function hydrateIntrinsic(
   }
 
   // Remove hydration-specific attributes
-  el.removeAttribute(COMP_ID_ATTR);
-  el.removeAttribute("data-sinwan-ev");
+  el.removeAttribute(cursor.adapter.componentAttr);
+  el.removeAttribute(cursor.adapter.eventAttr);
 
   // Attach reactive attributes (signals in props)
   const attrDisposers = hydrateAttributes(el, props);
@@ -416,6 +567,7 @@ function hydrateIntrinsic(
   const childCursor: HydrationCursor = {
     parent: el,
     current: el.firstChild,
+    adapter: cursor.adapter,
   };
 
   const mountedChildren: MountedNode[] = [];
@@ -861,6 +1013,7 @@ function hydrateControlFlow(
     const itemCursor: HydrationCursor = {
       parent: contentDiv,
       current: contentDiv.firstChild,
+      adapter: cursor.adapter,
     };
 
     const children: MountedNode[] = [];
@@ -1034,7 +1187,7 @@ function hydrateControlFlow(
   return hydrateArray(element.children, cursor);
 }
 
-function hydrateContent(
+export function hydrateContent(
   content: unknown,
   cursor: HydrationCursor,
 ): MountedNode {
@@ -1491,6 +1644,7 @@ function hydrateActivity(
       const itemCursor: HydrationCursor = {
         parent: wrapper,
         current: wrapper.firstChild,
+        adapter: cursor.adapter,
       };
       const child = hydrateContent(props.children, itemCursor);
 
@@ -1542,6 +1696,7 @@ function hydrateViewTransition(
   const itemCursor: HydrationCursor = {
     parent: wrapper,
     current: wrapper.firstChild,
+    adapter: cursor.adapter,
   };
   const child = hydrateContent(props.children, itemCursor);
 

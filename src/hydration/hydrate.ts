@@ -27,6 +27,8 @@ import {
 } from "../component/instance.ts";
 import { domOps } from "../renderer/dom-ops.ts";
 import { hydrateNode, hydrateElement, type HydrationCursor } from "./walk.ts";
+import { DEFAULT_HYDRATION_ADAPTER } from "./markers.ts";
+import type { HydrationAdapter } from "./adapter.ts";
 
 /**
  * Hydrate a component against existing server-rendered DOM.
@@ -44,9 +46,10 @@ export function hydrate(
   component: SinwanComponent<any>,
   container: Element,
   props?: Record<string, unknown>,
-  options?: { identifierPrefix?: string },
+  options?: { identifierPrefix?: string; adapter?: HydrationAdapter },
 ): AppInstance {
   const mergedProps = props ?? {};
+  const adapter = options?.adapter ?? DEFAULT_HYDRATION_ADAPTER;
 
   // Create root component instance
   const instance = createComponentInstance(component, mergedProps, null);
@@ -68,6 +71,7 @@ export function hydrate(
     const cursor: HydrationCursor = {
       parent: container,
       current: container.firstChild,
+      adapter,
     };
 
     if (result && typeof result === "object" && "tag" in result) {
@@ -81,6 +85,7 @@ export function hydrate(
     return {
       root: { type: "text", node: domOps.createTextNode("") },
       unmount() {},
+      _instance: instance,
     };
   }
 
@@ -100,5 +105,6 @@ export function hydrate(
       unmountNode(root);
       container.innerHTML = "";
     },
+    _instance: instance,
   };
 }

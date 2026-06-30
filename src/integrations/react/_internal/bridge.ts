@@ -14,7 +14,11 @@ import {
   getCurrentInstance,
   type ComponentInstance,
 } from "../../../component/instance.ts";
-import { signal, type Signal } from "../../../reactivity/signal.ts";
+import {
+  signal,
+  withoutSignalSlotRegistration,
+  type Signal,
+} from "../../../reactivity/signal.ts";
 import type { Computed } from "../../../reactivity/computed.ts";
 import { GetterDependencyList } from "../_client.ts";
 
@@ -82,7 +86,10 @@ export function useSlot<T>(init: () => T): T {
  */
 export function useSignalSlot<T>(initial: () => T): Signal<T> {
   return useSlot<Signal<T>>(() => {
-    const s = signal<T>(initial());
+    // Hook-internal signals are preserved across HMR via hook_slots, so they
+    // must NOT register into the user-land signal_slots (doing so would
+    // misalign the signal cursor when useState/etc. is mixed with signal()).
+    const s = withoutSignalSlotRegistration(() => signal<T>(initial()));
     const instance = getCurrentInstance();
     if (instance) {
       const slots = (instance as unknown as Record<symbol, HookSlots>)[

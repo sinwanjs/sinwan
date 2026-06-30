@@ -4,7 +4,8 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Window } from "happy-dom";
-import { signal, nextTick } from "../src/reactivity/index.ts";
+import { signal } from "../src/reactivity/signal.ts";
+import { nextTick } from "../src/reactivity/index.ts";
 import { mount } from "../src/renderer/mount.ts";
 import { renderElementToDOM } from "../src/renderer/render-element.ts";
 import { resetDOMOps, setDOMOps } from "../src/renderer/dom-ops.ts";

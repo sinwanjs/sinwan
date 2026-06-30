@@ -22,7 +22,6 @@ import {
   For,
   Index,
   Key,
-  Match,
   Portal,
   Switch,
   Visible,
@@ -158,12 +157,22 @@ export async function renderToString(node: SinwanNode): Promise<string> {
 
   // Handle React-compatible state getters (useState / useReducer)
   if (typeof node === "function" && (node as any)[STATE_GETTER_MARKER]) {
-    return escapeHtml(String((node as any)()));
+    const value = (node as any)();
+    if (value == null || typeof value === "boolean") return "";
+    if (typeof value === "string" || typeof value === "number") {
+      return escapeHtml(String(value));
+    }
+    return await renderToString(value);
   }
 
-  // Plain function getter (0-arity) — resolve and render as text
+  // Plain function getter (0-arity) — resolve and render
   if (typeof node === "function" && (node as any).length === 0) {
-    return escapeHtml(String((node as any)()));
+    const value = (node as any)();
+    if (value == null || typeof value === "boolean") return "";
+    if (typeof value === "string" || typeof value === "number") {
+      return escapeHtml(String(value));
+    }
+    return await renderToString(value);
   }
 
   // Handle arrays - render each child and concatenate
@@ -193,7 +202,7 @@ export async function renderToString(node: SinwanNode): Promise<string> {
 /**
  * Render an element to HTML string.
  */
-async function renderElement(element: SinwanElement): Promise<string> {
+export async function renderElement(element: SinwanElement): Promise<string> {
   const { tag, props, children } = element;
 
   if (tag === ISLAND_TAG || isIslandElement(element)) {

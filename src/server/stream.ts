@@ -47,13 +47,7 @@ import {
   getCurrentInstance,
   setCurrentInstance,
 } from "../component/instance.ts";
-import {
-  compId,
-  textMarkerOpen,
-  textMarkerCloseStr,
-  COMP_ID_ATTR,
-  EVENT_ATTR,
-} from "../hydration/markers.ts";
+import { DEFAULT_HYDRATION_ADAPTER as adapter } from "../hydration/markers.ts";
 import {
   ISLAND_TAG,
   ISLAND_ATTR,
@@ -67,7 +61,7 @@ import { resolve } from "../reactivity/index.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
 
-interface HydratableStreamContext {
+export interface HydratableStreamContext {
   componentIndex: number;
   textIndex: number;
   eventIndex: number;
@@ -168,31 +162,25 @@ export function streamHydratableNode(
   return new ReadableStream({
     async start(controller) {
       try {
-        if (prefix) {
-          const dummy = createComponentInstance(
-            (() => null) as unknown as SinwanComponent<any>,
-            {},
-            null,
-          );
-          dummy.identifierPrefix = prefix;
-          const prev = setCurrentInstance(dummy);
-          try {
-            await streamHydratableNodeToController(
-              node,
-              controller,
-              encoder,
-              ctx,
-            );
-          } finally {
-            setCurrentInstance(prev);
-          }
-        } else {
+        // Create a temporary root instance so useId works correctly even when
+        // the rendered tree is a plain function component, and so child
+        // components inherit an identifierPrefix.
+        const dummy = createComponentInstance(
+          (() => null) as unknown as SinwanComponent<any>,
+          {},
+          null,
+        );
+        dummy.identifierPrefix = prefix;
+        const prev = setCurrentInstance(dummy);
+        try {
           await streamHydratableNodeToController(
             node,
             controller,
             encoder,
             ctx,
           );
+        } finally {
+          setCurrentInstance(prev);
         }
         controller.close();
       } catch (error) {
@@ -504,7 +492,7 @@ async function streamHydratableNodeToController(
     enqueue(
       controller,
       encoder,
-      `${textMarkerOpen(idx)}${escapeHtml(String((node as any).value))}${textMarkerCloseStr()}`,
+      `${adapter.emitTextOpenMarker(idx)}${escapeHtml(String((node as any).value))}${adapter.emitTextCloseMarker()}`,
     );
     return;
   }
@@ -514,7 +502,7 @@ async function streamHydratableNodeToController(
     enqueue(
       controller,
       encoder,
-      `${textMarkerOpen(idx)}${escapeHtml(String((node as any)()))}${textMarkerCloseStr()}`,
+      `${adapter.emitTextOpenMarker(idx)}${escapeHtml(String((node as any)()))}${adapter.emitTextCloseMarker()}`,
     );
     return;
   }
@@ -525,7 +513,7 @@ async function streamHydratableNodeToController(
     enqueue(
       controller,
       encoder,
-      `${textMarkerOpen(idx)}${escapeHtml(String((node as any)()))}${textMarkerCloseStr()}`,
+      `${adapter.emitTextOpenMarker(idx)}${escapeHtml(String((node as any)()))}${adapter.emitTextCloseMarker()}`,
     );
     return;
   }
@@ -558,7 +546,7 @@ async function streamHydratableNodeToController(
   );
 }
 
-async function streamHydratableElement(
+export async function streamHydratableElement(
   element: SinwanElement,
   controller: ReadableStreamDefaultController<Uint8Array>,
   encoder: TextEncoder,
@@ -1101,10 +1089,10 @@ function renderHydratableAttributes(
   let attrs = "";
 
   if (isComponentRoot) {
-    attrs += ` ${COMP_ID_ATTR}="${compId(ctx.componentIndex++)}"`;
+    attrs += ` ${adapter.emitComponentMarker(ctx.componentIndex++)}`;
   }
 
-  const eventParts: string[] = [];
+  const eventBindings: [event: string, index: number][] = [];
 
   for (const [key, value] of Object.entries(props)) {
     if (
@@ -1117,7 +1105,7 @@ function renderHydratableAttributes(
     }
 
     if (isEventProp(key)) {
-      eventParts.push(`${toEventName(key)}:${ctx.eventIndex++}`);
+      eventBindings.push([toEventName(key), ctx.eventIndex++]);
       continue;
     }
 
@@ -1127,8 +1115,8 @@ function renderHydratableAttributes(
     attrs += renderServerAttribute(key, resolvedValue);
   }
 
-  if (eventParts.length > 0) {
-    attrs += ` ${EVENT_ATTR}="${eventParts.join(",")}"`;
+  if (eventBindings.length > 0) {
+    attrs += ` ${adapter.emitEventMarker(eventBindings)}`;
   }
 
   return attrs;

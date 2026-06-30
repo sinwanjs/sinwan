@@ -1,4 +1,5 @@
 import { renderNodeToHydratableString } from "../../server/hydration-markers.ts";
+import { DEFAULT_HYDRATION_ADAPTER } from "../../hydration/markers.ts";
 import {
   createComponentInstance,
   setCurrentInstance,
@@ -35,24 +36,12 @@ export async function renderToStaticMarkup(
   const prev = setCurrentInstance(dummy);
 
   try {
-    const html = await renderNodeToHydratableString(node as SinwanNode);
-    return stripHydrationMarkers(html);
+    const html = await renderNodeToHydratableString(
+      node as SinwanNode,
+      options,
+    );
+    return DEFAULT_HYDRATION_ADAPTER.stripMarkers(html);
   } finally {
     setCurrentInstance(prev);
   }
-}
-
-/** Strip Sinwan hydration markers from SSR output. */
-function stripHydrationMarkers(html: string): string {
-  return (
-    html
-      // Component boundary markers: ` data-sinwan-id="c0"`
-      .replace(/\s+data-sinwan-id="c\d+"/g, "")
-      // Event binding markers: ` data-sinwan-ev="click:0"`
-      .replace(/\s+data-sinwan-ev="[^"]*"/g, "")
-      // Reactive text open markers: `<!--sinwan-t:0-->`
-      .replace(/<!--sinwan-t:\d+-->/g, "")
-      // Reactive text close markers: `<!--/sinwan-t-->`
-      .replace(/<!--\/sinwan-t-->/g, "")
-  );
 }

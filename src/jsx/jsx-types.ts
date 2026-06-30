@@ -1,831 +1,561 @@
 /**
- * SinwanJS View Module — JSX Type Definitions
+ * SinwanJS JSX Type Definitions
  *
- * Strongly-typed HTML attribute interfaces for the JSX IntrinsicElements map.
- * Supports both React-style (`className`) and native (`class`) attribute names,
- * camelCase event handlers (`onClick`) AND lowercase variants, and reactive
- * values (Signal / Computed) for any visual attribute.
+ * Uses native DOM element types for props — no React compat (no className,
+ * no camelCase event handlers). Enhanced element props (formAction as function,
+ * defaultValue, precedence, etc.) are layered on top via intersection types.
  */
 
-import type {
-  SinwanNode,
-  SinwanSlots,
-  Reactive,
-} from "../types.ts";
+import type { Properties as CSSProperties } from "csstype";
+import type { SinwanNode, SinwanSlots } from "../types.ts";
 
-// ---------------------------------------------------------------------------
-// Event handler types
-// ---------------------------------------------------------------------------
+// ─── Children Type ──────────────────────────────────────────
 
-export type EventHandler<E = Event> = string | ((event: E) => void);
-export type MouseEventHandler = EventHandler<MouseEvent>;
-export type KeyboardEventHandler = EventHandler<KeyboardEvent>;
-export type FocusEventHandler = EventHandler<FocusEvent>;
-export type FormEventHandler = EventHandler<Event>;
-export type ChangeEventHandler = EventHandler<Event>;
-export type InputEventHandler = EventHandler<InputEvent>;
-export type WheelEventHandler = EventHandler<WheelEvent>;
-export type DragEventHandler = EventHandler<DragEvent>;
-export type ClipboardEventHandler = EventHandler<ClipboardEvent>;
-export type PointerEventHandler = EventHandler<PointerEvent>;
-export type TouchEventHandler = EventHandler<TouchEvent>;
+export type JSXChildren = SinwanNode | SinwanSlots;
 
-// ---------------------------------------------------------------------------
-// Class & Style values
-// ---------------------------------------------------------------------------
+// ─── Native Props Helper ────────────────────────────────────
 
-export type ClassValue =
-  | string
-  | string[]
-  | Record<string, boolean | null | undefined>
-  | null
-  | undefined;
-
-export type CSSProperties =
-  | Record<string, string | number | null | undefined>
-  | string;
-
-// ---------------------------------------------------------------------------
-// Base HTML attributes (shared by every element)
-// ---------------------------------------------------------------------------
-
-export interface HTMLAttributes {
-  // Identity
-  id?: Reactive<string>;
+/**
+ * Extract native DOM attributes from element type T, override children/style/class,
+ * and add JSX-specific props (ref, key).
+ */
+/**
+ * Extract native DOM attributes from element type T, override children/style/class,
+ * and add JSX-specific props (ref, key).
+ * @template T - The DOM element type to extract props from
+ * @property children - Child elements to render inside this element
+ * @property style - Inline styles as a CSSStyleDeclaration object or CSS string
+ * @property class - CSS class name(s) for the element
+ * @property ref - Callback ref or ref object for accessing the DOM element
+ * @property key - Unique identifier for list reconciliation
+ * @property data-* - Custom data attributes
+ */
+type NativeProps<T extends Element> = Partial<
+  Omit<T, "children" | "attributes" | "style" | "classList" | "dataset">
+> & {
+  /** Child elements to render inside this element */
+  children?: JSXChildren;
+  /** Inline styles as a CSSProperties object or CSS string */
+  style?: CSSProperties | string;
+  /** CSS class name(s) for the element */
+  class?: string;
+  /** Callback ref or ref object for accessing the DOM element */
+  ref?: ((el: T | null) => void) | { current: T | null } | null;
+  /** Unique identifier for list reconciliation */
   key?: string | number;
-  ref?: ((el: Element | null) => void) | { current: Element | null };
-
-  // Class — both native `class` and React-compat `className`
-  // Accepts string, string[], or Record<string, boolean> — and Reactive variants.
-  class?: Reactive<ClassValue>;
-  className?: Reactive<ClassValue>;
-
-  // Style — inline CSS object or string (also reactive)
-  style?: Reactive<CSSProperties>;
-
-  // Content
-  title?: Reactive<string>;
-  lang?: string;
-  dir?: "ltr" | "rtl" | "auto";
-  hidden?: Reactive<boolean>;
-  tabindex?: number | string;
-  tabIndex?: number | string;
-  slot?: string;
-
-  // Accessibility
-  role?: string;
-
-  // Editing
-  contenteditable?: boolean | "true" | "false" | "plaintext-only";
-  contentEditable?: boolean | "true" | "false" | "plaintext-only";
-  draggable?: boolean | "true" | "false";
-  spellcheck?: boolean | "true" | "false";
-
-  // Misc
-  translate?: "yes" | "no";
-  is?: string;
-  inputmode?:
-    | "none"
-    | "text"
-    | "decimal"
-    | "numeric"
-    | "tel"
-    | "search"
-    | "email"
-    | "url";
-  inputMode?:
-    | "none"
-    | "text"
-    | "decimal"
-    | "numeric"
-    | "tel"
-    | "search"
-    | "email"
-    | "url";
-  enterkeyhint?:
-    | "enter"
-    | "done"
-    | "go"
-    | "next"
-    | "previous"
-    | "search"
-    | "send";
-  popover?: boolean | "auto" | "manual";
-  autofocus?: boolean;
-  autoFocus?: boolean;
-  nonce?: string;
-
-  // Sinwan-specific: raw HTML injection (trusted only)
-  dangerouslySetInnerHTML?: { __html: string };
-
-  // Children
-  children?: SinwanNode | SinwanSlots;
-
-  // ---------- Aria attributes (permissive prefix) ----------
-  "aria-activedescendant"?: string;
-  "aria-atomic"?: boolean | "true" | "false";
-  "aria-autocomplete"?: "none" | "inline" | "list" | "both";
-  "aria-busy"?: boolean | "true" | "false";
-  "aria-checked"?: boolean | "true" | "false" | "mixed";
-  "aria-colcount"?: number;
-  "aria-colindex"?: number;
-  "aria-colspan"?: number;
-  "aria-controls"?: string;
-  "aria-current"?:
-    | boolean
-    | "true"
-    | "false"
-    | "page"
-    | "step"
-    | "location"
-    | "date"
-    | "time";
-  "aria-describedby"?: string;
-  "aria-details"?: string;
-  "aria-disabled"?: boolean | "true" | "false";
-  "aria-dropeffect"?: "none" | "copy" | "execute" | "link" | "move" | "popup";
-  "aria-errormessage"?: string;
-  "aria-expanded"?: boolean | "true" | "false";
-  "aria-flowto"?: string;
-  "aria-grabbed"?: boolean | "true" | "false";
-  "aria-haspopup"?:
-    | boolean
-    | "true"
-    | "false"
-    | "menu"
-    | "listbox"
-    | "tree"
-    | "grid"
-    | "dialog";
-  "aria-hidden"?: boolean | "true" | "false";
-  "aria-invalid"?: boolean | "true" | "false" | "grammar" | "spelling";
-  "aria-keyshortcuts"?: string;
-  "aria-label"?: string;
-  "aria-labelledby"?: string;
-  "aria-level"?: number;
-  "aria-live"?: "off" | "assertive" | "polite";
-  "aria-modal"?: boolean | "true" | "false";
-  "aria-multiline"?: boolean | "true" | "false";
-  "aria-multiselectable"?: boolean | "true" | "false";
-  "aria-orientation"?: "horizontal" | "vertical";
-  "aria-owns"?: string;
-  "aria-placeholder"?: string;
-  "aria-posinset"?: number;
-  "aria-pressed"?: boolean | "true" | "false" | "mixed";
-  "aria-readonly"?: boolean | "true" | "false";
-  "aria-relevant"?:
-    | "additions"
-    | "all"
-    | "removals"
-    | "text"
-    | "additions text";
-  "aria-required"?: boolean | "true" | "false";
-  "aria-roledescription"?: string;
-  "aria-rowcount"?: number;
-  "aria-rowindex"?: number;
-  "aria-rowspan"?: number;
-  "aria-selected"?: boolean | "true" | "false";
-  "aria-setsize"?: number;
-  "aria-sort"?: "none" | "ascending" | "descending" | "other";
-  "aria-valuemax"?: number;
-  "aria-valuemin"?: number;
-  "aria-valuenow"?: number;
-  "aria-valuetext"?: string;
-
-  // ---------- Event handlers — camelCase (preferred for JSX) ----------
-  onClick?: MouseEventHandler;
-  onDblClick?: MouseEventHandler;
-  onMouseDown?: MouseEventHandler;
-  onMouseUp?: MouseEventHandler;
-  onMouseOver?: MouseEventHandler;
-  onMouseOut?: MouseEventHandler;
-  onMouseMove?: MouseEventHandler;
-  onMouseEnter?: MouseEventHandler;
-  onMouseLeave?: MouseEventHandler;
-  onContextMenu?: MouseEventHandler;
-  onKeyDown?: KeyboardEventHandler;
-  onKeyUp?: KeyboardEventHandler;
-  onKeyPress?: KeyboardEventHandler;
-  onFocus?: FocusEventHandler;
-  onBlur?: FocusEventHandler;
-  onFocusIn?: FocusEventHandler;
-  onFocusOut?: FocusEventHandler;
-  onChange?: ChangeEventHandler;
-  onInput?: InputEventHandler;
-  onSubmit?: FormEventHandler;
-  onReset?: FormEventHandler;
-  onInvalid?: FormEventHandler;
-  onScroll?: EventHandler;
-  onWheel?: WheelEventHandler;
-  onLoad?: EventHandler;
-  onError?: EventHandler;
-  onResize?: EventHandler;
-  onPointerDown?: PointerEventHandler;
-  onPointerUp?: PointerEventHandler;
-  onPointerMove?: PointerEventHandler;
-  onPointerEnter?: PointerEventHandler;
-  onPointerLeave?: PointerEventHandler;
-  onPointerCancel?: PointerEventHandler;
-  onTouchStart?: TouchEventHandler;
-  onTouchEnd?: TouchEventHandler;
-  onTouchMove?: TouchEventHandler;
-  onTouchCancel?: TouchEventHandler;
-  onDragStart?: DragEventHandler;
-  onDragEnd?: DragEventHandler;
-  onDragOver?: DragEventHandler;
-  onDragEnter?: DragEventHandler;
-  onDragLeave?: DragEventHandler;
-  onDrop?: DragEventHandler;
-  onCopy?: ClipboardEventHandler;
-  onCut?: ClipboardEventHandler;
-  onPaste?: ClipboardEventHandler;
-  onAnimationStart?: EventHandler<AnimationEvent>;
-  onAnimationEnd?: EventHandler<AnimationEvent>;
-  onTransitionEnd?: EventHandler<TransitionEvent>;
-
-  // ---------- Lowercase aliases (HTML / SSR-friendly) ----------
-  onclick?: MouseEventHandler;
-  ondblclick?: MouseEventHandler;
-  onmousedown?: MouseEventHandler;
-  onmouseup?: MouseEventHandler;
-  onmouseover?: MouseEventHandler;
-  onmouseout?: MouseEventHandler;
-  onmousemove?: MouseEventHandler;
-  onmouseenter?: MouseEventHandler;
-  onmouseleave?: MouseEventHandler;
-  onkeydown?: KeyboardEventHandler;
-  onkeyup?: KeyboardEventHandler;
-  onkeypress?: KeyboardEventHandler;
-  onfocus?: FocusEventHandler;
-  onblur?: FocusEventHandler;
-  onchange?: ChangeEventHandler;
-  oninput?: InputEventHandler;
-  onsubmit?: FormEventHandler;
-  onreset?: FormEventHandler;
-  onscroll?: EventHandler;
-  onwheel?: WheelEventHandler;
-  onload?: EventHandler;
-  onerror?: EventHandler;
-  onresize?: EventHandler;
-
-  // Data-* attributes
+  /** Custom data attributes */
   [key: `data-${string}`]: string | number | boolean | undefined;
-}
+};
 
-// ---------------------------------------------------------------------------
-// Per-element attribute extensions
-// ---------------------------------------------------------------------------
+// ─── Enhanced Element Props ─────────────────────────────────
+//
+// These extend NativeProps for tags intercepted by enhanced-elements.ts.
+// Each enhanced tag gets the extra props its transformer accepts.
 
-export interface AnchorHTMLAttributes extends HTMLAttributes {
-  href?: Reactive<string>;
-  target?: "_self" | "_blank" | "_parent" | "_top" | string;
-  rel?: string;
-  download?: string | boolean;
-  hreflang?: string;
-  ping?: string;
-  referrerpolicy?: string;
-  referrerPolicy?: string;
-  type?: string;
-}
+/**
+ * Enhanced form element props.
+ * @property action - Form action URL or async function handler for form submission
+ */
+type FormProps = NativeProps<HTMLFormElement> & {
+  /** Form action URL or async function handler for form submission */
+  action?: string | ((formData: FormData) => void | Promise<void>);
+};
 
-export interface ImgHTMLAttributes extends HTMLAttributes {
-  src?: Reactive<string>;
-  alt?: Reactive<string>;
-  width?: Reactive<number | string>;
-  height?: Reactive<number | string>;
-  loading?: "eager" | "lazy";
-  decoding?: "sync" | "async" | "auto";
-  crossorigin?: "" | "anonymous" | "use-credentials";
-  crossOrigin?: "" | "anonymous" | "use-credentials";
-  srcset?: string;
-  srcSet?: string;
-  sizes?: string;
-  fetchpriority?: "high" | "low" | "auto";
-  usemap?: string;
-  ismap?: boolean;
-}
+/**
+ * Enhanced input element props.
+ * @property defaultValue - Initial value for uncontrolled inputs
+ * @property defaultChecked - Initial checked state for uncontrolled checkboxes/radios
+ * @property formAction - Override form action for this submitter
+ */
+type InputProps = NativeProps<HTMLInputElement> & {
+  /** Initial value for uncontrolled inputs */
+  defaultValue?: string;
+  /** Initial checked state for uncontrolled checkboxes/radios */
+  defaultChecked?: boolean;
+  /** Override form action for this submitter */
+  formAction?: string | ((formData: FormData) => void | Promise<void>);
+};
 
-export interface InputHTMLAttributes extends HTMLAttributes {
-  type?: string;
-  name?: string;
-  value?: Reactive<string | number | readonly string[]>;
-  checked?: Reactive<boolean>;
-  disabled?: Reactive<boolean>;
-  readonly?: Reactive<boolean>;
-  readOnly?: Reactive<boolean>;
-  required?: Reactive<boolean>;
-  placeholder?: Reactive<string>;
-  maxlength?: number | string;
-  maxLength?: number | string;
-  minlength?: number | string;
-  minLength?: number | string;
-  max?: number | string;
-  min?: number | string;
-  step?: number | string;
-  pattern?: string;
-  multiple?: boolean;
-  accept?: string;
-  autocomplete?: string;
-  autoComplete?: string;
-  list?: string;
-  size?: number | string;
-  src?: string;
-  alt?: string;
-  width?: number | string;
-  height?: number | string;
-  form?: string;
-  formaction?: string;
-  formAction?: string;
-  formmethod?: string;
-  formMethod?: string;
-  formnovalidate?: boolean;
-  formNoValidate?: boolean;
-  formtarget?: string;
-  formTarget?: string;
-  capture?: "user" | "environment" | string;
-}
+/**
+ * Enhanced button element props.
+ * @property formAction - Override form action for this submitter
+ */
+type ButtonProps = NativeProps<HTMLButtonElement> & {
+  /** Override form action for this submitter */
+  formAction?: string | ((formData: FormData) => void | Promise<void>);
+};
 
-export interface TextareaHTMLAttributes extends HTMLAttributes {
-  name?: string;
-  value?: Reactive<string>;
-  disabled?: Reactive<boolean>;
-  readonly?: Reactive<boolean>;
-  readOnly?: Reactive<boolean>;
-  required?: Reactive<boolean>;
-  placeholder?: Reactive<string>;
-  rows?: number | string;
-  cols?: number | string;
-  maxlength?: number | string;
-  maxLength?: number | string;
-  minlength?: number | string;
-  minLength?: number | string;
-  wrap?: "hard" | "soft" | "off";
-  autocomplete?: string;
-  autoComplete?: string;
-  form?: string;
-}
+/**
+ * Enhanced select element props.
+ * @property defaultValue - Initial selected value(s) for uncontrolled selects
+ */
+type SelectProps = NativeProps<HTMLSelectElement> & {
+  /** Initial selected value(s) for uncontrolled selects */
+  defaultValue?: string | string[];
+};
 
-export interface SelectHTMLAttributes extends HTMLAttributes {
-  name?: string;
-  value?: Reactive<string | readonly string[]>;
-  disabled?: Reactive<boolean>;
-  required?: Reactive<boolean>;
-  multiple?: Reactive<boolean>;
-  size?: number | string;
-  form?: string;
-  autocomplete?: string;
-  autoComplete?: string;
-}
+/**
+ * Enhanced textarea element props.
+ * @property defaultValue - Initial value for uncontrolled textareas
+ */
+type TextareaProps = NativeProps<HTMLTextAreaElement> & {
+  /** Initial value for uncontrolled textareas */
+  defaultValue?: string;
+};
 
-export interface OptionHTMLAttributes extends HTMLAttributes {
-  value?: Reactive<string | number>;
-  disabled?: Reactive<boolean>;
-  selected?: Reactive<boolean>;
-  label?: string;
-}
+/**
+ * Enhanced option element props.
+ * @property selected - Disabled; use parent select's value/defaultValue instead
+ */
+type OptionProps = NativeProps<HTMLOptionElement> & {
+  /** Disabled; use parent select's value/defaultValue instead */
+  selected?: never;
+};
 
-export interface FormHTMLAttributes extends HTMLAttributes {
-  action?: string;
-  method?: "get" | "post" | "dialog" | string;
-  enctype?: string;
-  encType?: string;
-  target?: string;
-  novalidate?: boolean;
-  noValidate?: boolean;
-  autocomplete?: "on" | "off" | string;
-  autoComplete?: "on" | "off" | string;
-  name?: string;
-  acceptCharset?: string;
-  "accept-charset"?: string;
-}
+/**
+ * Enhanced progress element props.
+ * @property value - Current progress value (null for indeterminate)
+ */
+type ProgressProps = NativeProps<HTMLProgressElement> & {
+  /** Current progress value (null for indeterminate) */
+  value?: number | null;
+};
 
-export interface ButtonHTMLAttributes extends HTMLAttributes {
-  type?: "submit" | "reset" | "button";
-  name?: string;
-  value?: Reactive<string>;
-  disabled?: Reactive<boolean>;
-  form?: string;
-  formaction?: string;
-  formAction?: string;
-  formmethod?: string;
-  formMethod?: string;
-  formnovalidate?: boolean;
-  formNoValidate?: boolean;
-  formtarget?: string;
-  formTarget?: string;
-  popovertarget?: string;
-  popovertargetaction?: "hide" | "show" | "toggle";
-}
-
-export interface LabelHTMLAttributes extends HTMLAttributes {
-  for?: string;
-  htmlFor?: string;
-  form?: string;
-}
-
-export interface TableHTMLAttributes extends HTMLAttributes {
-  cellpadding?: number | string;
-  cellspacing?: number | string;
-  border?: number | string;
-  width?: number | string;
-}
-
-export interface TdHTMLAttributes extends HTMLAttributes {
-  colspan?: number | string;
-  colSpan?: number | string;
-  rowspan?: number | string;
-  rowSpan?: number | string;
-  headers?: string;
-  scope?: "row" | "col" | "rowgroup" | "colgroup";
-}
-
-export interface ThHTMLAttributes extends TdHTMLAttributes {
-  abbr?: string;
-}
-
-export interface MetaHTMLAttributes extends HTMLAttributes {
-  charset?: string;
-  content?: string;
-  "http-equiv"?: string;
-  httpEquiv?: string;
-  name?: string;
-  media?: string;
-}
-
-export interface LinkHTMLAttributes extends HTMLAttributes {
-  href?: string;
-  rel?: string;
-  type?: string;
-  media?: string;
-  crossorigin?: "" | "anonymous" | "use-credentials";
-  crossOrigin?: "" | "anonymous" | "use-credentials";
-  integrity?: string;
-  as?: string;
-  sizes?: string;
-  hreflang?: string;
-  fetchpriority?: "high" | "low" | "auto";
+/**
+ * Enhanced link element props for stylesheet loading.
+ * @property precedence - Stylesheet loading priority for head ordering
+ * @property disabled - Whether the stylesheet is disabled
+ */
+type LinkProps = NativeProps<HTMLLinkElement> & {
+  /** Stylesheet loading priority for head ordering */
+  precedence?: string;
+  /** Whether the stylesheet is disabled */
   disabled?: boolean;
-}
+};
 
-export interface ScriptHTMLAttributes extends HTMLAttributes {
-  src?: string;
-  type?: string;
-  async?: boolean;
-  defer?: boolean;
-  crossorigin?: "" | "anonymous" | "use-credentials";
-  crossOrigin?: "" | "anonymous" | "use-credentials";
-  integrity?: string;
-  nomodule?: boolean;
-  noModule?: boolean;
-  nonce?: string;
-  fetchpriority?: "high" | "low" | "auto";
-}
+/**
+ * Enhanced style element props for inline stylesheets.
+ * @property precedence - Stylesheet loading priority for head ordering
+ * @property href - Unique identifier for deduplication
+ */
+type StyleProps = NativeProps<HTMLStyleElement> & {
+  /** Stylesheet loading priority for head ordering */
+  precedence?: string;
+  /** Unique identifier for deduplication */
+  href?: string;
+};
 
-export interface StyleHTMLAttributes extends HTMLAttributes {
-  media?: string;
-  nonce?: string;
-  type?: string;
-}
+/**
+ * Enhanced title element props.
+ * @property children - Document title text (must be a string)
+ */
+type TitleProps = NativeProps<HTMLTitleElement> & {
+  /** Document title text (must be a string) */
+  children?: string;
+};
 
-export interface IframeHTMLAttributes extends HTMLAttributes {
-  src?: string;
-  srcdoc?: string;
-  name?: string;
-  width?: number | string;
-  height?: number | string;
-  sandbox?: string;
-  allow?: string;
-  allowfullscreen?: boolean;
-  loading?: "eager" | "lazy";
-  referrerpolicy?: string;
-  referrerPolicy?: string;
-}
-
-export interface VideoHTMLAttributes extends HTMLAttributes {
-  src?: string;
-  poster?: string;
-  width?: number | string;
-  height?: number | string;
-  autoplay?: boolean;
-  controls?: boolean;
-  loop?: boolean;
-  muted?: boolean;
-  playsinline?: boolean;
-  preload?: "none" | "metadata" | "auto" | "";
-  crossorigin?: "" | "anonymous" | "use-credentials";
-  crossOrigin?: "" | "anonymous" | "use-credentials";
-}
-
-export interface AudioHTMLAttributes extends HTMLAttributes {
-  src?: string;
-  autoplay?: boolean;
-  controls?: boolean;
-  loop?: boolean;
-  muted?: boolean;
-  preload?: "none" | "metadata" | "auto" | "";
-  crossorigin?: "" | "anonymous" | "use-credentials";
-  crossOrigin?: "" | "anonymous" | "use-credentials";
-}
-
-export interface SourceHTMLAttributes extends HTMLAttributes {
-  src?: string;
-  srcset?: string;
-  srcSet?: string;
-  sizes?: string;
-  type?: string;
-  media?: string;
-  width?: number | string;
-  height?: number | string;
-}
-
-export interface CanvasHTMLAttributes extends HTMLAttributes {
-  width?: number | string;
-  height?: number | string;
-}
-
-export interface DialogHTMLAttributes extends HTMLAttributes {
-  open?: boolean;
-}
-
-export interface DetailsHTMLAttributes extends HTMLAttributes {
-  open?: boolean;
-  name?: string;
-}
-
-export interface HtmlHTMLAttributes extends HTMLAttributes {
-  lang?: string;
-  xmlns?: string;
-}
-
-export interface ColHTMLAttributes extends HTMLAttributes {
-  span?: number | string;
-  width?: number | string;
-}
-
-export interface ColgroupHTMLAttributes extends HTMLAttributes {
-  span?: number | string;
-}
-
-export interface OutputHTMLAttributes extends HTMLAttributes {
-  for?: string;
-  htmlFor?: string;
-  form?: string;
-  name?: string;
-}
-
-export interface MeterHTMLAttributes extends HTMLAttributes {
-  value?: number | string;
-  min?: number | string;
-  max?: number | string;
-  low?: number | string;
-  high?: number | string;
-  optimum?: number | string;
-  form?: string;
-}
-
-export interface ProgressHTMLAttributes extends HTMLAttributes {
-  value?: number | string;
-  max?: number | string;
-}
-
-export interface TimeHTMLAttributes extends HTMLAttributes {
-  datetime?: string;
-  dateTime?: string;
-}
-
-export interface SvgHTMLAttributes extends HTMLAttributes {
-  viewBox?: string;
-  xmlns?: string;
-  fill?: string;
-  stroke?: string;
-  "stroke-width"?: number | string;
-  "stroke-linecap"?: string;
-  "stroke-linejoin"?: string;
-  width?: number | string;
-  height?: number | string;
-  d?: string;
-  cx?: number | string;
-  cy?: number | string;
-  r?: number | string;
-  x?: number | string;
-  y?: number | string;
-  x1?: number | string;
-  y1?: number | string;
-  x2?: number | string;
-  y2?: number | string;
-  rx?: number | string;
-  ry?: number | string;
-  transform?: string;
-  opacity?: number | string;
-  "clip-path"?: string;
-  points?: string;
-  [key: string]: unknown;
-}
-
-// ---------------------------------------------------------------------------
-// IntrinsicElements map
-// ---------------------------------------------------------------------------
+// ─── HTML Intrinsic Elements ────────────────────────────────
 
 export interface SinwanIntrinsicElements {
-  // Document
-  html: HtmlHTMLAttributes;
-  head: HTMLAttributes;
-  body: HTMLAttributes;
-  title: HTMLAttributes;
-  base: HTMLAttributes & { href?: string; target?: string };
+  // Document structure
+  /** HTML document root element */
+  html: NativeProps<HTMLHtmlElement>;
+  /** Document metadata container */
+  head: NativeProps<HTMLHeadElement>;
+  /** Document body content container */
+  body: NativeProps<HTMLBodyElement>;
+  /** Base URL for relative URLs in the document */
+  base: NativeProps<HTMLBaseElement>;
+  /** External resource link (stylesheets, icons, etc.) */
+  link: LinkProps;
+  /** Document metadata (charset, viewport, description, etc.) */
+  meta: NativeProps<HTMLMetaElement>;
+  /** Inline CSS stylesheet */
+  style: StyleProps;
+  /** Document title shown in browser tab */
+  title: TitleProps;
 
-  // Metadata
-  meta: MetaHTMLAttributes;
-  link: LinkHTMLAttributes;
-  style: StyleHTMLAttributes;
-  script: ScriptHTMLAttributes;
-  noscript: HTMLAttributes;
-
-  // Sections
-  header: HTMLAttributes;
-  footer: HTMLAttributes;
-  main: HTMLAttributes;
-  nav: HTMLAttributes;
-  aside: HTMLAttributes;
-  section: HTMLAttributes;
-  article: HTMLAttributes;
-  address: HTMLAttributes;
-  hgroup: HTMLAttributes;
-  search: HTMLAttributes;
-
-  // Headings
-  h1: HTMLAttributes;
-  h2: HTMLAttributes;
-  h3: HTMLAttributes;
-  h4: HTMLAttributes;
-  h5: HTMLAttributes;
-  h6: HTMLAttributes;
+  // Sectioning
+  /** Contact information for the author/owner */
+  address: NativeProps<HTMLElement>;
+  /** Self-contained composition (blog post, news article, etc.) */
+  article: NativeProps<HTMLElement>;
+  /** Content tangentially related to surrounding content */
+  aside: NativeProps<HTMLElement>;
+  /** Footer for a section or page */
+  footer: NativeProps<HTMLElement>;
+  /** Header for a section or page */
+  header: NativeProps<HTMLElement>;
+  /** Level 1 heading (most important) */
+  h1: NativeProps<HTMLHeadingElement>;
+  /** Level 2 heading */
+  h2: NativeProps<HTMLHeadingElement>;
+  /** Level 3 heading */
+  h3: NativeProps<HTMLHeadingElement>;
+  /** Level 4 heading */
+  h4: NativeProps<HTMLHeadingElement>;
+  /** Level 5 heading */
+  h5: NativeProps<HTMLHeadingElement>;
+  /** Level 6 heading (least important) */
+  h6: NativeProps<HTMLHeadingElement>;
+  /** Main content of the document */
+  main: NativeProps<HTMLElement>;
+  /** Navigation links section */
+  nav: NativeProps<HTMLElement>;
+  /** Generic standalone section of a document */
+  section: NativeProps<HTMLElement>;
+  /** Search functionality container */
+  search: NativeProps<HTMLElement>;
+  /** Heading group with subheadings */
+  hgroup: NativeProps<HTMLElement>;
 
   // Text content
-  p: HTMLAttributes;
-  div: HTMLAttributes;
-  span: HTMLAttributes;
-  br: HTMLAttributes;
-  hr: HTMLAttributes;
-  pre: HTMLAttributes;
-  blockquote: HTMLAttributes & { cite?: string };
-  ol: HTMLAttributes & {
-    start?: number;
-    reversed?: boolean;
-    type?: "1" | "a" | "A" | "i" | "I";
-  };
-  ul: HTMLAttributes;
-  li: HTMLAttributes & { value?: number };
-  dl: HTMLAttributes;
-  dt: HTMLAttributes;
-  dd: HTMLAttributes;
-  figure: HTMLAttributes;
-  figcaption: HTMLAttributes;
+  /** Extended quotation from another source */
+  blockquote: NativeProps<HTMLQuoteElement>;
+  /** Description/value in a description list */
+  dd: NativeProps<HTMLElement>;
+  /** Generic container for flow content */
+  div: NativeProps<HTMLDivElement>;
+  /** Description list */
+  dl: NativeProps<HTMLDListElement>;
+  /** Term/name in a description list */
+  dt: NativeProps<HTMLElement>;
+  /** Caption for a figure element */
+  figcaption: NativeProps<HTMLElement>;
+  /** Self-contained content with optional caption */
+  figure: NativeProps<HTMLElement>;
+  /** Horizontal rule (thematic break) */
+  hr: NativeProps<HTMLHRElement>;
+  /** List item */
+  li: NativeProps<HTMLLIElement>;
+  /** Ordered list */
+  ol: NativeProps<HTMLOListElement>;
+  /** Paragraph */
+  p: NativeProps<HTMLParagraphElement>;
+  /** Preformatted text (preserves whitespace) */
+  pre: NativeProps<HTMLPreElement>;
+  /** Unordered list */
+  ul: NativeProps<HTMLUListElement>;
 
   // Inline text
-  a: AnchorHTMLAttributes;
-  em: HTMLAttributes;
-  strong: HTMLAttributes;
-  small: HTMLAttributes;
-  s: HTMLAttributes;
-  cite: HTMLAttributes;
-  q: HTMLAttributes & { cite?: string };
-  dfn: HTMLAttributes;
-  abbr: HTMLAttributes;
-  ruby: HTMLAttributes;
-  rt: HTMLAttributes;
-  rp: HTMLAttributes;
-  code: HTMLAttributes;
-  var: HTMLAttributes;
-  samp: HTMLAttributes;
-  kbd: HTMLAttributes;
-  sub: HTMLAttributes;
-  sup: HTMLAttributes;
-  i: HTMLAttributes;
-  b: HTMLAttributes;
-  u: HTMLAttributes;
-  mark: HTMLAttributes;
-  bdi: HTMLAttributes;
-  bdo: HTMLAttributes & { dir: "ltr" | "rtl" };
-  wbr: HTMLAttributes;
+  /** Hyperlink to another page or resource */
+  a: NativeProps<HTMLAnchorElement>;
+  /** Abbreviation or acronym */
+  abbr: NativeProps<HTMLElement>;
+  /** Bring attention to (bold) */
+  b: NativeProps<HTMLElement>;
+  /** Bidirectional isolate */
+  bdi: NativeProps<HTMLElement>;
+  /** Bidirectional override */
+  bdo: NativeProps<HTMLElement>;
+  /** Line break */
+  br: NativeProps<HTMLBRElement>;
+  /** Citation or reference to a work */
+  cite: NativeProps<HTMLElement>;
+  /** Inline code fragment */
+  code: NativeProps<HTMLElement>;
+  /** Machine-readable equivalent of content */
+  data: NativeProps<HTMLDataElement>;
+  /** Definition of a term */
+  dfn: NativeProps<HTMLElement>;
+  /** Emphasized text */
+  em: NativeProps<HTMLElement>;
+  /** Idiomatic text (italic) */
+  i: NativeProps<HTMLElement>;
+  /** Keyboard input */
+  kbd: NativeProps<HTMLElement>;
+  /** Highlighted/marked text */
+  mark: NativeProps<HTMLElement>;
+  /** Inline quotation */
+  q: NativeProps<HTMLQuoteElement>;
+  /** Ruby fallback parenthesis */
+  rp: NativeProps<HTMLElement>;
+  /** Ruby text component */
+  rt: NativeProps<HTMLElement>;
+  /** Ruby annotation (for East Asian typography) */
+  ruby: NativeProps<HTMLElement>;
+  /** Strikethrough text (no longer accurate) */
+  s: NativeProps<HTMLElement>;
+  /** Sample output from a program */
+  samp: NativeProps<HTMLElement>;
+  /** Side comment (small print) */
+  small: NativeProps<HTMLElement>;
+  /** Generic inline container */
+  span: NativeProps<HTMLSpanElement>;
+  /** Strong importance (bold) */
+  strong: NativeProps<HTMLElement>;
+  /** Subscript text */
+  sub: NativeProps<HTMLElement>;
+  /** Superscript text */
+  sup: NativeProps<HTMLElement>;
+  /** Machine-readable date/time */
+  time: NativeProps<HTMLTimeElement>;
+  /** Unarticulated annotation (underline) */
+  u: NativeProps<HTMLElement>;
+  /** Variable in a mathematical expression or code */
+  var: NativeProps<HTMLElement>;
+  /** Word break opportunity */
+  wbr: NativeProps<HTMLElement>;
 
-  // Forms
-  form: FormHTMLAttributes;
-  input: InputHTMLAttributes;
-  textarea: TextareaHTMLAttributes;
-  select: SelectHTMLAttributes;
-  option: OptionHTMLAttributes;
-  optgroup: HTMLAttributes & { disabled?: boolean; label: string };
-  button: ButtonHTMLAttributes;
-  label: LabelHTMLAttributes;
-  fieldset: HTMLAttributes & {
-    disabled?: boolean;
-    form?: string;
-    name?: string;
-  };
-  legend: HTMLAttributes;
-  datalist: HTMLAttributes;
-  output: OutputHTMLAttributes;
-  progress: ProgressHTMLAttributes;
-  meter: MeterHTMLAttributes;
+  // Edits
+  /** Deleted text (strikethrough) */
+  del: NativeProps<HTMLModElement>;
+  /** Inserted text (underline) */
+  ins: NativeProps<HTMLModElement>;
 
-  // Tables
-  table: TableHTMLAttributes;
-  caption: HTMLAttributes;
-  thead: HTMLAttributes;
-  tbody: HTMLAttributes;
-  tfoot: HTMLAttributes;
-  tr: HTMLAttributes;
-  td: TdHTMLAttributes;
-  th: ThHTMLAttributes;
-  col: ColHTMLAttributes;
-  colgroup: ColgroupHTMLAttributes;
-
-  // Media
-  img: ImgHTMLAttributes;
-  picture: HTMLAttributes;
-  source: SourceHTMLAttributes;
-  video: VideoHTMLAttributes;
-  audio: AudioHTMLAttributes;
-  track: HTMLAttributes & {
-    src?: string;
-    kind?: string;
-    srclang?: string;
-    label?: string;
-    default?: boolean;
-  };
-  map: HTMLAttributes & { name: string };
-  area: HTMLAttributes & {
-    href?: string;
-    alt?: string;
-    shape?: string;
-    coords?: string;
-    target?: string;
-    rel?: string;
-  };
-  canvas: CanvasHTMLAttributes;
-
-  // Embedded
-  iframe: IframeHTMLAttributes;
-  embed: HTMLAttributes & {
-    src?: string;
-    type?: string;
-    width?: number | string;
-    height?: number | string;
-  };
-  object: HTMLAttributes & {
-    data?: string;
-    type?: string;
-    width?: number | string;
-    height?: number | string;
-    name?: string;
-    form?: string;
-  };
-  param: HTMLAttributes & { name?: string; value?: string };
+  // Forms (enhanced)
+  /** Form for user input submission */
+  form: FormProps;
+  /** Input control (text, checkbox, radio, etc.) */
+  input: InputProps;
+  /** Clickable button */
+  button: ButtonProps;
+  /** Dropdown selection control */
+  select: SelectProps;
+  /** Multi-line text input */
+  textarea: TextareaProps;
+  /** Option in a select or datalist */
+  option: OptionProps;
+  /** Group of options in a select */
+  optgroup: NativeProps<HTMLOptGroupElement>;
+  /** Label for a form control */
+  label: NativeProps<HTMLLabelElement>;
+  /** Group of related form controls */
+  fieldset: NativeProps<HTMLFieldSetElement>;
+  /** Caption for a fieldset */
+  legend: NativeProps<HTMLLegendElement>;
+  /** Predefined options for input controls */
+  datalist: NativeProps<HTMLDataListElement>;
+  /** Result of a calculation */
+  output: NativeProps<HTMLOutputElement>;
+  /** Progress indicator */
+  progress: ProgressProps;
+  /** Scalar measurement within a known range */
+  meter: NativeProps<HTMLMeterElement>;
 
   // Interactive
-  details: DetailsHTMLAttributes;
-  summary: HTMLAttributes;
-  dialog: DialogHTMLAttributes;
-  menu: HTMLAttributes;
+  /** Disclosure widget (expandable/collapsible) */
+  details: NativeProps<HTMLDetailsElement>;
+  /** Modal or non-modal dialog box */
+  dialog: NativeProps<HTMLDialogElement>;
+  /** Menu of commands */
+  menu: NativeProps<HTMLMenuElement>;
+  /** Summary/caption for a details element */
+  summary: NativeProps<HTMLElement>;
+
+  // Scripting
+  /** 2D drawing surface for graphics */
+  canvas: NativeProps<HTMLCanvasElement>;
+  /** Nested browsing context (embedded page) */
+  iframe: NativeProps<HTMLIFrameElement>;
+  /** Fallback for browsers without frame support (deprecated) */
+  noframes: NativeProps<HTMLElement>;
+  /** Fallback content when JavaScript is disabled */
+  noscript: NativeProps<HTMLElement>;
+  /** Executable script or data block */
+  script: NativeProps<HTMLScriptElement>;
+  /** HTML template for cloning */
+  template: NativeProps<HTMLTemplateElement>;
+
+  // Tables
+  /** Table caption */
+  caption: NativeProps<HTMLTableCaptionElement>;
+  /** Table column properties */
+  col: NativeProps<HTMLTableColElement>;
+  /** Group of table columns */
+  colgroup: NativeProps<HTMLTableColElement>;
+  /** Data table */
+  table: NativeProps<HTMLTableElement>;
+  /** Table body section */
+  tbody: NativeProps<HTMLTableSectionElement>;
+  /** Table data cell */
+  td: NativeProps<HTMLTableCellElement>;
+  /** Table footer section */
+  tfoot: NativeProps<HTMLTableSectionElement>;
+  /** Table header cell */
+  th: NativeProps<HTMLTableCellElement>;
+  /** Table header section */
+  thead: NativeProps<HTMLTableSectionElement>;
+  /** Table row */
+  tr: NativeProps<HTMLTableRowElement>;
+
+  // Media
+  /** Clickable area within an image map */
+  area: NativeProps<HTMLAreaElement>;
+  /** Audio content with playback controls */
+  audio: NativeProps<HTMLAudioElement>;
+  /** Image element */
+  img: NativeProps<HTMLImageElement>;
+  /** Image map with clickable areas */
+  map: NativeProps<HTMLMapElement>;
+  /** Text track for media elements (subtitles, captions) */
+  track: NativeProps<HTMLTrackElement>;
+  /** Video content with playback controls */
+  video: NativeProps<HTMLVideoElement>;
+  /** Container for responsive image sources */
+  picture: NativeProps<HTMLElement>;
+  /** Media source for picture, audio, or video */
+  source: NativeProps<HTMLSourceElement>;
+
+  // Embedded
+  /** External content plugin (deprecated) */
+  embed: NativeProps<HTMLEmbedElement>;
+  /** External resource container (deprecated) */
+  object: NativeProps<HTMLObjectElement>;
+  /** Parameter for object element (deprecated) */
+  param: NativeProps<HTMLParamElement>;
 
   // Misc
-  template: HTMLAttributes;
-  slot: HTMLAttributes & { name?: string };
-  time: TimeHTMLAttributes;
-  data: HTMLAttributes & { value?: string };
-  del: HTMLAttributes & { cite?: string; datetime?: string };
-  ins: HTMLAttributes & { cite?: string; datetime?: string };
+  /** Placeholder for distributed content in shadow DOM */
+  slot: NativeProps<HTMLSlotElement>;
+}
 
-  // SVG (permissive)
-  svg: SvgHTMLAttributes;
-  path: SvgHTMLAttributes;
-  circle: SvgHTMLAttributes;
-  rect: SvgHTMLAttributes;
-  line: SvgHTMLAttributes;
-  polyline: SvgHTMLAttributes;
-  polygon: SvgHTMLAttributes;
-  ellipse: SvgHTMLAttributes;
-  text: SvgHTMLAttributes;
-  tspan: SvgHTMLAttributes;
-  g: SvgHTMLAttributes;
-  defs: SvgHTMLAttributes;
-  use: SvgHTMLAttributes;
-  symbol: SvgHTMLAttributes;
-  clipPath: SvgHTMLAttributes;
-  mask: SvgHTMLAttributes;
-  image: SvgHTMLAttributes;
-  linearGradient: SvgHTMLAttributes;
-  radialGradient: SvgHTMLAttributes;
-  stop: SvgHTMLAttributes;
-  pattern: SvgHTMLAttributes;
-  foreignObject: SvgHTMLAttributes;
-  animate: SvgHTMLAttributes;
-  animateTransform: SvgHTMLAttributes;
-  filter: SvgHTMLAttributes;
-  feGaussianBlur: SvgHTMLAttributes;
-  feOffset: SvgHTMLAttributes;
-  feBlend: SvgHTMLAttributes;
-  feColorMatrix: SvgHTMLAttributes;
-  feComposite: SvgHTMLAttributes;
+// ─── SVG Intrinsic Elements ─────────────────────────────────
+
+/**
+ * SVG intrinsic elements for JSX.
+ * Maps SVG element names to their native DOM types with JSX-specific props.
+ */
+export interface SinwanSVGElements {
+  /** Root SVG container element */
+  svg: NativeProps<SVGSVGElement>;
+  /** Animate element values over time */
+  animate: NativeProps<SVGAnimateElement>;
+  /** Animate element along a motion path */
+  animateMotion: NativeProps<SVGAnimateMotionElement>;
+  /** Animate transformation attributes */
+  animateTransform: NativeProps<SVGAnimateTransformElement>;
+  /** Circle shape */
+  circle: NativeProps<SVGCircleElement>;
+  /** Clipping path for masking content */
+  clipPath: NativeProps<SVGClipPathElement>;
+  /** Container for reusable elements */
+  defs: NativeProps<SVGDefsElement>;
+  /** Accessible description for SVG content */
+  desc: NativeProps<SVGDescElement>;
+  /** Ellipse shape */
+  ellipse: NativeProps<SVGEllipseElement>;
+  /** Filter primitive for blending images */
+  feBlend: NativeProps<SVGFEBlendElement>;
+  /** Filter primitive for color matrix transformations */
+  feColorMatrix: NativeProps<SVGFEColorMatrixElement>;
+  /** Filter primitive for component-wise remapping */
+  feComponentTransfer: NativeProps<SVGFEComponentTransferElement>;
+  /** Filter primitive for combining images */
+  feComposite: NativeProps<SVGFECompositeElement>;
+  /** Filter primitive for matrix convolution */
+  feConvolveMatrix: NativeProps<SVGFEConvolveMatrixElement>;
+  /** Filter primitive for diffuse lighting effect */
+  feDiffuseLighting: NativeProps<SVGFEDiffuseLightingElement>;
+  /** Filter primitive for displacement mapping */
+  feDisplacementMap: NativeProps<SVGFEDisplacementMapElement>;
+  /** Filter light source from distant direction */
+  feDistantLight: NativeProps<SVGFEDistantLightElement>;
+  /** Filter primitive for drop shadow effect */
+  feDropShadow: NativeProps<SVGFEDropShadowElement>;
+  /** Filter primitive for flood fill */
+  feFlood: NativeProps<SVGFEFloodElement>;
+  /** Transfer function for alpha channel */
+  feFuncA: NativeProps<SVGFEFuncAElement>;
+  /** Transfer function for blue channel */
+  feFuncB: NativeProps<SVGFEFuncBElement>;
+  /** Transfer function for green channel */
+  feFuncG: NativeProps<SVGFEFuncGElement>;
+  /** Transfer function for red channel */
+  feFuncR: NativeProps<SVGFEFuncRElement>;
+  /** Filter primitive for Gaussian blur */
+  feGaussianBlur: NativeProps<SVGFEGaussianBlurElement>;
+  /** Filter primitive for fetching external image */
+  feImage: NativeProps<SVGFEImageElement>;
+  /** Filter primitive for compositing layers */
+  feMerge: NativeProps<SVGFEMergeElement>;
+  /** Layer within feMerge composition */
+  feMergeNode: NativeProps<SVGFEMergeNodeElement>;
+  /** Filter primitive for morphological operations */
+  feMorphology: NativeProps<SVGFEMorphologyElement>;
+  /** Filter primitive for offset positioning */
+  feOffset: NativeProps<SVGFEOffsetElement>;
+  /** Filter light source from a point */
+  fePointLight: NativeProps<SVGFEPointLightElement>;
+  /** Filter primitive for specular lighting effect */
+  feSpecularLighting: NativeProps<SVGFESpecularLightingElement>;
+  /** Filter light source as a spotlight */
+  feSpotLight: NativeProps<SVGFESpotLightElement>;
+  /** Filter primitive for tiling patterns */
+  feTile: NativeProps<SVGFETileElement>;
+  /** Filter primitive for turbulence/noise generation */
+  feTurbulence: NativeProps<SVGFETurbulenceElement>;
+  /** Container for filter primitives */
+  filter: NativeProps<SVGFilterElement>;
+  /** Container for non-SVG content (HTML) */
+  foreignObject: NativeProps<SVGForeignObjectElement>;
+  /** Group container for other SVG elements */
+  g: NativeProps<SVGGElement>;
+  /** Embedded raster image */
+  image: NativeProps<SVGImageElement>;
+  /** Line shape between two points */
+  line: NativeProps<SVGLineElement>;
+  /** Linear gradient fill definition */
+  linearGradient: NativeProps<SVGLinearGradientElement>;
+  /** Marker symbol for line endpoints or vertices */
+  marker: NativeProps<SVGMarkerElement>;
+  /** Alpha mask for compositing */
+  mask: NativeProps<SVGMaskElement>;
+  /** Metadata container for SVG content */
+  metadata: NativeProps<SVGMetadataElement>;
+  /** Motion path reference for animateMotion */
+  mpath: NativeProps<SVGMPathElement>;
+  /** Arbitrary path shape */
+  path: NativeProps<SVGPathElement>;
+  /** Repeating pattern fill definition */
+  pattern: NativeProps<SVGPatternElement>;
+  /** Closed polygon shape */
+  polygon: NativeProps<SVGPolygonElement>;
+  /** Open polyline shape */
+  polyline: NativeProps<SVGPolylineElement>;
+  /** Radial gradient fill definition */
+  radialGradient: NativeProps<SVGRadialGradientElement>;
+  /** Rectangle shape */
+  rect: NativeProps<SVGRectElement>;
+  /** Script element within SVG namespace */
+  svgScript: NativeProps<SVGScriptElement>;
+  /** Set attribute value at specific time */
+  set: NativeProps<SVGSetElement>;
+  /** Gradient color stop */
+  stop: NativeProps<SVGStopElement>;
+  /** Style element within SVG namespace */
+  svgStyle: NativeProps<SVGStyleElement>;
+  /** Conditional processing container */
+  switch: NativeProps<SVGSwitchElement>;
+  /** Reusable graphic symbol definition */
+  symbol: NativeProps<SVGSymbolElement>;
+  /** Text content element */
+  text: NativeProps<SVGTextElement>;
+  /** Text along a path */
+  textPath: NativeProps<SVGTextPathElement>;
+  /** Text span for styling substrings */
+  tspan: NativeProps<SVGTSpanElement>;
+  /** Accessible title for SVG content */
+  svgTitle: NativeProps<SVGTitleElement>;
+  /** Reference to a reusable element */
+  use: NativeProps<SVGUseElement>;
+  /** Named view of the SVG document */
+  view: NativeProps<SVGViewElement>;
+}
+
+// ─── JSX Namespace ──────────────────────────────────────────
+
+declare global {
+  namespace JSX {
+    type Element = SinwanNode;
+    interface IntrinsicAttributes {
+      key?: string | number;
+      ref?: unknown;
+    }
+    interface ElementChildrenAttribute {
+      children: {};
+    }
+    interface IntrinsicElements
+      extends SinwanIntrinsicElements, SinwanSVGElements {}
+  }
 }

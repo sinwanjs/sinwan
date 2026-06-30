@@ -1,7 +1,8 @@
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
-import { signal, nextTick } from "../src/reactivity/index.ts";
+import { signal } from "../src/reactivity/signal.ts";
+import { nextTick } from "../src/reactivity/index.ts";
 import { renderNodeToDOM } from "../src/renderer/render-children.ts";
 import { renderElementToDOM } from "../src/renderer/render-element.ts";
 import { SinwanElement } from "../src/types.ts";
