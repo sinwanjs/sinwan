@@ -87,10 +87,7 @@ hydrate(App, document.getElementById("app")!, { initial: 5 });
 
 ## Documentation
 
-- [Documentation v1](./docs/v1/README.md)
-- [API reference](./docs/v1/15-api-reference.md)
-- [Changelog](./docs/v1/CHANGELOG.md)
-- [Troubleshooting](./docs/v1/17-troubleshooting.md)
+- [Documentation v1](https://sinwanjs.com)
 
 ## Development
 
