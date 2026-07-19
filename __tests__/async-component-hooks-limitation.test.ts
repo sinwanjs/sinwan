@@ -13,7 +13,7 @@ import { Window } from "happy-dom";
 import { signal } from "../src/reactivity/signal.ts";
 import { cc } from "../src/component/create.ts";
 import { mount } from "../src/renderer/mount.ts";
-import { useState } from "../src/integrations/react/use-state.ts";
+import { useState } from "../src/react/use-state.ts";
 import { onMounted } from "../src/component/lifecycle.ts";
 import type { SinwanElement } from "../src/types.ts";
 

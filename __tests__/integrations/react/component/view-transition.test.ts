@@ -13,8 +13,8 @@ import {
   ViewTransition,
   unstable_ViewTransition,
   unstable_startViewTransition,
-} from "../../../../src/integrations/react/_client.ts";
-import { REACT_VIEW_TRANSITION_TYPE } from "../../../../src/integrations/react/_internal/symbols.ts";
+} from "../../../../src/react/_client.ts";
+import { REACT_VIEW_TRANSITION_TYPE } from "../../../../src/react/_internal/symbols.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

@@ -13,7 +13,7 @@ import type { SinwanElement } from "../../../../src/types.ts";
 import {
   useDebugValue,
   getDebugValues,
-} from "../../../../src/integrations/react/use-debug-value.ts";
+} from "../../../../src/react/use-debug-value.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

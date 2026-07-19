@@ -25,8 +25,8 @@ import {
   hydrateRoot,
   act,
   Activity,
-} from "../../../../src/integrations/react/_client.ts";
-import { _resetResourceHints } from "../../../../src/integrations/react/resource-hints.ts";
+} from "../../../../src/react/_client.ts";
+import { _resetResourceHints } from "../../../../src/react/resource-hints.ts";
 
 let win: InstanceType<typeof Window>;
 let container: HTMLElement;

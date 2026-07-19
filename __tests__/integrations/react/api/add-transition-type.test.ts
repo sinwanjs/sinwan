@@ -12,12 +12,12 @@ import {
   startTransition,
   useTransition,
   useState,
-} from "../../../../src/integrations/react/_client.ts";
+} from "../../../../src/react/_client.ts";
 import {
   addTransitionType,
   clearTransitionTypes,
   getActiveTransitionTypes,
-} from "../../../../src/integrations/react/_shared.ts";
+} from "../../../../src/react/_shared.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

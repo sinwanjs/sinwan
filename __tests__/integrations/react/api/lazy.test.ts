@@ -9,9 +9,9 @@ import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import { lazy } from "../../../../src/integrations/react/_shared.ts";
-import { Suspense } from "../../../../src/integrations/react/_client.ts";
-import { REACT_LAZY_TYPE } from "../../../../src/integrations/react/_internal/symbols.ts";
+import { lazy } from "../../../../src/react/_shared.ts";
+import { Suspense } from "../../../../src/react/_client.ts";
+import { REACT_LAZY_TYPE } from "../../../../src/react/_internal/symbols.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

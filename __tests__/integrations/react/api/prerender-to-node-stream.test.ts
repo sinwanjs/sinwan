@@ -5,8 +5,8 @@
  */
 
 import { describe, it, expect } from "bun:test";
-import { prerenderToNodeStream } from "../../../../src/integrations/react/prerender.ts";
-import { useId } from "../../../../src/integrations/react/use-id.ts";
+import { prerenderToNodeStream } from "../../../../src/react/prerender.ts";
+import { useId } from "../../../../src/react/use-id.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 const el = (

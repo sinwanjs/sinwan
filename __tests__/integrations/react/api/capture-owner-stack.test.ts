@@ -10,8 +10,8 @@ import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
 import { onError } from "../../../../src/component/lifecycle.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import { captureOwnerStack } from "../../../../src/integrations/react/capture-owner-stack.ts";
-import { useEffect } from "../../../../src/integrations/react/use-effect.ts";
+import { captureOwnerStack } from "../../../../src/react/capture-owner-stack.ts";
+import { useEffect } from "../../../../src/react/use-effect.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

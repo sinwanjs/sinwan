@@ -16,6 +16,10 @@ export type { DOMOps } from "./dom-ops.ts";
 // Template hoisting (compiler-generated)
 export {
   _$createTemplate,
+  _$bindText,
+  _$bindAttr,
+  _$bindStyle,
+  _$bindClass,
   isTemplateResult,
   SINWAN_TEMPLATE,
 } from "./template.ts";

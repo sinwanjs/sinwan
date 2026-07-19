@@ -6,8 +6,8 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
-import { preconnect } from "../../../../src/integrations/react/resource-hints.ts";
-import { _resetResourceHints } from "../../../../src/integrations/react/resource-hints.ts";
+import { preconnect } from "../../../../src/react/resource-hints.ts";
+import { _resetResourceHints } from "../../../../src/react/resource-hints.ts";
 
 let win: InstanceType<typeof Window>;
 let container: HTMLElement;
@@ -18,11 +18,17 @@ beforeEach(() => {
   (globalThis as any).window = win;
   (win as any).SyntaxError = SyntaxError;
   container = win.document.createElement("div") as unknown as HTMLElement;
-  (win.document.body as unknown as Node).appendChild(container as unknown as Node);
+  (win.document.body as unknown as Node).appendChild(
+    container as unknown as Node,
+  );
   _resetResourceHints();
 });
 
-const el = (tag: string, props: Record<string, unknown> = {}, ...children: unknown[]) => ({
+const el = (
+  tag: string,
+  props: Record<string, unknown> = {},
+  ...children: unknown[]
+) => ({
   tag,
   props: { ...props, children },
   children: children as any,
@@ -38,7 +44,9 @@ describe("preconnect — Reference", () => {
 
   it("accepts an optional crossOrigin option", () => {
     preconnect("https://cdn.example.com", { crossOrigin: "anonymous" });
-    const link = win.document.head.querySelector('link[rel="preconnect"]') as unknown as HTMLLinkElement | null;
+    const link = win.document.head.querySelector(
+      'link[rel="preconnect"]',
+    ) as unknown as HTMLLinkElement | null;
     expect(link?.getAttribute("crossorigin")).toBe("anonymous");
   });
 });
@@ -53,7 +61,9 @@ describe("preconnect — Usage", () => {
     });
     mount(App, container);
 
-    const link = win.document.head.querySelector('link[rel="preconnect"]') as unknown as HTMLLinkElement | null;
+    const link = win.document.head.querySelector(
+      'link[rel="preconnect"]',
+    ) as unknown as HTMLLinkElement | null;
     expect(link).toBeTruthy();
     expect(link?.href).toBe("https://fonts.googleapis.com/");
   });
@@ -68,12 +78,18 @@ describe("preconnect — Usage", () => {
     mount(App, container);
 
     // Before click: no link yet
-    expect(win.document.head.querySelector('link[rel="preconnect"]')).toBeNull();
+    expect(
+      win.document.head.querySelector('link[rel="preconnect"]'),
+    ).toBeNull();
 
-    const button = container.querySelector("button") as unknown as HTMLElement | null;
+    const button = container.querySelector(
+      "button",
+    ) as unknown as HTMLElement | null;
     (button as any)?.click();
 
-    const link = win.document.head.querySelector('link[rel="preconnect"]') as unknown as HTMLLinkElement | null;
+    const link = win.document.head.querySelector(
+      'link[rel="preconnect"]',
+    ) as unknown as HTMLLinkElement | null;
     expect(link).toBeTruthy();
     expect(link?.href).toBe("https://api.example.com/");
   });
@@ -126,13 +142,17 @@ describe("preconnect — Edge cases", () => {
   it("preconnects even to the same origin as the page (no special blocking)", () => {
     // React docs note there's no *benefit*, but the call itself is allowed
     preconnect("http://localhost");
-    const link = win.document.head.querySelector('link[rel="preconnect"]') as unknown as HTMLLinkElement | null;
+    const link = win.document.head.querySelector(
+      'link[rel="preconnect"]',
+    ) as unknown as HTMLLinkElement | null;
     expect(link).toBeTruthy();
   });
 
   it("handles hrefs with paths gracefully", () => {
     preconnect("https://cdn.example.com/assets");
-    const link = win.document.head.querySelector('link[rel="preconnect"]') as unknown as HTMLLinkElement | null;
+    const link = win.document.head.querySelector(
+      'link[rel="preconnect"]',
+    ) as unknown as HTMLLinkElement | null;
     expect(link?.href).toBe("https://cdn.example.com/assets");
   });
 

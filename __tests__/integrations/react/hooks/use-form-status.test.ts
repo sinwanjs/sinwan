@@ -9,8 +9,8 @@ import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import { useFormStatus } from "../../../../src/integrations/react/_client.ts";
-import { _setFormStatus } from "../../../../src/integrations/react/use-form-status.ts";
+import { useFormStatus } from "../../../../src/react/_client.ts";
+import { _setFormStatus } from "../../../../src/react/use-form-status.ts";
 import { jsx } from "../../../../src/jsx/jsx-runtime.ts";
 import {
   getCurrentInstance,

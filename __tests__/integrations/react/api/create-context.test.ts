@@ -6,8 +6,8 @@
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
-import { createContext } from "../../../../src/integrations/react/_shared.ts";
-import { REACT_CONTEXT_TYPE } from "../../../../src/integrations/react/_internal/symbols.ts";
+import { createContext } from "../../../../src/react/_shared.ts";
+import { REACT_CONTEXT_TYPE } from "../../../../src/react/_internal/symbols.ts";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
 import type { SinwanElement } from "../../../../src/types.ts";

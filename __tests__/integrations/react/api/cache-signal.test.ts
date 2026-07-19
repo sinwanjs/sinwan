@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import {
   cacheSignal,
   setRequestAbortSignal,
-} from "../../../../src/integrations/react/cache-signal.ts";
+} from "../../../../src/react/cache-signal.ts";
 
 describe("cacheSignal — Reference", () => {
   it("returns null on the client", () => {

@@ -9,9 +9,9 @@ import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import { useContext } from "../../../../src/integrations/react/_client.ts";
+import { useContext } from "../../../../src/react/_client.ts";
 import { signal } from "../../../../src/reactivity/signal.ts";
-import { createContext } from "../../../../src/integrations/react/create-context.ts";
+import { createContext } from "../../../../src/react/create-context.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

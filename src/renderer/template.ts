@@ -1,6 +1,10 @@
 import { domOps } from "./dom-ops.ts";
 import { isReactive, effect, resolve } from "../reactivity/index.ts";
 import type { CleanupFn } from "../reactivity/index.ts";
+import {
+  getCurrentInstance,
+  queueUpdatedHooks,
+} from "../component/instance.ts";
 import { renderNodeToDOM } from "./render-children.ts";
 import { setSingleAttribute } from "./attributes.ts";
 import {
@@ -19,6 +23,68 @@ export interface SinwanTemplateResult {
   fragment: DocumentFragment;
   /** Disposer functions for reactive bindings and event listeners. */
   disposers: CleanupFn[];
+}
+
+// ─── Compiler-driven binding descriptors (Phase 2) ─────────────────
+
+interface TextBindingDescriptor {
+  type: "text";
+  getter: () => unknown;
+}
+
+interface AttrBindingDescriptor {
+  type: "attr";
+  name: string;
+  getter: () => unknown;
+}
+
+interface StyleBindingDescriptor {
+  type: "style";
+  getter: () => unknown;
+}
+
+interface ClassBindingDescriptor {
+  type: "class";
+  getter: () => unknown;
+}
+
+type BindingDescriptor =
+  | TextBindingDescriptor
+  | AttrBindingDescriptor
+  | StyleBindingDescriptor
+  | ClassBindingDescriptor;
+
+function isBindingDescriptor(value: unknown): value is BindingDescriptor {
+  return (
+    value != null &&
+    typeof value === "object" &&
+    "type" in (value as any) &&
+    "getter" in (value as any) &&
+    typeof (value as any).getter === "function"
+  );
+}
+
+/** Create a reactive text binding descriptor. */
+export function _$bindText(getter: () => unknown): TextBindingDescriptor {
+  return { type: "text", getter };
+}
+
+/** Create a reactive attribute binding descriptor. */
+export function _$bindAttr(
+  name: string,
+  getter: () => unknown,
+): AttrBindingDescriptor {
+  return { type: "attr", name, getter };
+}
+
+/** Create a reactive style binding descriptor. */
+export function _$bindStyle(getter: () => unknown): StyleBindingDescriptor {
+  return { type: "style", getter };
+}
+
+/** Create a reactive class binding descriptor. */
+export function _$bindClass(getter: () => unknown): ClassBindingDescriptor {
+  return { type: "class", getter };
 }
 
 /** Check if a value is a compiler-generated template result. */
@@ -62,19 +128,36 @@ export function _$createTemplate(
       if (comment) {
         const parent = comment.parentNode;
         if (parent) {
-          const mounted = renderNodeToDOM(
-            value as SinwanNode,
-            parent,
-            comment,
-            null,
-          );
-          comment.parentNode?.removeChild(comment);
-          if (
-            mounted &&
-            "dispose" in mounted &&
-            typeof (mounted as any).dispose === "function"
-          ) {
-            disposers.push((mounted as any).dispose);
+          if (isBindingDescriptor(value) && value.type === "text") {
+            const textNode = domOps.createTextNode("");
+            parent.insertBefore(textNode, comment);
+            parent.removeChild(comment);
+            const owner = getCurrentInstance();
+            let initialized = false;
+            const dispose = effect(() => {
+              const resolved = value.getter();
+              textNode.textContent = resolved == null ? "" : String(resolved);
+              if (initialized) {
+                queueUpdatedHooks(owner);
+              }
+              initialized = true;
+            });
+            disposers.push(dispose);
+          } else {
+            const mounted = renderNodeToDOM(
+              value as SinwanNode,
+              parent,
+              comment,
+              null,
+            );
+            comment.parentNode?.removeChild(comment);
+            if (
+              mounted &&
+              "dispose" in mounted &&
+              typeof (mounted as any).dispose === "function"
+            ) {
+              disposers.push((mounted as any).dispose);
+            }
           }
         }
       }
@@ -85,7 +168,15 @@ export function _$createTemplate(
           attrName === "style" || attrName === "class"
             ? { previousStyleProps: new Set<string>() }
             : undefined;
-        if (isReactive(value)) {
+
+        if (isBindingDescriptor(value)) {
+          if (value.type === "text") continue;
+          const getter = value.getter;
+          const dispose = effect(() => {
+            setSingleAttribute(target, attrName, getter(), state);
+          });
+          disposers.push(dispose);
+        } else if (isReactive(value)) {
           const dispose = effect(() => {
             setSingleAttribute(target, attrName, resolve(value), state);
           });

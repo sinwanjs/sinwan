@@ -25,8 +25,8 @@ import {
   useTransition,
   startTransition,
   useOptimistic,
-} from "../../../../src/integrations/react/_client.ts";
-import { createContext } from "../../../../src/integrations/react/create-context.ts";
+} from "../../../../src/react/_client.ts";
+import { createContext } from "../../../../src/react/create-context.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

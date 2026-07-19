@@ -22,8 +22,8 @@ import type { SinwanElement } from "../types.ts";
 import { registerEnhancedElements } from "./jsx-runtime.ts";
 import { effect } from "../reactivity/index.ts";
 import { isReactive, resolve } from "../reactivity/index.ts";
-import { isServer } from "../integrations/react/_internal/is-server.ts";
-import { _setFormStatus } from "../integrations/react/use-form-status.ts";
+import { isServer } from "../react/_internal/is-server.ts";
+import { _setFormStatus } from "../react/use-form-status.ts";
 
 // ─── Shared helpers ────────────────────────────────────────
 

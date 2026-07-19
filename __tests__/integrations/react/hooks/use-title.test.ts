@@ -13,7 +13,7 @@ import {
   withInstance,
 } from "../../../../src/component/instance.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import { useTitle } from "../../../../src/integrations/react/_client.ts";
+import { useTitle } from "../../../../src/react/_client.ts";
 
 let container: HTMLElement;
 let win: InstanceType<typeof Window>;
@@ -125,8 +125,7 @@ describe("useTitle — Usage / Use variables in the title", () => {
   });
 
   it("updates reactively when the getter reads a signal", async () => {
-    const { useState } =
-      await import("../../../../src/integrations/react/_client.ts");
+    const { useState } = await import("../../../../src/react/_client.ts");
     const App = cc(() => {
       const [count] = useState(1);
       useTitle(() => `Count: ${count()}`);
@@ -164,7 +163,9 @@ describe("useTitle — Caveats", () => {
       useTitle("New Title");
       return el("div");
     });
-    const container1 = win.document.createElement("div") as unknown as HTMLElement;
+    const container1 = win.document.createElement(
+      "div",
+    ) as unknown as HTMLElement;
     mount(App, container1);
     expect(win.document.title).toBe("New Title");
 
@@ -172,7 +173,9 @@ describe("useTitle — Caveats", () => {
     win.document.title = "Externally Changed";
 
     // A new mount captures the CURRENT title at mount time
-    const container2 = win.document.createElement("div") as unknown as HTMLElement;
+    const container2 = win.document.createElement(
+      "div",
+    ) as unknown as HTMLElement;
     const app = mount(App, container2);
     app.unmount();
     // Restores to the title captured at THIS mount time
@@ -227,8 +230,12 @@ describe("useTitle — Edge cases", () => {
       return el("div");
     });
 
-    const container1 = win.document.createElement("div") as unknown as HTMLElement;
-    const container2 = win.document.createElement("div") as unknown as HTMLElement;
+    const container1 = win.document.createElement(
+      "div",
+    ) as unknown as HTMLElement;
+    const container2 = win.document.createElement(
+      "div",
+    ) as unknown as HTMLElement;
 
     const appA = mount(A, container1);
     expect(win.document.title).toBe("Title A");

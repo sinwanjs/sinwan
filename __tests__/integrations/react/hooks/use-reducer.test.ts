@@ -12,10 +12,7 @@ import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import {
-  useReducer,
-  useEffect,
-} from "../../../../src/integrations/react/_client.ts";
+import { useReducer, useEffect } from "../../../../src/react/_client.ts";
 
 globalThis.__DEV__ = false;
 

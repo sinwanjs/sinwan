@@ -19,10 +19,7 @@ import {
   withInstance,
 } from "../../../../src/component/instance.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import {
-  Profiler,
-  useState,
-} from "../../../../src/integrations/react/_client.ts";
+import { Profiler, useState } from "../../../../src/react/_client.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

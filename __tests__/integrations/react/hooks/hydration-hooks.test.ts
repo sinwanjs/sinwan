@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { cc } from "../../../../src/component/create.ts";
-import { hydrateRoot } from "../../../../src/integrations/react/hydrate-root.ts";
+import { hydrateRoot } from "../../../../src/react/hydrate-root.ts";
 import { renderToHydratableString } from "../../../../src/server/hydration-markers.ts";
 import { nextTick } from "../../../../src/reactivity/index.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
@@ -18,7 +18,7 @@ import {
   useReducer,
   useEffect,
   useLayoutEffect,
-} from "../../../../src/integrations/react/_client.ts";
+} from "../../../../src/react/_client.ts";
 import { onMounted, onUnmounted } from "../../../../src/component/lifecycle.ts";
 
 globalThis.__DEV__ = false;

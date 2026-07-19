@@ -12,7 +12,7 @@ import type { SinwanElement, SinwanNode } from "../types.ts";
 import type { MountedNode } from "../renderer/types.ts";
 import { resolve, type CleanupFn } from "../reactivity/index.ts";
 import { isSignal } from "../reactivity/signal.ts";
-import { STATE_GETTER_MARKER } from "../integrations/react/_internal/bridge.ts";
+import { STATE_GETTER_MARKER } from "../react/_internal/bridge.ts";
 import { isComputed } from "../reactivity/computed.ts";
 import { effect } from "../reactivity/effect.ts";
 import { bindEvents, isEventProp } from "../renderer/events.ts";

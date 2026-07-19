@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { cc } from "../../../../src/component/create.ts";
-import { createRoot } from "../../../../src/integrations/react/create-root.ts";
+import { createRoot } from "../../../../src/react/create-root.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 let container: HTMLElement;

@@ -9,8 +9,8 @@ import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import { Fragment } from "../../../../src/integrations/react/_shared.ts";
-import { useState } from "../../../../src/integrations/react/_client.ts";
+import { Fragment } from "../../../../src/react/_shared.ts";
+import { useState } from "../../../../src/react/_client.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

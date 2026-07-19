@@ -5,8 +5,8 @@
  */
 
 import { describe, it, expect } from "bun:test";
-import { renderToString } from "../../../../src/integrations/react/render-to-string.ts";
-import { useId } from "../../../../src/integrations/react/use-id.ts";
+import { renderToString } from "../../../../src/react/render-to-string.ts";
+import { useId } from "../../../../src/react/use-id.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 const el = (

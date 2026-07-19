@@ -36,29 +36,9 @@ const ENTRIES: PublicEntry[] = [
   { name: "hook", internal: "hook/index", types: "hook/index" },
   { name: "hydration", internal: "hydration/index", types: "hydration/index" },
   {
-    name: "react-client",
-    internal: "integrations/react/_client",
-    types: "integrations/react/_client",
-  },
-  {
-    name: "react-server",
-    internal: "integrations/react/_server",
-    types: "integrations/react/_server",
-  },
-  {
-    name: "react-shared",
-    internal: "integrations/react/_shared",
-    types: "integrations/react/_shared",
-  },
-  {
-    name: "react-static",
-    internal: "integrations/react/_static",
-    types: "integrations/react/_static",
-  },
-  {
-    name: "react-type",
-    internal: "integrations/react/_type",
-    types: "integrations/react/_type",
+    name: "react",
+    internal: "react/index",
+    types: "react/index",
   },
   {
     name: "jsx-runtime",

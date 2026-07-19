@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from "bun:test";
-import { renderToPipeableStream } from "../../../../src/integrations/react/_server.ts";
+import { renderToPipeableStream } from "../../../../src/react/_server.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 const div = (

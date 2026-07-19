@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from "bun:test";
-import { cache } from "../../../../src/integrations/react/cache.ts";
+import { cache } from "../../../../src/react/cache.ts";
 
 // ─── Reference ────────────────────────────────────────────────────────────
 

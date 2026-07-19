@@ -20,7 +20,7 @@ import {
   useMemo,
   useRef,
   useReducer,
-} from "../../../../src/integrations/react/_client.ts";
+} from "../../../../src/react/_client.ts";
 import {
   createStore,
   createMutable,

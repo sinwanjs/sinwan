@@ -17,8 +17,8 @@ import {
   addTransitionType,
   getActiveTransitionTypes,
   captureOwnerStack,
-} from "../../../../src/integrations/react/_shared.ts";
-import { REACT_CONTEXT_TYPE } from "../../../../src/integrations/react/_internal/symbols.ts";
+} from "../../../../src/react/_shared.ts";
+import { REACT_CONTEXT_TYPE } from "../../../../src/react/_internal/symbols.ts";
 
 describe("Fragment", () => {
   it("is a symbol re-exported from the JSX runtime", () => {

@@ -10,7 +10,7 @@ import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import { createPortal } from "../../../../src/integrations/react/create-portal.ts";
+import { createPortal } from "../../../../src/react/create-portal.ts";
 import { PORTAL_TYPE } from "../../../../src/component/control-flow.ts";
 
 let win: InstanceType<typeof Window>;
@@ -219,9 +219,7 @@ describe("createPortal — Caveats", () => {
 
 describe("createPortal — Edge cases", () => {
   it("handles null children gracefully", () => {
-    const App = cc(() =>
-      createPortal(null, portalTarget as unknown as Node),
-    );
+    const App = cc(() => createPortal(null, portalTarget as unknown as Node));
 
     expect(() => mount(App, container)).not.toThrow();
     expect(portalTarget.textContent).toBe("");
@@ -237,9 +235,7 @@ describe("createPortal — Edge cases", () => {
   });
 
   it("handles number children", () => {
-    const App = cc(() =>
-      createPortal(42, portalTarget as unknown as Node),
-    );
+    const App = cc(() => createPortal(42, portalTarget as unknown as Node));
 
     mount(App, container);
     expect(portalTarget.textContent).toBe("42");

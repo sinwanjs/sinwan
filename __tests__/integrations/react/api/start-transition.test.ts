@@ -8,12 +8,9 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
-import {
-  startTransition,
-  useState,
-} from "../../../../src/integrations/react/_client.ts";
-import { getActiveTransitionTypes } from "../../../../src/integrations/react/add-transition-type.ts";
-import { clearTransitionTypes } from "../../../../src/integrations/react/add-transition-type.ts";
+import { startTransition, useState } from "../../../../src/react/_client.ts";
+import { getActiveTransitionTypes } from "../../../../src/react/add-transition-type.ts";
+import { clearTransitionTypes } from "../../../../src/react/add-transition-type.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

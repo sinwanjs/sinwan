@@ -18,13 +18,9 @@ import { cc } from "../src/component/create.ts";
 import { provide, inject } from "../src/component/provide-inject.ts";
 import { effect, nextTick } from "../src/reactivity/index.ts";
 import type { SinwanElement } from "../src/types.ts";
-import {
-  useContext,
-  useReducer,
-  useState,
-} from "../src/integrations/react/_client.ts";
+import { useContext, useReducer, useState } from "../src/react/_client.ts";
 import { createStore, createMutable, produce } from "../src/store/index.ts";
-import { createContext } from "../src/integrations/react/create-context.ts";
+import { createContext } from "../src/react/create-context.ts";
 
 // ─── DOM setup ─────────────────────────────────────────────
 

@@ -16,10 +16,7 @@ import {
   For,
   Show,
 } from "../../../../src/component/control-flow.ts";
-import {
-  useState,
-  useEffect,
-} from "../../../../src/integrations/react/_client.ts";
+import { useState, useEffect } from "../../../../src/react/_client.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 let container: HTMLElement;

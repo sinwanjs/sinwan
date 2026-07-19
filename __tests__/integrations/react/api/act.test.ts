@@ -16,7 +16,7 @@ import {
   createRoot,
   useState,
   useEffect,
-} from "../../../../src/integrations/react/_client.ts";
+} from "../../../../src/react/_client.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

@@ -5,8 +5,8 @@
  */
 
 import { describe, it, expect } from "bun:test";
-import { prerender } from "../../../../src/integrations/react/_static.ts";
-import { useId } from "../../../../src/integrations/react/use-id.ts";
+import { prerender } from "../../../../src/react/_static.ts";
+import { useId } from "../../../../src/react/use-id.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 const el = (

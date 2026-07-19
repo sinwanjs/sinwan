@@ -12,7 +12,7 @@ import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
 import { signal } from "../../../../src/reactivity/signal.ts";
-import { flushSync } from "../../../../src/integrations/react/flush-sync.ts";
+import { flushSync } from "../../../../src/react/flush-sync.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 let container: HTMLElement;

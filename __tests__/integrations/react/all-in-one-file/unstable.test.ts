@@ -12,7 +12,7 @@ import {
   Activity,
   unstable_ViewTransition,
   unstable_startViewTransition,
-} from "../../../../src/integrations/react/_client.ts";
+} from "../../../../src/react/_client.ts";
 
 let win: InstanceType<typeof Window>;
 let container: HTMLElement;

@@ -12,7 +12,7 @@ import {
   createComponentInstance,
   withInstance,
 } from "../../../../src/component/instance.ts";
-import { resetHookCursor } from "../../../../src/integrations/react/_internal/bridge.ts";
+import { resetHookCursor } from "../../../../src/react/_internal/bridge.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 import {
   useDeferredValue,
@@ -20,7 +20,7 @@ import {
   startTransition,
   Suspense,
   use,
-} from "../../../../src/integrations/react/_client.ts";
+} from "../../../../src/react/_client.ts";
 
 globalThis.__DEV__ = false;
 

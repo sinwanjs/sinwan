@@ -1,6 +1,6 @@
 {
   "name": "sinwan",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Sinwan — Reactive UI library with SSR, hydration, and fine-grained reactivity",
   "type": "commonjs",
   "types": "./dist/types.d.ts",
@@ -47,75 +47,19 @@
       },
       "default": "./dist/hydration.js"
     },
-    "./react-client": {
-      "types": "./dist/react-client.d.ts",
+    "./react": {
+      "types": "./dist/react.d.ts",
       "import": {
-        "development": "./dist/esm/integrations/react/_client.development.js",
-        "production": "./dist/esm/integrations/react/_client.production.min.js",
-        "default": "./dist/esm/integrations/react/_client.production.min.js"
+        "development": "./dist/esm/react/index.development.js",
+        "production": "./dist/esm/react/index.production.min.js",
+        "default": "./dist/esm/react/index.production.min.js"
       },
       "require": {
-        "development": "./dist/cjs/integrations/react/_client.development.js",
-        "production": "./dist/cjs/integrations/react/_client.production.min.js",
-        "default": "./dist/react-client.js"
+        "development": "./dist/cjs/react/index.development.js",
+        "production": "./dist/cjs/react/index.production.min.js",
+        "default": "./dist/react.js"
       },
-      "default": "./dist/react-client.js"
-    },
-    "./react-server": {
-      "types": "./dist/react-server.d.ts",
-      "import": {
-        "development": "./dist/esm/integrations/react/_server.development.js",
-        "production": "./dist/esm/integrations/react/_server.production.min.js",
-        "default": "./dist/esm/integrations/react/_server.production.min.js"
-      },
-      "require": {
-        "development": "./dist/cjs/integrations/react/_server.development.js",
-        "production": "./dist/cjs/integrations/react/_server.production.min.js",
-        "default": "./dist/react-server.js"
-      },
-      "default": "./dist/react-server.js"
-    },
-    "./react-shared": {
-      "types": "./dist/react-shared.d.ts",
-      "import": {
-        "development": "./dist/esm/integrations/react/_shared.development.js",
-        "production": "./dist/esm/integrations/react/_shared.production.min.js",
-        "default": "./dist/esm/integrations/react/_shared.production.min.js"
-      },
-      "require": {
-        "development": "./dist/cjs/integrations/react/_shared.development.js",
-        "production": "./dist/cjs/integrations/react/_shared.production.min.js",
-        "default": "./dist/react-shared.js"
-      },
-      "default": "./dist/react-shared.js"
-    },
-    "./react-static": {
-      "types": "./dist/react-static.d.ts",
-      "import": {
-        "development": "./dist/esm/integrations/react/_static.development.js",
-        "production": "./dist/esm/integrations/react/_static.production.min.js",
-        "default": "./dist/esm/integrations/react/_static.production.min.js"
-      },
-      "require": {
-        "development": "./dist/cjs/integrations/react/_static.development.js",
-        "production": "./dist/cjs/integrations/react/_static.production.min.js",
-        "default": "./dist/react-static.js"
-      },
-      "default": "./dist/react-static.js"
-    },
-    "./react-type": {
-      "types": "./dist/react-type.d.ts",
-      "import": {
-        "development": "./dist/esm/integrations/react/_type.development.js",
-        "production": "./dist/esm/integrations/react/_type.production.min.js",
-        "default": "./dist/esm/integrations/react/_type.production.min.js"
-      },
-      "require": {
-        "development": "./dist/cjs/integrations/react/_type.development.js",
-        "production": "./dist/cjs/integrations/react/_type.production.min.js",
-        "default": "./dist/react-type.js"
-      },
-      "default": "./dist/react-type.js"
+      "default": "./dist/react.js"
     },
     "./reactivity": {
       "types": "./dist/reactivity.d.ts",

@@ -6,7 +6,7 @@ import { cc } from "../src/component/create.ts";
 import { onMounted, onUnmounted } from "../src/component/lifecycle.ts";
 import { signal } from "../src/reactivity/signal.ts";
 import { computed, nextTick } from "../src/reactivity/index.ts";
-import { useState } from "../src/integrations/react/_client.ts";
+import { useState } from "../src/react/_client.ts";
 import {
   Show,
   For,

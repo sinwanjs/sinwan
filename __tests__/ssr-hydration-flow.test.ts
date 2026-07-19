@@ -6,9 +6,9 @@ import { cc } from "../src/component/create.ts";
 import { signal } from "../src/reactivity/signal.ts";
 import { nextTick } from "../src/reactivity/index.ts";
 import { ErrorBoundary } from "../src/component/control-flow.ts";
-import { Suspense } from "../src/integrations/react/suspense.ts";
-import { Activity } from "../src/integrations/react/activity.ts";
-import { ViewTransition } from "../src/integrations/react/view-transition.ts";
+import { Suspense } from "../src/react/suspense.ts";
+import { Activity } from "../src/react/activity.ts";
+import { ViewTransition } from "../src/react/view-transition.ts";
 import type { SinwanElement } from "../src/types.ts";
 
 function el(
@@ -95,7 +95,8 @@ describe("SSR & Hydration Flow Integration Tests", () => {
       );
 
       // SSR: Simulating synchronous fallback output with boundary anchors from server
-      const html = '<!--sinwan-b--><span id="loading">Loading...</span><!--/sinwan-b-->';
+      const html =
+        '<!--sinwan-b--><span id="loading">Loading...</span><!--/sinwan-b-->';
       container.innerHTML = html;
       expect(container.textContent).toContain("Loading...");
 
@@ -205,7 +206,9 @@ describe("SSR & Hydration Flow Integration Tests", () => {
       const app = hydrate(App, container);
       const wrapper = container.querySelector("div") as HTMLElement;
       expect(wrapper).not.toBeNull();
-      expect(wrapper.getAttribute("style")).toContain("view-transition-name:header-transition");
+      expect(wrapper.getAttribute("style")).toContain(
+        "view-transition-name:header-transition",
+      );
       expect(wrapper.textContent).toContain("transition-content");
 
       app.unmount();

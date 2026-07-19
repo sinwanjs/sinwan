@@ -11,10 +11,10 @@ import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import { StrictMode } from "../../../../src/integrations/react/strict-mode.ts";
-import { useState } from "../../../../src/integrations/react/_client.ts";
-import { REACT_STRICT_MODE_TYPE } from "../../../../src/integrations/react/_internal/symbols.ts";
-import { Fragment } from "../../../../src/integrations/react/_shared.ts";
+import { StrictMode } from "../../../../src/react/strict-mode.ts";
+import { useState } from "../../../../src/react/_client.ts";
+import { REACT_STRICT_MODE_TYPE } from "../../../../src/react/_internal/symbols.ts";
+import { Fragment } from "../../../../src/react/_shared.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

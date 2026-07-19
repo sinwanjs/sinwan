@@ -15,7 +15,7 @@ import {
   resumeToPipeableStream,
   renderShell,
   streamShell,
-} from "../../../../src/integrations/react/_server.ts";
+} from "../../../../src/react/_server.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 const div = (

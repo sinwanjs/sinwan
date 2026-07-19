@@ -6,8 +6,8 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
-import { preload } from "../../../../src/integrations/react/resource-hints.ts";
-import { _resetResourceHints } from "../../../../src/integrations/react/resource-hints.ts";
+import { preload } from "../../../../src/react/resource-hints.ts";
+import { _resetResourceHints } from "../../../../src/react/resource-hints.ts";
 
 let win: InstanceType<typeof Window>;
 let container: HTMLElement;

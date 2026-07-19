@@ -8,7 +8,7 @@ import { describe, it, expect } from "bun:test";
 import {
   resumeAndPrerender,
   resumeAndPrerenderToNodeStream,
-} from "../../../../src/integrations/react/_static.ts";
+} from "../../../../src/react/_static.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 const el = (
@@ -358,8 +358,7 @@ describe("resumeAndPrerenderToNodeStream — Usage", () => {
 
 describe("resumeAndPrerender — Parity with prerender", () => {
   it("emits identical output to prerender for the same node and options", async () => {
-    const { prerender } =
-      await import("../../../../src/integrations/react/_static.ts");
+    const { prerender } = await import("../../../../src/react/_static.ts");
 
     const opts = {
       bootstrapScripts: ["/a.js"],

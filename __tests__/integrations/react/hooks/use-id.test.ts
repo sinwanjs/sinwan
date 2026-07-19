@@ -8,10 +8,10 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
-import { createRoot } from "../../../../src/integrations/react/create-root.ts";
-import { renderToString } from "../../../../src/integrations/react/render-to-string.ts";
+import { createRoot } from "../../../../src/react/create-root.ts";
+import { renderToString } from "../../../../src/react/render-to-string.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import { useId } from "../../../../src/integrations/react/_client.ts";
+import { useId } from "../../../../src/react/_client.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

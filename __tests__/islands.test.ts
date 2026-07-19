@@ -375,8 +375,8 @@ describe("hydrateIslands()", () => {
 
 describe("React integration re-exports", () => {
   it("exposes island() and hydrateIslands() through the React adapters", async () => {
-    const reactServer = await import("../src/integrations/react/_server.ts");
-    const reactClient = await import("../src/integrations/react/_client.ts");
+    const reactServer = await import("../src/react/_server.ts");
+    const reactClient = await import("../src/react/_client.ts");
 
     expect(typeof reactServer.island).toBe("function");
     expect(typeof reactClient.hydrateIslands).toBe("function");

@@ -98,4 +98,94 @@ describe("Template result hydration", () => {
 
     app.unmount();
   });
+
+  it("updates explicit binding descriptors reactively", async () => {
+    const {
+      _$createTemplate,
+      _$bindText,
+      _$bindAttr,
+      _$bindStyle,
+      _$bindClass,
+    } = await import("../src/renderer/template.ts");
+    const { signal } = await import("../src/reactivity/signal.ts");
+    const { nextTick } = await import("../src/reactivity/index.ts");
+
+    const count = signal(0);
+    const title = signal("hello");
+    const color = signal("red");
+    const active = signal(false);
+
+    const def: TemplateDef = {
+      html: '<div title="" style="" class=""><!--s:0--></div>',
+      slots: [
+        { path: [0], type: "child" },
+        { path: [], type: "attr", name: "title" },
+        { path: [], type: "attr", name: "style" },
+        { path: [], type: "attr", name: "class" },
+      ],
+    };
+
+    const result = _$createTemplate(def, [
+      _$bindText(() => count.value),
+      _$bindAttr("title", () => title.value),
+      _$bindStyle(() => ({ color: color.value })),
+      _$bindClass(() => ({ active: active.value })),
+    ]);
+
+    container.appendChild(result.fragment);
+
+    const div = container.querySelector("div");
+    expect(div?.textContent).toBe("0");
+    expect(div?.getAttribute("title")).toBe("hello");
+    expect(div?.style.color).toBe("red");
+    expect(div?.className).toBe("");
+
+    count.value = 1;
+    title.value = "world";
+    color.value = "blue";
+    active.value = true;
+    await nextTick();
+
+    expect(div?.textContent).toBe("1");
+    expect(div?.getAttribute("title")).toBe("world");
+    expect(div?.style.color).toBe("blue");
+    expect(div?.className).toBe("active");
+
+    for (const dispose of result.disposers) dispose();
+  });
+
+  it("updates child DOM when a mutable prop changes", async () => {
+    const { _$createTemplate } = await import("../src/renderer/template.ts");
+    const { cc } = await import("../src/component/create.ts");
+    const { createMutable } = await import("../src/store/index.ts");
+    const { nextTick } = await import("../src/reactivity/index.ts");
+    const { renderNodeToDOM } =
+      await import("../src/renderer/render-children.ts");
+
+    let state: { user: { name: string } } = { user: { name: "" } };
+
+    const childDef: TemplateDef = {
+      html: "<p><!--s:0--></p>",
+      slots: [{ path: [0], type: "child" }],
+    };
+
+    const Child = cc((props: { user: { name: string } }) => {
+      return _$createTemplate(childDef, [() => props.user.name]);
+    });
+
+    const Parent = cc(() => {
+      state = createMutable({ user: { name: "Ada" } }) as typeof state;
+      return Child({ user: state.user });
+    });
+
+    const node = Parent({});
+    renderNodeToDOM(node, container, null, null);
+
+    expect(container.textContent).toContain("Ada");
+
+    (state as any).user.name = "Bob";
+    await nextTick();
+
+    expect(container.textContent).toContain("Bob");
+  });
 });

@@ -16,6 +16,20 @@ export type JSXChildren = SinwanNode | SinwanSlots;
 // ─── Native Props Helper ────────────────────────────────────
 
 /**
+ * Widen native DOM property types to also accept plain strings.
+ * HTML and SVG attributes are strings at the markup level, but the DOM
+ * interfaces expose many of them as specialized objects (e.g. SVGAnimatedString,
+ * SVGAnimatedLength, number, boolean). This keeps the native type valid while
+ * also allowing string attribute values, and leaves function-typed properties
+ * (event handlers) unchanged.
+ */
+type AllowString<T> = T extends (...args: any[]) => any
+  ? T
+  : T extends string
+    ? T
+    : T | string;
+
+/**
  * Extract native DOM attributes from element type T, override children/style/class,
  * and add JSX-specific props (ref, key).
  */
@@ -30,9 +44,12 @@ export type JSXChildren = SinwanNode | SinwanSlots;
  * @property key - Unique identifier for list reconciliation
  * @property data-* - Custom data attributes
  */
-type NativeProps<T extends Element> = Partial<
-  Omit<T, "children" | "attributes" | "style" | "classList" | "dataset">
-> & {
+type NativeProps<T extends Element> = Partial<{
+  [K in keyof Omit<
+    T,
+    "children" | "attributes" | "style" | "classList" | "dataset"
+  >]: AllowString<T[K]>;
+}> & {
   /** Child elements to render inside this element */
   children?: JSXChildren;
   /** Inline styles as a CSSProperties object or CSS string */

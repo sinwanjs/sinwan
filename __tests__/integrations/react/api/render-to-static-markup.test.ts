@@ -5,8 +5,8 @@
  */
 
 import { describe, it, expect } from "bun:test";
-import { renderToStaticMarkup } from "../../../../src/integrations/react/render-to-static-markup.ts";
-import { useId } from "../../../../src/integrations/react/use-id.ts";
+import { renderToStaticMarkup } from "../../../../src/react/render-to-static-markup.ts";
+import { useId } from "../../../../src/react/use-id.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 const el = (

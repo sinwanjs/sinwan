@@ -6,7 +6,7 @@ import { describe, it, expect } from "bun:test";
 import {
   resume,
   resumeToPipeableStream,
-} from "../../../../src/integrations/react/_server.ts";
+} from "../../../../src/react/_server.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 const div = (
@@ -270,7 +270,7 @@ describe("resumeToPipeableStream — Reference", () => {
 describe("resume — Bootstrap parity", () => {
   it("emits identical bootstrap tags to renderToReadableStream", async () => {
     const { renderToReadableStream } =
-      await import("../../../../src/integrations/react/_server.ts");
+      await import("../../../../src/react/_server.ts");
 
     const opts = {
       bootstrapScripts: ["/a.js"],

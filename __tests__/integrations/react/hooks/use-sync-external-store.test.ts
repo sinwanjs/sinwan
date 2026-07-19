@@ -16,7 +16,7 @@ import {
   withInstance,
 } from "../../../../src/component/instance.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import { useSyncExternalStore } from "../../../../src/integrations/react/_client.ts";
+import { useSyncExternalStore } from "../../../../src/react/_client.ts";
 
 globalThis.__DEV__ = false;
 

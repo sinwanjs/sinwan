@@ -14,8 +14,8 @@ import {
   Activity,
   useState,
   useEffect,
-} from "../../../../src/integrations/react/_client.ts";
-import { REACT_ACTIVITY_TYPE } from "../../../../src/integrations/react/_internal/symbols.ts";
+} from "../../../../src/react/_client.ts";
+import { REACT_ACTIVITY_TYPE } from "../../../../src/react/_internal/symbols.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

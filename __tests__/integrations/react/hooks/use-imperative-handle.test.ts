@@ -17,7 +17,7 @@ import {
   useImperativeHandle,
   useRef,
   useState,
-} from "../../../../src/integrations/react/_client.ts";
+} from "../../../../src/react/_client.ts";
 
 globalThis.__DEV__ = false;
 

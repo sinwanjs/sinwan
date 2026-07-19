@@ -8,7 +8,7 @@ import {
   prerenderToNodeStream,
   resumeAndPrerender,
   resumeAndPrerenderToNodeStream,
-} from "../../../../src/integrations/react/_static.ts";
+} from "../../../../src/react/_static.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 const div = (

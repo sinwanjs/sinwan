@@ -24,7 +24,7 @@ import {
   useEffect,
   useLayoutEffect,
   useEffectEvent,
-} from "../../../../src/integrations/react/_client.ts";
+} from "../../../../src/react/_client.ts";
 import { onUpdated } from "../../../../src/component/lifecycle.ts";
 
 globalThis.__DEV__ = false;

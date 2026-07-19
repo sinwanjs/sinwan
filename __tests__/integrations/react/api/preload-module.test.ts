@@ -9,7 +9,7 @@ import { cc } from "../../../../src/component/create.ts";
 import {
   preloadModule,
   _resetResourceHints,
-} from "../../../../src/integrations/react/resource-hints.ts";
+} from "../../../../src/react/resource-hints.ts";
 
 let win: InstanceType<typeof Window>;
 let container: HTMLElement;

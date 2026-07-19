@@ -15,8 +15,8 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { cc } from "../../../../src/component/create.ts";
-import { createRoot } from "../../../../src/integrations/react/create-root.ts";
-import { useState } from "../../../../src/integrations/react/use-state.ts";
+import { createRoot } from "../../../../src/react/create-root.ts";
+import { useState } from "../../../../src/react/use-state.ts";
 import { signal, type Signal } from "../../../../src/reactivity/signal.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 

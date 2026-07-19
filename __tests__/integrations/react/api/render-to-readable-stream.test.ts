@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "bun:test";
-import { renderToReadableStream } from "../../../../src/integrations/react/_server.ts";
+import { renderToReadableStream } from "../../../../src/react/_server.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
 const div = (
@@ -254,7 +254,7 @@ describe("renderToReadableStream — Edge cases", () => {
 describe("renderToReadableStream — Bootstrap parity", () => {
   it("emits identical bootstrap tags to pipeable stream", async () => {
     const { renderToPipeableStream } =
-      await import("../../../../src/integrations/react/_server.ts");
+      await import("../../../../src/react/_server.ts");
 
     const opts = {
       bootstrapScripts: ["/a.js"],
