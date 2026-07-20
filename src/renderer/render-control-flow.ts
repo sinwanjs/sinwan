@@ -834,8 +834,6 @@ export function renderForBlock<T>(
     const nextRecordsByNumeric = useNumericKeys
       ? new Array<ForRecord<T> | undefined>(maxNumericKey + 1)
       : null;
-    let reusedCount = 0;
-
     // replace forEach with for loop to avoid creating a callback function (critical for large lists)
     for (let i = 0; i < list.length; i++) {
       const item = list[i]!;
@@ -854,7 +852,6 @@ export function renderForBlock<T>(
           nextRecordsByKey!.set(key, old);
           oldByKey!.delete(key);
         }
-        reusedCount++;
         continue;
       }
 
@@ -903,18 +900,35 @@ export function renderForBlock<T>(
       }
     }
 
-    // reorder the DOM only if old records were reused
-    // (otherwise all nodes are new and already in the correct order)
-    if (reusedCount > 0) {
-      const fragment = domOps.createDocumentFragment();
-      for (let i = 0; i < nextRecords.length; i++) {
-        const nodes = getMountedDomNodes(nextRecords[i]!.mounted);
-        for (let j = 0; j < nodes.length; j++) {
-          fragment.appendChild(nodes[j]!);
-        }
-      }
-      insertNode(parent, fragment, block.endAnchor);
+    // walk the new list and move only
+    // nodes that are out of position, instead of shuffling all nodes through
+    // a DocumentFragment. This minimises DOM mutations.
+    let refNode: Node = block.endAnchor;
+    for (let i = nextRecords.length - 1; i >= 0; i--) {
+      const record = nextRecords[i]!;
+      const nodes = getMountedDomNodes(record.mounted);
+      if (nodes.length === 0) continue;
 
+      // Check if the first node is already in the correct position
+      // (immediately before refNode). If so, no move needed — just advance.
+      const firstNode = nodes[0]!;
+      if (
+        firstNode.nextSibling === refNode ||
+        nodes[nodes.length - 1]!.nextSibling === refNode
+      ) {
+        // Already in position — just update ref to first node of this record
+        refNode = firstNode;
+        continue;
+      }
+
+      // Node is out of position — move it (and any siblings) before refNode
+      for (let j = 0; j < nodes.length; j++) {
+        domOps.insertBefore(parent, nodes[j]!, refNode);
+      }
+      refNode = firstNode;
+    }
+
+    {
       let hasPortal = false;
       for (let i = 0; i < nextRecords.length; i++) {
         if (containsPortal(nextRecords[i]!.mounted)) {

@@ -115,88 +115,117 @@ export function _$createTemplate(
   const root = templateEl.content.cloneNode(true) as DocumentFragment;
   const disposers: CleanupFn[] = [];
 
+  // Pre-collect all slot targets BEFORE processing any slots.
+  // This avoids index-shift bugs: when a reactive child slot replaces a
+  // comment marker with multiple nodes (e.g. reactive anchors), the sibling
+  // indices used by walkToSlot become stale for subsequent slots in the same
+  // parent. By collecting all targets upfront, we decouple slot lookup from
+  // the mutating DOM tree.
+  const childSlotMarkers: Comment[] = [];
+  collectSlotMarkers(root, childSlotMarkers);
+
+  // Pre-resolve attr/event slot targets on the unmutated DOM tree.
+  const slotTargets: (Node | null)[] = def.slots.map((slot) =>
+    slot.type === "child" ? null : walkToSlot(root, slot.path),
+  );
+
   // Walk slots and bind dynamic expressions
   let dynIdx = 0;
+  let childSlotIdx = 0;
   for (const slot of def.slots) {
-    const target = walkToSlot(root, slot.path);
-    if (!target) continue;
-
     const value = dynamics[dynIdx++];
 
     if (slot.type === "child") {
-      const comment = findCommentMarker(target, slot.path);
-      if (comment) {
-        const parent = comment.parentNode;
-        if (parent) {
-          if (isBindingDescriptor(value) && value.type === "text") {
-            const textNode = domOps.createTextNode("");
-            parent.insertBefore(textNode, comment);
-            parent.removeChild(comment);
-            const owner = getCurrentInstance();
-            let initialized = false;
+      const comment = childSlotMarkers[childSlotIdx++];
+      if (!comment || !comment.parentNode) continue;
+      const parent = comment.parentNode;
+
+      if (isBindingDescriptor(value) && value.type === "text") {
+        const textNode = domOps.createTextNode("");
+        parent.insertBefore(textNode, comment);
+        parent.removeChild(comment);
+        const owner = getCurrentInstance();
+        let initialized = false;
+        const dispose = effect(() => {
+          const resolved = value.getter();
+          textNode.textContent = resolved == null ? "" : String(resolved);
+          if (initialized) {
+            queueUpdatedHooks(owner);
+          }
+          initialized = true;
+        });
+        disposers.push(dispose);
+      } else {
+        const mounted = renderNodeToDOM(
+          value as SinwanNode,
+          parent,
+          comment,
+          null,
+        );
+        comment.parentNode?.removeChild(comment);
+        if (
+          mounted &&
+          "dispose" in mounted &&
+          typeof (mounted as any).dispose === "function"
+        ) {
+          disposers.push((mounted as any).dispose);
+        }
+      }
+    } else {
+      const target = slotTargets[dynIdx - 1];
+      if (!target) continue;
+
+      if (slot.type === "attr" && slot.name) {
+        if (target instanceof Element) {
+          const attrName = slot.name;
+          const state =
+            attrName === "style" || attrName === "class"
+              ? { previousStyleProps: new Set<string>() }
+              : undefined;
+
+          if (isBindingDescriptor(value)) {
+            if (value.type === "text") continue;
+            const getter = value.getter;
             const dispose = effect(() => {
-              const resolved = value.getter();
-              textNode.textContent = resolved == null ? "" : String(resolved);
-              if (initialized) {
-                queueUpdatedHooks(owner);
-              }
-              initialized = true;
+              setSingleAttribute(target, attrName, getter(), state);
+            });
+            disposers.push(dispose);
+          } else if (isReactive(value)) {
+            const dispose = effect(() => {
+              setSingleAttribute(target, attrName, resolve(value), state);
             });
             disposers.push(dispose);
           } else {
-            const mounted = renderNodeToDOM(
-              value as SinwanNode,
-              parent,
-              comment,
-              null,
-            );
-            comment.parentNode?.removeChild(comment);
-            if (
-              mounted &&
-              "dispose" in mounted &&
-              typeof (mounted as any).dispose === "function"
-            ) {
-              disposers.push((mounted as any).dispose);
-            }
+            setSingleAttribute(target, attrName, value, state);
           }
         }
-      }
-    } else if (slot.type === "attr" && slot.name) {
-      if (target instanceof Element) {
-        const attrName = slot.name;
-        const state =
-          attrName === "style" || attrName === "class"
-            ? { previousStyleProps: new Set<string>() }
-            : undefined;
-
-        if (isBindingDescriptor(value)) {
-          if (value.type === "text") continue;
-          const getter = value.getter;
-          const dispose = effect(() => {
-            setSingleAttribute(target, attrName, getter(), state);
+      } else if (slot.type === "event" && slot.name) {
+        if (target instanceof Element && typeof value === "function") {
+          const eventName = slot.name.slice(2).toLowerCase();
+          target.addEventListener(eventName, value as any);
+          disposers.push(() => {
+            target.removeEventListener(eventName, value as any);
           });
-          disposers.push(dispose);
-        } else if (isReactive(value)) {
-          const dispose = effect(() => {
-            setSingleAttribute(target, attrName, resolve(value), state);
-          });
-          disposers.push(dispose);
-        } else {
-          setSingleAttribute(target, attrName, value, state);
         }
-      }
-    } else if (slot.type === "event" && slot.name) {
-      if (target instanceof Element && typeof value === "function") {
-        const eventName = slot.name.slice(2).toLowerCase();
-        target.addEventListener(eventName, value as any);
-        disposers.push(() => {
-          target.removeEventListener(eventName, value as any);
-        });
       }
     }
   }
 
   return { [SINWAN_TEMPLATE]: true as const, fragment: root, disposers };
+}
+
+function collectSlotMarkers(node: Node, out: Comment[]): void {
+  if (node instanceof Comment) {
+    if (DEFAULT_TEMPLATE_SLOT_PROTOCOL.decodeSlot(node) !== null) {
+      out.push(node);
+    }
+    return;
+  }
+  if (node instanceof Element || node instanceof DocumentFragment) {
+    for (const child of node.childNodes) {
+      collectSlotMarkers(child, out);
+    }
+  }
 }
 
 function walkToSlot(root: Node, path: number[]): Node {

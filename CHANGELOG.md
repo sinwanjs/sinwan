@@ -2,6 +2,26 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
 
+## [1.2.6] — Template Slot Resolution, JSXFragment Compiler Fix & For Reconciliation Optimization
+
+Sinwan 1.2.6 fixes two compiler/runtime bugs — incorrect slot target resolution after child mutations and JSXFragment children being silently dropped in hoisted templates — and optimizes `<For>` list reconciliation to minimize DOM mutations on array updates.
+
+### Fixed
+
+- **Template Slot Index-Shift Bug (`template.ts`)**: Fixed attr/event slot targets resolving to the wrong DOM element when a reactive child slot preceded them. Previously, `walkToSlot` traversed the live DOM tree after child slots had already inserted anchor comment nodes, shifting element indices. The template renderer now pre-collects all child slot comment markers (`collectSlotMarkers`) and pre-resolves attr/event slot targets before any child slot processing, ensuring slot paths remain stable regardless of insertion order.
+- **JSXFragment Children Dropped in Compiler (`transform.ts`)**: Fixed `elementToHtml` silently dropping `JSXFragment` (`<>...</>`) children in hoisted templates. The child processing loop only handled `JSXText`, `JSXExpressionContainer`, and `JSXElement` — fragments had no case, so their children were skipped entirely (no HTML generated, no slot created, `childIndex` not incremented). This also corrupted slot paths for any siblings after the fragment. Extracted child processing into a reusable `childrenToHtml` helper that recursively inlines fragment children at the parent's path level, with correct `childIndex` tracking. Supports arbitrary nesting (fragments inside fragments). Affected only the compiler's template hoisting path; runtime, SSR, and hydration already handled `tag === ""` fragments correctly.
+
+### Changed
+
+- **`<For>` DOM Reconciliation Optimization (`render-control-flow.ts`)**: Replaced the full fragment shuffle (moving ALL nodes into a `DocumentFragment` and re-inserting at `block.endAnchor`) with per-node insertion that only moves nodes that are out of position. The new approach walks the new list right-to-left, tracking a `refNode` (starting at `block.endAnchor`), and for each record checks if its DOM nodes are already in the correct position before `refNode` — skipping the move if so. This reduces DOM mutations from O(2n) (remove + re-add all nodes) to O(k) where k is the number of actually displaced nodes. For a single item append, mutations drop from 8 to 2 (1 new item insertion + 1 text update for the count display). Applies to both client-side rendering and post-hydration updates via the shared `renderForBlock` function.
+
+### Internal
+
+- Added 6 compiler tests for slot path generation: reactive child + attr sibling ordering, multiple reactive children, JSXFragment basic children, JSXFragment with reactive children (slot path verification), nested JSXFragments, and attr + event on same element after reactive sibling.
+- Compiler tests: 102 pass / 0 fail.
+
+---
+
 ## [1.2.5] — Fragment SSR, Hydration Control-Flow Fixes & Plugin-Free Fast Refresh
 
 Sinwan 1.2.5 fixes a bug where JSX Fragments (`<>...</>`) were incorrectly rendered as literal text in the non-hydratable SSR string renderer, and brings hydrated control-flow components to parity with client-side rendering. After SSR hydration, editing, adding, or removing a single list item no longer destroys and recreates the whole subtree — preserving focus, scroll position, component state, and event bindings. This release also introduces **plugin-free Fast Refresh**: HMR updates now preserve component state without a compiler/Babel plugin.
