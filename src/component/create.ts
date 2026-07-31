@@ -37,10 +37,10 @@ import type {
  *   <div>{children.header}{children.footer}</div>
  * ));
  */
-export function cc<P extends object = {}, R extends SinwanNode = SinwanNode>(
+export function cc<P extends object = {}, R = SinwanNode>(
   fn: (props: PropsWithAutoChildren<P>) => R,
 ): SinwanComponent<P> {
-  const component: SinwanComponent<P> = (props) => fn(props);
+  const component: SinwanComponent<P> = (props) => fn(props) as SinwanNode;
   component._SinwanComponent = true;
   component._displayName = fn.name || "AnonymousComponent";
   return component;
