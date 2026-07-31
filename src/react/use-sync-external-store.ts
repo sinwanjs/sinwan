@@ -17,7 +17,7 @@ import { isServer } from "./_internal/is-server.ts";
  *
  * @example
  * ```tsx
- * import { useSyncExternalStore } from "sinwan/react-client";
+ * import { useSyncExternalStore } from "sinwan/react";
  * import { signal } from "sinwan";
  *
  * const counter = signal(0);

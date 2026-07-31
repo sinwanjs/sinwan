@@ -1,11 +1,8 @@
 /**
  * STATIC React adapters — build-time prerendering.
  *
- * Re-exports SHARED so consumers can import everything from `sinwan/react-static`.
+ * _shared.ts is exported directly by index.ts, so no re-export needed here.
  */
-
-// SHARED (re-exported)
-export * from "./_shared.ts";
 
 // STATIC APIs (Phase 5)
 export { prerender, prerenderToNodeStream } from "./prerender.ts";

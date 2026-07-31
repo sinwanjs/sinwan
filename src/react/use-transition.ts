@@ -24,7 +24,7 @@ import type { TransitionStartFunction } from "./_types/hooks.ts";
  *
  * @example
  * ```tsx
- * import { useTransition } from "sinwan/react-client";
+ * import { useTransition } from "sinwan/react";
  *
  * const Tabs = () => {
  *   const [isPending, startTransition] = useTransition();

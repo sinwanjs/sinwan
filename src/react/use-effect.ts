@@ -129,7 +129,7 @@ function registerEffect(
  *
  * @example
  * ```tsx
- * import { useEffect } from "sinwan/react-client";
+ * import { useEffect } from "sinwan/react";
  *
  * const Counter = () => {
  *   const [count, setCount] = useState(0);

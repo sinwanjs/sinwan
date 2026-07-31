@@ -142,7 +142,7 @@ describe("resume / resumeToPipeableStream", () => {
   });
 });
 
-describe("renderShell / streamShell (re-exported from sinwan/react-server)", () => {
+describe("renderShell / streamShell (re-exported from sinwan/react)", () => {
   // Function components authored against `sinwan/jsx-runtime` are valid React
   // components from the user's perspective. The shell helpers accept them
   // directly without a separate React-only entry point.

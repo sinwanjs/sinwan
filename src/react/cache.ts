@@ -49,7 +49,7 @@ function setEntry(node: CacheNode, args: unknown[], entry: CacheEntry): void {
  *
  * @example
  * ```ts
- * import { cache } from "sinwan/react-server";
+ * import { cache } from "sinwan/react";
  *
  * const getUser = cache(async (id: string) => fetchUser(id));
  * ```

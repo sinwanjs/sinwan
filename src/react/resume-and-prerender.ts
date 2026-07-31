@@ -20,7 +20,7 @@ import type {
  *
  * @example
  * ```ts
- * import { resumeAndPrerender } from "sinwan/react-static";
+ * import { resumeAndPrerender } from "sinwan/react";
  *
  * const { prelude } = await resumeAndPrerender(<Page />, postponed);
  * ```
@@ -45,7 +45,7 @@ export function resumeAndPrerender(
  *
  * @example
  * ```ts
- * import { resumeAndPrerenderToNodeStream } from "sinwan/react-static";
+ * import { resumeAndPrerenderToNodeStream } from "sinwan/react";
  *
  * const { prelude } = await resumeAndPrerenderToNodeStream(<Page />, postponed);
  * res.writeHead(200, { "Content-Type": "text/html" });

@@ -25,7 +25,7 @@ interface InsertionEffectSlot {
  *
  * @example
  * ```tsx
- * import { useInsertionEffect } from "sinwan/react-client";
+ * import { useInsertionEffect } from "sinwan/react";
  *
  * useInsertionEffect(() => {
  *   const tag = document.createElement("style");

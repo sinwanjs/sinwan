@@ -40,7 +40,7 @@ interface QueuedAction<P, S> {
  *
  * @example
  * ```tsx
- * import { useActionState } from "sinwan/react-client";
+ * import { useActionState } from "sinwan/react";
  *
  * async function submit(prev: { ok: boolean }, fd: FormData) {
  *   await fetch("/api", { method: "POST", body: fd });

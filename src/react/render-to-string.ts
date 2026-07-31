@@ -19,7 +19,7 @@ import type { SinwanNode } from "../types.ts";
  *
  * @example
  * ```ts
- * import { renderToString } from "sinwan/react-server";
+ * import { renderToString } from "sinwan/react";
  *
  * const html = await renderToString(<App />);
  * Bun.serve({ fetch: () => new Response(html, { headers: { "content-type": "text/html" } }) });

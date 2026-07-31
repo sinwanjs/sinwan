@@ -2,7 +2,7 @@
  * CLIENT React adapters — DOM-side hooks and APIs.
  *
  * Re-exports SHARED adapters too so consumers can import everything from
- * `sinwan/react-client` in one go.
+ * `sinwan/react` in one go.
  */
 
 // CLIENT hooks (Phase 2)
@@ -13,7 +13,6 @@ export { useMemo } from "./use-memo.ts";
 export { useCallback } from "./use-callback.ts";
 export { useId } from "./use-id.ts";
 export { useContext } from "./use-context.ts";
-export { use } from "./use.ts";
 export { useDebugValue } from "./use-debug-value.ts";
 export { useEffect } from "./use-effect.ts";
 export { useLayoutEffect } from "./use-layout-effect.ts";

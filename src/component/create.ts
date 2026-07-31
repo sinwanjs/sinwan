@@ -4,13 +4,19 @@
  * cc factory for defining typed components with full TypeScript inference.
  */
 
-import type { SinwanComponent, SinwanNode, SinwanSlots } from "../types.ts";
+import type {
+  SinwanComponent,
+  SinwanNode,
+  PropsWithAutoChildren,
+} from "../types.ts";
 
 /**
  * Create a typed Sinwan component.
  *
  * Mirrors React.FC<P> exactly - single props object with children injected.
- * Children can be a single SinwanNode or a SinwanSlots object for named slots.
+ * Children are typed as `SinwanNode` so they can be embedded directly in JSX.
+ *
+ * For named slots, include `children?: SinwanSlots` in your props type:
  *
  * @example
  * interface CardProps {
@@ -22,11 +28,19 @@ import type { SinwanComponent, SinwanNode, SinwanSlots } from "../types.ts";
  *     <div class="content">{children}</div>
  *   </div>
  * ));
+ *
+ * @example Named slots
+ * interface LayoutProps {
+ *   children?: SinwanSlots;
+ * }
+ * const Layout = cc<LayoutProps>(({ children }) => (
+ *   <div>{children.header}{children.footer}</div>
+ * ));
  */
-export function cc<P extends object = {}, R = SinwanNode>(
-  fn: (props: P & { children?: SinwanNode | SinwanSlots }) => R,
+export function cc<P extends object = {}, R extends SinwanNode = SinwanNode>(
+  fn: (props: PropsWithAutoChildren<P>) => R,
 ): SinwanComponent<P> {
-  const component: SinwanComponent<P> = (props) => fn(props) as any;
+  const component: SinwanComponent<P> = (props) => fn(props);
   component._SinwanComponent = true;
   component._displayName = fn.name || "AnonymousComponent";
   return component;

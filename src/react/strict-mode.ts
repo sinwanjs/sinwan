@@ -17,7 +17,7 @@ export interface StrictModeProps {
  *
  * @example
  * ```tsx
- * import { StrictMode } from "sinwan/react-client";
+ * import { StrictMode } from "sinwan/react";
  *
  * <StrictMode><App /></StrictMode>
  * ```

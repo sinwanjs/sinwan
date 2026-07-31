@@ -19,8 +19,8 @@ import {
   useState,
   startTransition,
   Suspense,
-  use,
 } from "../../../../src/react/_client.ts";
+import { use } from "../../../../src/react/_shared.ts";
 
 globalThis.__DEV__ = false;
 

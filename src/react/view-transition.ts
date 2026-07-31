@@ -85,7 +85,7 @@ export interface ViewTransitionProps {
  *
  * @example
  * ```tsx
- * import { ViewTransition, startTransition } from "sinwan/react-client";
+ * import { ViewTransition, startTransition } from "sinwan/react";
  *
  * <ViewTransition name="page">
  *   <Page key={route} />

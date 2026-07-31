@@ -3,7 +3,7 @@
  *
  * Sinwan does NOT depend on `react` (not at runtime, not for types).
  * These declarations mirror React's public type names so user code typed
- * against React patterns compiles unchanged when consuming sinwan/react-client.
+ * against React patterns compiles unchanged when consuming sinwan/react.
  */
 
 import type { SinwanElement, SinwanNode } from "../../types.ts";

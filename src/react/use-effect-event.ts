@@ -17,7 +17,7 @@ import { useSlot } from "./_internal/bridge.ts";
  *
  * @example
  * ```tsx
- * import { useEffectEvent, useEffect, useState } from "sinwan/react-client";
+ * import { useEffectEvent, useEffect, useState } from "sinwan/react";
  *
  * const Logger = ({ url }: { url: string }) => {
  *   const [count, setCount] = useState(0);

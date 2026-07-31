@@ -633,6 +633,73 @@ export function renderForBlock<T>(
       return;
     }
 
+    // optimisation: append-only fast path
+    // When the new list is the old list with items only added at the end,
+    // render and insert only the new items without touching existing DOM.
+    if (
+      lastList &&
+      list.length > lastList.length &&
+      records.length === lastList.length
+    ) {
+      let isAppendOnly = true;
+      for (let i = 0; i < lastList.length; i++) {
+        if (list[i] !== lastList![i]) {
+          isAppendOnly = false;
+          break;
+        }
+      }
+      if (isAppendOnly) {
+        const fragment = domOps.createDocumentFragment();
+        const appendCount = list.length - lastList.length;
+        const newRecords: ForRecord<T>[] = new Array(appendCount);
+
+        const prevInstance = owner ? setCurrentInstance(owner) : null;
+        try {
+          for (let i = lastList.length; i < list.length; i++) {
+            const item = list[i]!;
+            const key = props.key ? props.key(item, i) : item;
+            const record: ForRecord<T> = {
+              key,
+              item,
+              index: i,
+              mounted: undefined as unknown as MountedNode,
+            };
+            record.mounted = renderNodeToDOM(
+              renderChild(item, () => record.index),
+              fragment,
+              null,
+              namespace,
+            );
+            newRecords[i - lastList.length] = record;
+          }
+        } finally {
+          if (owner) setCurrentInstance(prevInstance);
+        }
+
+        insertNode(parent, fragment, block.endAnchor);
+
+        if (!recordsByKey) recordsByKey = new Map();
+        for (const record of newRecords) {
+          records.push(record);
+          recordsByKey.set(record.key, record);
+        }
+        recordsByNumericKey = null;
+
+        const mountedChildren: MountedNode[] = new Array(newRecords.length);
+        for (let i = 0; i < newRecords.length; i++) {
+          mountedChildren[i] = newRecords[i]!.mounted;
+        }
+        block.children = [...block.children, ...mountedChildren];
+
+        lastList = list;
+        if (initialized) {
+          fireMountedAndQueueUpdated(owner);
+        }
+        initialized = true;
+        return;
+      }
+    }
+
     // optimisation: detect if this is a simple update (few elements changed)
     // works even if the array reference changed (e.g., array.slice())
     const isSameLength = lastList && lastList.length === list.length;
@@ -681,11 +748,25 @@ export function renderForBlock<T>(
         if (nodesI.length === 1 && nodesJ.length === 1) {
           const nodeI = nodesI[0];
           const nodeJ = nodesJ[0];
-          if (!nodeI || !nodeJ) return;
+          if (!nodeI || !nodeJ) {
+            lastList = list;
+            if (initialized) {
+              queueUpdatedHooks(owner);
+            }
+            initialized = true;
+            return;
+          }
           const nextI = nodeI.nextSibling;
           const nextJ = nodeJ.nextSibling;
           const parentNode = nodeI.parentNode;
-          if (!parentNode) return;
+          if (!parentNode) {
+            lastList = list;
+            if (initialized) {
+              queueUpdatedHooks(owner);
+            }
+            initialized = true;
+            return;
+          }
           // determine if I is before J
           let iBeforeJ = false;
           let n: Node | null = nodeI;

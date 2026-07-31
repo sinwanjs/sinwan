@@ -16,7 +16,7 @@ function generateId(prefix: string, uid: number, counter: number): string {
  *
  * @example
  * ```tsx
- * import { useId } from "sinwan/react-client";
+ * import { useId } from "sinwan/react";
  *
  * const Field = () => {
  *   const id = useId();

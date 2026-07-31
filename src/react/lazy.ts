@@ -23,7 +23,7 @@ interface LazyState<T> {
  *
  * @example
  * ```tsx
- * import { lazy, Suspense } from "sinwan/react-client";
+ * import { lazy, Suspense } from "sinwan/react";
  *
  * const Modal = lazy(() => import("./Modal.tsx"));
  *

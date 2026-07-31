@@ -9,7 +9,7 @@ import type { MutableRefObject, RefObject } from "./_types/core.ts";
  *
  * @example
  * ```tsx
- * import { useRef } from "sinwan/react-client";
+ * import { useRef } from "sinwan/react";
  *
  * const Input = () => {
  *   const ref = useRef<HTMLInputElement>(null);

@@ -22,7 +22,7 @@ export interface DebugValueEntry {
  *
  * @example
  * ```tsx
- * import { useDebugValue } from "sinwan/react-client";
+ * import { useDebugValue } from "sinwan/react";
  *
  * const useUser = () => {
  *   const user = ...;

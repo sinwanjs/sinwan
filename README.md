@@ -73,7 +73,7 @@ mount(Counter, document.getElementById("app")!);
 
 ```tsx
 // Server
-import { renderToHydratableString } from "sinwan/react-server";
+import { renderToHydratableString } from "sinwan/react";
 
 const html = await renderToHydratableString(App, { initial: 5 });
 ```

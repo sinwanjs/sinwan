@@ -24,7 +24,7 @@ export interface ReactReadableStream extends ReadableStream<Uint8Array> {
  *
  * @example
  * ```ts
- * import { renderToReadableStream } from "sinwan/react-server";
+ * import { renderToReadableStream } from "sinwan/react";
  *
  * const stream = await renderToReadableStream(<App />, {
  *   bootstrapScriptContent: "console.log('hydrating');",

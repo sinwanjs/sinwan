@@ -16,7 +16,7 @@ import type { Dispatch, SetStateAction } from "./_types/hooks.ts";
  *
  * @example
  * ```tsx
- * import { useState } from "sinwan/react-client";
+ * import { useState } from "sinwan/react";
  *
  * const Counter = () => {
  *   const [count, setCount] = useState(0);

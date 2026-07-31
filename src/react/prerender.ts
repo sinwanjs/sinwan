@@ -22,7 +22,7 @@ import { setRequestAbortSignal } from "./cache-signal.ts";
  *
  * @example
  * ```ts
- * import { prerender } from "sinwan/react-static";
+ * import { prerender } from "sinwan/react";
  *
  * const { prelude } = await prerender(<Page />, {
  *   bootstrapModules: ["/client.js"],
@@ -88,7 +88,7 @@ export async function prerender(
  *
  * @example
  * ```ts
- * import { prerenderToNodeStream } from "sinwan/react-static";
+ * import { prerenderToNodeStream } from "sinwan/react";
  *
  * const { prelude } = await prerenderToNodeStream(<Page />, {
  *   bootstrapModules: ["/client.js"],

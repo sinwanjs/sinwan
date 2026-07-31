@@ -12,7 +12,7 @@
  *
  * @example
  * ```ts
- * import { preload, preconnect } from "sinwan/react-client";
+ * import { preload, preconnect } from "sinwan/react";
  *
  * preconnect("https://cdn.example.com");
  * preload("/fonts/inter.woff2", { as: "font", crossOrigin: "anonymous" });

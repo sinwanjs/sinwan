@@ -12,7 +12,7 @@ import { getCurrentInstance } from "../component/instance.ts";
  *
  * @example
  * ```ts
- * import { captureOwnerStack } from "sinwan/react-client";
+ * import { captureOwnerStack } from "sinwan/react";
  *
  * try { doWork(); } catch (e) {
  *   console.error(e, captureOwnerStack());

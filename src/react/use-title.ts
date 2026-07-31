@@ -21,7 +21,7 @@ export interface UseTitleOptions {
  *
  * @example
  * ```tsx
- * import { useTitle } from "sinwan/react-client";
+ * import { useTitle } from "sinwan/react";
  *
  * const Page = ({ pageTitle }: { pageTitle: string }) => {
  *   useTitle(pageTitle);

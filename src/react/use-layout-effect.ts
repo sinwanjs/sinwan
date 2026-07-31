@@ -24,7 +24,7 @@ interface LayoutEffectSlot {
  *
  * @example
  * ```tsx
- * import { useLayoutEffect, useRef } from "sinwan/react-client";
+ * import { useLayoutEffect, useRef } from "sinwan/react";
  *
  * const Measure = () => {
  *   const ref = useRef<HTMLDivElement>(null);

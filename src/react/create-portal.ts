@@ -15,7 +15,7 @@ import { Portal } from "../component/control-flow.ts";
  *
  * @example
  * ```tsx
- * import { createPortal } from "sinwan/react-client";
+ * import { createPortal } from "sinwan/react";
  *
  * const Tooltip = ({ open }: { open: boolean }) =>
  *   open ? createPortal(<div class="tooltip">hi</div>, document.body) : null;

@@ -10,7 +10,7 @@ import type { Context } from "./_types/context.ts";
  *
  * @example
  * ```tsx
- * import { createContext, useContext } from "sinwan/react-client";
+ * import { createContext, useContext } from "sinwan/react";
  *
  * const ThemeCtx = createContext("light");
  *

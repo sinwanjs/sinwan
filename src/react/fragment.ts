@@ -8,7 +8,7 @@
  *
  * @example
  * ```tsx
- * import { Fragment } from "sinwan/react-client";
+ * import { Fragment } from "sinwan/react";
  *
  * const Group = () => (
  *   <Fragment>

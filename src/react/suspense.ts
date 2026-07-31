@@ -21,7 +21,7 @@ export interface SuspenseProps {
  *
  * @example
  * ```tsx
- * import { Suspense, lazy } from "sinwan/react-client";
+ * import { Suspense, lazy } from "sinwan/react";
  *
  * const Modal = lazy(() => import("./Modal.tsx"));
  *

@@ -1,7 +1,15 @@
 {
   "name": "sinwan",
   "version": "1.2.6",
-  "description": "Sinwan — Reactive UI library with SSR, hydration, and fine-grained reactivity",
+  "description": "A fast reactive UI library for JSX, fine-grained reactivity, SSR, and hydration.",
+  "author": "Mohammed Ben Cheikh",
+  "license": "MIT",
+  "bugs": "https://github.com/sinwanjs/sinwan/issues",
+  "homepage": "https://sinwanjs.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sinwanjs/sinwan"
+  },
   "type": "commonjs",
   "types": "./dist/types.d.ts",
   "exports": {
@@ -173,9 +181,7 @@
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run typecheck && bun run build && bun run test",
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
-    "app": "cd test-app && bun run dev",
-    "app:i": "cd test-app && bun i"
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "sinwan",
@@ -195,14 +201,6 @@
     "framework",
     "bun"
   ],
-  "author": "Mohammed Ben Cheikh",
-  "license": "MIT",
-  "bugs": "https://github.com/sinwanjs/sinwan/issues",
-  "homepage": "https://sinwanjs.com",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/sinwanjs/sinwan"
-  },
   "dependencies": {
     "csstype": "^3.1.3"
   },

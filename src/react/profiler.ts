@@ -33,7 +33,7 @@ export interface ProfilerProps {
  *
  * @example
  * ```tsx
- * import { Profiler } from "sinwan/react-client";
+ * import { Profiler } from "sinwan/react";
  *
  * <Profiler id="App" onRender={(id, phase, dur) => console.log(id, phase, dur)}>
  *   <App />

@@ -22,7 +22,7 @@ import { getCurrentInstance } from "../component/instance.ts";
  *
  * @example
  * ```tsx
- * import { useDeferredValue, useState } from "sinwan/react-client";
+ * import { useDeferredValue, useState } from "sinwan/react";
  *
  * const Search = () => {
  *   const [query, setQuery] = useState("");

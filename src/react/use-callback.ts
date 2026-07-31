@@ -9,7 +9,7 @@ import type { GetterDependencyList } from "./_types/hooks.ts";
  *
  * @example
  * ```tsx
- * import { useCallback } from "sinwan/react-client";
+ * import { useCallback } from "sinwan/react";
  *
  * const Form = () => {
  *   const onSubmit = useCallback((e: Event) => e.preventDefault(), []);

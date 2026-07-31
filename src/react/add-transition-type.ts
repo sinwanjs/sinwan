@@ -12,7 +12,7 @@ const activeTypes = new Set<string>();
  *
  * @example
  * ```ts
- * import { addTransitionType, startTransition } from "sinwan/react-client";
+ * import { addTransitionType, startTransition } from "sinwan/react";
  *
  * startTransition(() => {
  *   addTransitionType("navigate");

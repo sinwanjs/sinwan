@@ -14,7 +14,7 @@ import type {
  * React-compatible `resume` & `resumeToPipeableStream` — `[SERVER]`.
  *
  * React resume APIs continue an SSR render that was previously
- * postponed (typically during prerender — see `sinwan/react-static`). Sinwan's
+ * postponed (typically during prerender — see `sinwan/react`). Sinwan's
  * renderer is single-pass and does not currently produce a `postponed`
  * state, so these adapters re-render `node` from scratch and emit the
  * resulting stream. The `postponedState` argument is accepted for API
@@ -25,7 +25,7 @@ import type {
  *
  * @example
  * ```ts
- * import { resume } from "sinwan/react-server";
+ * import { resume } from "sinwan/react";
  *
  * const stream = await resume(<App />, postponed, { signal });
  * ```
@@ -47,7 +47,7 @@ export function resume(
  *
  * @example
  * ```ts
- * import { resumeToPipeableStream } from "sinwan/react-server";
+ * import { resumeToPipeableStream } from "sinwan/react";
  *
  * const { pipe } = resumeToPipeableStream(<App />, postponed, {
  *   onShellReady() { pipe(res); },

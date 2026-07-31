@@ -9,7 +9,7 @@ import type { Dispatch, Reducer } from "./_types/hooks.ts";
  *
  * @example
  * ```tsx
- * import { useReducer } from "sinwan/react-client";
+ * import { useReducer } from "sinwan/react";
  *
  * type Action = { type: "inc" } | { type: "dec" };
  * const reducer = (n: number, a: Action) => a.type === "inc" ? n + 1 : n - 1;

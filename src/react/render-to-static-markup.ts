@@ -19,7 +19,7 @@ import type { SinwanNode } from "../types.ts";
  *
  * @example
  * ```ts
- * import { renderToStaticMarkup } from "sinwan/react-server";
+ * import { renderToStaticMarkup } from "sinwan/react";
  *
  * const html = await renderToStaticMarkup(<Page />);
  * response.send(html);

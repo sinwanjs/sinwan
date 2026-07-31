@@ -11,10 +11,10 @@ import { cc } from "../../../../src/component/create.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 import {
   Suspense,
-  use,
   useDeferredValue,
   useState,
 } from "../../../../src/react/_client.ts";
+import { use } from "../../../../src/react/_shared.ts";
 
 let container: HTMLElement;
 beforeEach(() => {

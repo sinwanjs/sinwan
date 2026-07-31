@@ -15,7 +15,7 @@ import {
  *
  * @example
  * ```ts
- * import { act } from "sinwan/react-client";
+ * import { act } from "sinwan/react";
  *
  * await act(async () => {
  *   counter.value = 5;

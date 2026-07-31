@@ -32,7 +32,7 @@ export function _setFormStatus(next: FormStatus): void {
  *
  * @example
  * ```tsx
- * import { useFormStatus } from "sinwan/react-client";
+ * import { useFormStatus } from "sinwan/react";
  *
  * const SubmitButton = () => {
  *   const { pending } = useFormStatus();

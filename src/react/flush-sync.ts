@@ -13,7 +13,7 @@ import { assertClient } from "./_internal/is-server.ts";
  *
  * @example
  * ```ts
- * import { flushSync } from "sinwan/react-client";
+ * import { flushSync } from "sinwan/react";
  *
  * flushSync(() => signal.value = 1);
  * // DOM is updated synchronously by the time we get here.

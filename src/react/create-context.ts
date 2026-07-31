@@ -15,7 +15,7 @@ let contextIdCounter = 0;
  *
  * @example
  * ```tsx
- * import { createContext, useContext } from "sinwan/react-client";
+ * import { createContext, useContext } from "sinwan/react";
  *
  * const ThemeContext = createContext("light");
  *

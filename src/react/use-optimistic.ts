@@ -19,7 +19,7 @@ import type { OptimisticReducer } from "./_types/hooks.ts";
  *
  * @example
  * ```tsx
- * import { useOptimistic } from "sinwan/react-client";
+ * import { useOptimistic } from "sinwan/react";
  *
  * const TodoList = ({ todos }: { todos: Todo[] }) => {
  *   const [optimistic, addOptimistic] = useOptimistic(

@@ -1,11 +1,8 @@
 /**
  * SERVER React adapters — Bun-first SSR (Node-compatible).
  *
- * Re-exports SHARED so consumers can import everything from `sinwan/react-server`.
+ * _shared.ts is exported directly by index.ts, so no re-export needed here.
  */
-
-// SHARED (re-exported)
-export * from "./_shared.ts";
 
 // SERVER APIs (Phase 4)
 export { renderToString } from "./render-to-string.ts";

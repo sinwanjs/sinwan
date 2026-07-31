@@ -110,7 +110,7 @@ export function createComponentInstance(
 // ─── Current instance stack ────────────────────────────────
 
 // The active component instance must be shared across every Sinwan bundle
-// (e.g. `sinwan` and `sinwan/react-client`). Each entry point is bundled with
+// (e.g. `sinwan` and `sinwan/react`). Each entry point is bundled with
 // `splitting: false`, so a plain module-scoped variable would be duplicated
 // per bundle and the renderer's `setCurrentInstance` would not be visible
 // to hooks living in another bundle. We anchor the slot on `globalThis`

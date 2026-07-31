@@ -22,7 +22,7 @@ import { setRequestAbortSignal } from "./cache-signal.ts";
  *
  * @example
  * ```ts
- * import { renderToPipeableStream } from "sinwan/react-server";
+ * import { renderToPipeableStream } from "sinwan/react";
  * import { createServer } from "node:http";
  *
  * createServer((_, res) => {

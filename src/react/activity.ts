@@ -27,7 +27,7 @@ export interface ActivityProps {
  *
  * @example
  * ```tsx
- * import { Activity } from "sinwan/react-client";
+ * import { Activity } from "sinwan/react";
  *
  * <Activity mode={tab === "settings" ? "visible" : "hidden"}>
  *   <SettingsPanel />

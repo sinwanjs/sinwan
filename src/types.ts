@@ -60,10 +60,19 @@ export type SinwanNode = SinwanSyncNode | Promise<SinwanSyncNode>;
 export type SinwanSlots = Record<string, SinwanNode>;
 
 /**
+ * Inject `children?: SinwanNode` into props only when P doesn't already
+ * define a `children` property. This lets users opt into named slots by
+ * including `children?: SinwanSlots` in their props type.
+ */
+export type PropsWithAutoChildren<P> = "children" extends keyof P
+  ? P
+  : P & { children?: SinwanNode };
+
+/**
  * Component function type - single props argument with children injected
  */
 export interface SinwanComponent<P extends object = {}> {
-  (props: P & { children?: SinwanNode | SinwanSlots }): SinwanNode;
+  (props: PropsWithAutoChildren<P>): SinwanNode;
   _SinwanComponent?: true;
   _displayName?: string;
 }

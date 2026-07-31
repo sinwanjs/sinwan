@@ -17,7 +17,7 @@ import { clearTransitionTypes } from "./add-transition-type.ts";
  *
  * @example
  * ```ts
- * import { startTransition } from "sinwan/react-client";
+ * import { startTransition } from "sinwan/react";
  *
  * startTransition(() => navigate("/about"));
  * ```

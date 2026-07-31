@@ -9,7 +9,8 @@ import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
-import { Suspense, use } from "../../../../src/react/_client.ts";
+import { Suspense } from "../../../../src/react/_client.ts";
+import { use } from "../../../../src/react/_shared.ts";
 import { createContext } from "../../../../src/react/create-context.ts";
 
 let container: HTMLElement;

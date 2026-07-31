@@ -29,7 +29,7 @@ import { assertClient } from "./_internal/is-server.ts";
  *
  * @example
  * ```tsx
- * import { hydrateRoot } from "sinwan/react-client";
+ * import { hydrateRoot } from "sinwan/react";
  *
  * hydrateRoot(document.getElementById("app")!, <App />);
  * ```

@@ -23,7 +23,7 @@ interface ImperativeHandleSlot {
  *
  * @example
  * ```tsx
- * import { useImperativeHandle, useRef } from "sinwan/react-client";
+ * import { useImperativeHandle, useRef } from "sinwan/react";
  *
  * const Input = ({ apiRef }: { apiRef: { current: { focus(): void } | null } }) => {
  *   const inner = useRef<HTMLInputElement>(null);

@@ -16,7 +16,7 @@ interface MemoSlot<T> {
  *
  * @example
  * ```tsx
- * import { useMemo } from "sinwan/react-client";
+ * import { useMemo } from "sinwan/react";
  *
  * const Sum = ({ items }: { items: number[] }) => {
  *   const total = useMemo(() => items.reduce((a, b) => a + b, 0), [items]);

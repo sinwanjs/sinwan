@@ -26,7 +26,7 @@ const promiseCache = new WeakMap<
  *
  * @example
  * ```tsx
- * import { use, createContext } from "sinwan/react-client";
+ * import { use, createContext } from "sinwan/react";
  *
  * const UserCtx = createContext<{ name: string } | null>(null);
  *

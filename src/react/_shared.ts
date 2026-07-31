@@ -42,4 +42,3 @@ export type {
   Consumer,
   ContextType,
 } from "./_types/context.ts";
-export type { Usable } from "./_types/hooks.ts";

@@ -15,10 +15,30 @@ Sinwan 1.2.6 fixes two compiler/runtime bugs — incorrect slot target resolutio
 
 - **`<For>` DOM Reconciliation Optimization (`render-control-flow.ts`)**: Replaced the full fragment shuffle (moving ALL nodes into a `DocumentFragment` and re-inserting at `block.endAnchor`) with per-node insertion that only moves nodes that are out of position. The new approach walks the new list right-to-left, tracking a `refNode` (starting at `block.endAnchor`), and for each record checks if its DOM nodes are already in the correct position before `refNode` — skipping the move if so. This reduces DOM mutations from O(2n) (remove + re-add all nodes) to O(k) where k is the number of actually displaced nodes. For a single item append, mutations drop from 8 to 2 (1 new item insertion + 1 text update for the count display). Applies to both client-side rendering and post-hydration updates via the shared `renderForBlock` function.
 
+### Changed (cont.)
+
+- **`<For>` Append-Only Fast Path (`render-control-flow.ts`)**: Added a dedicated fast path for the common case of appending items to the end of a list (e.g., `setArr(a => [...a, item])`). When the new array shares an identical prefix with the previous array and only has additional items at the end, the `<For>` renderer now renders only the new items into a `DocumentFragment` and inserts them once at `block.endAnchor` — skipping the full keyed diff and reorder loop entirely. Previously, appending a single item triggered the full diff path, which removed and re-inserted existing DOM nodes via the reorder loop, producing spurious `remove` + `insert` mutations. Now matches SolidJS `<For>` behavior: only the new item is inserted, existing nodes are never touched. Verified with `sinwan-scan` — no `removed child` mutations on append.
+
+### Fixed (cont.)
+
+- **`<For>` Swap Path Premature Return (`render-control-flow.ts`)**: Fixed two premature `return` statements in the swap DOM reorder path that left `lastList` stale and skipped `onMounted`/`onUpdated` lifecycle hooks when DOM nodes were missing (`nodeI`/`nodeJ` null) or detached (`parentNode` null). The swap path now updates `lastList`, fires `queueUpdatedHooks`, and sets `initialized = true` before returning, matching the contract of all other exit paths in `renderForBlock`.
+- **`cc` Children Type Error (`create.ts`, `types.ts`)**: Fixed `Type 'SinwanNode | SinwanSlots' is not assignable to type 'SinwanNode'` — the `cc` factory and `SinwanComponent` interface typed `children` as `SinwanNode | SinwanSlots`, but `SinwanSlots` (a `Record<string, SinwanNode>`) is not a `SinwanNode`, so embedding `{children}` in JSX failed. Introduced `PropsWithAutoChildren<P>` conditional type that injects `children?: SinwanNode` only when `P` doesn't already declare a `children` key, letting users opt into named slots via `children?: SinwanSlots` in their props type. Constrained `R extends SinwanNode` and removed both `as any` casts from `cc`.
+
+### Changed (cont.)
+
+- **Shared Component Detection (`sinwan-compiler`, `vite-plugin-sinwan`)**: Extracted `collectExportedComponents` from `vite-plugin-sinwan/src/compiler/hmr.ts` into `sinwan-compiler/src/exports.ts` as a shared utility. Both Vite and Bun plugins can now import it from `sinwan-compiler` instead of duplicating Babel parsing logic. The Vite plugin's HMR module went from 135 to 51 lines. Added 9 tests covering named functions, named variables, default exports, export specifiers with rename, multiple components, non-component exports, unparseable code, and re-exports.
+- **Unified React Export Cleanup (`react/`)**: Removed dead/duplicate exports found during an audit of the unified `sinwan/react` barrel (originally consolidated in 1.2.5):
+  - **Duplicate `use` export**: `use` was exported from both `_client.ts` and `_shared.ts`. Removed from `_client.ts` (it's a shared API that runs on both client and server).
+  - **Redundant `_shared.ts` re-exports**: `_server.ts` and `_static.ts` both re-exported `_shared.ts` via `export *`, but `index.ts` already exports `_shared.ts` directly — causing triple re-export. Removed the redundant re-exports from `_server.ts` and `_static.ts`.
+  - **Duplicate `Usable` type**: `Usable` was exported from `_shared.ts` (via `_types/hooks.ts`) and also from `_type.ts` (via `_types/index.ts` → `_types/hooks.ts`). Removed from `_shared.ts` since `_type.ts` covers all types.
+  - Updated all doc comments in `src/react/*.ts` from `sinwan/react-client` / `sinwan/react-server` to `sinwan/react`.
+  - Fixed 3 test files (`use.test.ts`, `suspense.test.ts`, `use-deferred-value.test.ts`) that imported `use` from `_client.ts` directly — updated to import from `_shared.ts`.
+
 ### Internal
 
 - Added 6 compiler tests for slot path generation: reactive child + attr sibling ordering, multiple reactive children, JSXFragment basic children, JSXFragment with reactive children (slot path verification), nested JSXFragments, and attr + event on same element after reactive sibling.
 - Compiler tests: 102 pass / 0 fail.
+- Added 9 tests for `collectExportedComponents` in `sinwan-compiler/__tests__/exports.test.ts`.
 
 ---
 
@@ -28,6 +48,7 @@ Sinwan 1.2.5 fixes a bug where JSX Fragments (`<>...</>`) were incorrectly rende
 
 ### Added
 
+- **Unified React Export (`sinwan/react`)**: Consolidated the React integration exports, which were previously split across four separate entry points (`sinwan/react-client`, `sinwan/react-server`, `sinwan/react-static`, `sinwan/react-type`), into a single `sinwan/react` barrel. All client hooks, server rendering APIs, shared adapters, static prerendering APIs, and React-compatible types are now importable from `sinwan/react`. The old sub-path entries were removed from `package.json` exports. The internal barrel structure (`_client.ts`, `_server.ts`, `_shared.ts`, `_static.ts`, `_type.ts`) remains for organization, but `index.ts` re-exports all of them.
 - **Compiler Pass (`sinwan-compiler`)**: Auto-wraps reactive JSX expressions (`state.name`, `signal.value`, `getter()` calls, derived expressions) in zero-arity functions. Event handlers and plain identifiers are not double-wrapped. Added to `vite-plugin-sinwan` and `bun-plugin-sinwan`.
 - **Plugin-Free Fast Refresh (HMR State Preservation)**: `createRoot().render()` and `hydrateRoot().render()` now detect when they are called again on an already-mounted (or hydrated) root and **hot-swap** the component function on the existing `ComponentInstance` instead of unmounting and remounting the tree. Because Sinwan stores hook state in slots on the instance, this preserves state across HMR edits without any compiler plugin (unlike React Fast Refresh / `solid-refresh`, which require a Babel transform). Works for both **client-only (`createRoot`)** and **SSR-hydrated (`hydrateRoot`)** apps. Preserved across an edit:
   - React-compatible hooks — `useState`, `useReducer`, `useRef`, `useMemo`, `useCallback` (all backed by `hook_slots` via `useSlot`).
@@ -67,7 +88,7 @@ Sinwan 1.2.4 fixes critical race conditions in the SSR hydration renderer and ha
 
 ### Added
 
-- **React Type Export**: Added new `sinwan/react-type` export that provides React-compatible types from the `_types` directory. Includes type definitions for ReactNode, ReactElement, Ref, ComponentType, Key, and other core React types authored from scratch without React imports.
+- **React Type Export**: Added new `sinwan/react-type` export that provides React-compatible types from the `_types` directory. Includes type definitions for ReactNode, ReactElement, Ref, ComponentType, Key, and other core React types authored from scratch without React imports. _(Note: consolidated into `sinwan/react` in 1.2.5)_
 
 ### Fixed
 

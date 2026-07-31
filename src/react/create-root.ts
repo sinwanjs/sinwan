@@ -58,7 +58,7 @@ export interface CreateRootOptions {
  *
  * @example
  * ```tsx
- * import { createRoot } from "sinwan/react-client";
+ * import { createRoot } from "sinwan/react";
  *
  * const root = createRoot(document.getElementById("app")!);
  * root.render(<App />);

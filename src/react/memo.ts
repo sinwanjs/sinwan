@@ -24,7 +24,7 @@ interface MemoCache<P, R> {
  *
  * @example
  * ```tsx
- * import { memo } from "sinwan/react-client";
+ * import { memo } from "sinwan/react";
  *
  * const Heavy = memo(({ value }: { value: number }) => <div>{value}</div>);
  * ```
