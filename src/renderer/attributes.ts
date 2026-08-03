@@ -16,6 +16,22 @@ import {
   queueUpdatedHooks,
 } from "../component/instance.ts";
 
+/**
+ * Duck-type check for compiler-generated binding descriptors.
+ *
+ * Inlined here (rather than imported from `./template.ts`) to avoid a circular
+ * dependency: `template.ts` imports `setSingleAttribute` from this file.
+ */
+function isBindingDescriptor(value: unknown): boolean {
+  return (
+    value != null &&
+    typeof value === "object" &&
+    "type" in (value as any) &&
+    "getter" in (value as any) &&
+    typeof (value as any).getter === "function"
+  );
+}
+
 // Props that should be skipped during attribute rendering
 const SKIP_PROPS = new Set([
   "children",
@@ -80,13 +96,19 @@ export function applyAttributes(
 
     const value = props[key];
 
+    // Binding descriptor (from explicitBindings mode in non-hoisted JSX).
+    // Unwrap to the getter function — isReactive handles it below.
+    const attrValue = isBindingDescriptor(value)
+      ? (value as any).getter
+      : value;
+
     const isComplex = key === "class" || key === "style";
 
-    if (isReactive(value) || (isComplex && containsReactive(value))) {
+    if (isReactive(attrValue) || (isComplex && containsReactive(attrValue))) {
       const state: AttributeBindingState = { previousStyleProps: new Set() };
       let initialized = false;
       const dispose = effect(() => {
-        setSingleAttribute(el, key, resolve(value as any), state);
+        setSingleAttribute(el, key, resolve(attrValue as any), state);
         if (initialized) {
           queueUpdatedHooks(owner);
         }
@@ -95,7 +117,7 @@ export function applyAttributes(
       if (!disposers) disposers = [];
       disposers.push(dispose);
     } else {
-      setSingleAttribute(el, key, value);
+      setSingleAttribute(el, key, attrValue);
     }
   }
 

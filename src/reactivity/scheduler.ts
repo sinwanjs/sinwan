@@ -50,21 +50,11 @@ function scheduleFlush(): void {
  * processed in the same pass (convergence loop with a safety limit).
  */
 function extractEffects(): EffectNode[] {
-  const size = pendingEffects.size;
-  if (size <= 1) {
-    const out: EffectNode[] = new Array(size);
-    let i = 0;
-    for (const effect of pendingEffects) {
-      out[i++] = effect;
-    }
-    return out;
+  const effects = [...pendingEffects];
+  if (effects.length > 1) {
+    effects.sort((a, b) => a.id - b.id);
   }
-  const out: EffectNode[] = new Array(size);
-  let i = 0;
-  for (const effect of pendingEffects) {
-    out[i++] = effect;
-  }
-  return out.sort((a, b) => a.id - b.id);
+  return effects;
 }
 
 function flush(): void {

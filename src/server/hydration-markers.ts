@@ -19,6 +19,12 @@ import { isSignal } from "../reactivity/signal.ts";
 import { isComputed } from "../reactivity/computed.ts";
 import { DEFAULT_HYDRATION_ADAPTER as adapter } from "../hydration/markers.ts";
 import { isEventProp, toEventName } from "../renderer/events.ts";
+import { type TemplateDef } from "../renderer/template-protocol.ts";
+import {
+  isServerTemplateResult,
+  isBindingDescriptor,
+} from "../renderer/template.ts";
+import { isReactive, resolve } from "../reactivity/index.ts";
 import {
   createComponentInstance,
   getCurrentInstance,
@@ -63,7 +69,6 @@ import {
   createDynamicElement,
   normalizeContent,
 } from "../component/control-flow.ts";
-import { resolve } from "../reactivity/normalization.ts";
 import { setSSRContext, createSSRContext } from "../event/ssr-context.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
@@ -249,8 +254,21 @@ async function renderNodeH(
     return renderNodeH(await node, ctx);
   }
 
+  // Compiler-generated server template result (no DOM available). Serialize
+  // the static shell with hydration markers for each dynamic slot, so the
+  // client hydration walker can attach to the resulting DOM.
+  if (isServerTemplateResult(node)) {
+    return renderServerTemplate(node.def, node.dynamics, ctx);
+  }
+
   if (typeof node === "object" && "tag" in node) {
     return renderElementH(node, ctx, false);
+  }
+
+  // Binding descriptor (from explicitBindings mode in non-hoisted JSX).
+  // Unwrap to the getter function — the function-getter path below handles it.
+  if (isBindingDescriptor(node)) {
+    return renderNodeH((node as any).getter as SinwanNode, ctx);
   }
 
   // Plain function getter (0-arity) — resolve and render. Wrap scalar values
@@ -268,6 +286,125 @@ async function renderNodeH(
   }
 
   return escapeHtml(String(node));
+}
+
+/**
+ * Serialize a compiler-hoisted template (server-side) into HTML with hydration
+ * markers.
+ *
+ * The compiler emits two kinds of placeholders in `def.html`:
+ * - `<!--s:N-->` comment markers for `child` slots (N is the Nth child slot).
+ * - ` name=""` empty-attribute placeholders for `attr` and `event` slots.
+ *
+ * This function resolves each dynamic value and weaves it into the static HTML:
+ * - `child` slots: scalar reactive values (signals/computed/getters) are wrapped
+ *   in `<!--sinwan-t:N-->…<!--/sinwan-t-->` so the client can bind them.
+ *   Non-scalar values (elements, components, arrays) are rendered recursively.
+ * - `attr` slots: the ` name=""` placeholder is replaced with the resolved
+ *   attribute value.
+ * - `event` slots: the ` onEvent=""` placeholder is replaced with
+ *   `data-sinwan-ev="event:N"`.
+ */
+async function renderServerTemplate(
+  def: TemplateDef,
+  dynamics: unknown[],
+  ctx: HydrationContext,
+): Promise<string> {
+  let html = def.html;
+
+  // Pass 1: resolve attr/event slots by replacing their ` name=""` placeholders.
+  // Slots are in render order (matching document order), so replacing the first
+  // remaining occurrence of each placeholder sequentially produces the correct
+  // association. The compiler emits ` ${name}=""` for each attr/event slot.
+  for (let i = 0; i < def.slots.length; i++) {
+    const slot = def.slots[i]!;
+    if (slot.type === "attr" && slot.name) {
+      const value = dynamics[i];
+      const resolved = resolveSlotValue(value);
+      // renderServerAttribute returns the full ` name="value"` string (or
+      // "" for null/false). Replace the ` name=""` placeholder with it.
+      const rendered = renderServerAttribute(slot.name, resolved);
+      const placeholder = ` ${slot.name}=""`;
+      if (rendered) {
+        html = html.replace(placeholder, rendered);
+      } else {
+        html = html.replace(placeholder, "");
+      }
+    } else if (slot.type === "event" && slot.name) {
+      const eventName = slot.name.startsWith("on")
+        ? slot.name.slice(2).toLowerCase()
+        : slot.name;
+      const placeholder = ` ${slot.name}=""`;
+      const replacement = ` ${adapter.eventAttr}="${eventName}:${ctx.eventIndex++}"`;
+      html = html.replace(placeholder, replacement);
+    }
+  }
+
+  // Pass 2: resolve child slots by replacing `<!--s:N-->` markers.
+  // The marker number N is the Nth child slot (not the slots-array index),
+  // because only child slots call nextSlotId in the compiler.
+  let childSlotCount = 0;
+  for (let i = 0; i < def.slots.length; i++) {
+    const slot = def.slots[i]!;
+    if (slot.type !== "child") continue;
+    const marker = `<!--s:${childSlotCount}-->`;
+    const value = dynamics[i];
+    const rendered = await renderServerTemplateChild(value, ctx);
+    html = html.replace(marker, rendered);
+    childSlotCount++;
+  }
+
+  return html;
+}
+
+/**
+ * Resolve a slot value to a concrete value for attribute rendering.
+ * Binding descriptors and reactive wrappers are unwrapped.
+ */
+function resolveSlotValue(value: unknown): unknown {
+  if (isBindingDescriptor(value)) {
+    return (value as any).getter();
+  }
+  if (isReactive(value)) {
+    return resolve(value);
+  }
+  if (typeof value === "function" && (value as any).length === 0) {
+    return (value as any)();
+  }
+  return value;
+}
+
+async function renderServerTemplateChild(
+  value: unknown,
+  ctx: HydrationContext,
+): Promise<string> {
+  // Binding descriptor (explicit bindings mode): unwrap the getter, then
+  // treat the resolved value as a reactive text slot.
+  if (isBindingDescriptor(value)) {
+    const getter = (value as any).getter as () => unknown;
+    return renderServerTemplateChild(getter, ctx);
+  }
+
+  // Signal / Computed → wrap scalar value in sinwan-t text markers.
+  if (isSignal(value) || isComputed(value)) {
+    const v = (value as any).value;
+    const idx = ctx.textIndex++;
+    return `${adapter.emitTextOpenMarker(idx)}${escapeHtml(String(v))}${adapter.emitTextCloseMarker()}`;
+  }
+
+  // Zero-arity getter (reactive-wrap mode): resolve and wrap scalars.
+  if (typeof value === "function" && (value as any).length === 0) {
+    const v = (value as any)();
+    if (v == null || typeof v === "boolean") return "";
+    if (typeof v === "string" || typeof v === "number") {
+      const idx = ctx.textIndex++;
+      return `${adapter.emitTextOpenMarker(idx)}${escapeHtml(String(v))}${adapter.emitTextCloseMarker()}`;
+    }
+    return await renderNodeH(v as SinwanNode, ctx);
+  }
+
+  // Elements, components, arrays, strings, numbers → recursive render.
+  return await renderNodeH(value as SinwanNode, ctx);
 }
 
 /**

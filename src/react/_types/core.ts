@@ -95,6 +95,16 @@ export interface LazyExoticComponent<
   readonly _result: T;
 }
 
+export interface ForwardRefExoticComponent<P> extends NamedExoticComponent<P> {
+  (props: P): SinwanNode;
+  readonly render: ForwardRefRenderFunction<P>;
+}
+
+export type ForwardRefRenderFunction<P, T = any> = (
+  props: P,
+  ref: Ref<T>,
+) => SinwanNode;
+
 // ─── Props helpers ─────────────────────────────────────────
 
 export type PropsWithChildren<P = unknown> = P & { children?: ReactNode };

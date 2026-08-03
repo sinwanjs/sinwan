@@ -25,6 +25,40 @@ export interface SinwanTemplateResult {
   disposers: CleanupFn[];
 }
 
+/**
+ * Runtime symbol identifying a server-side template result.
+ *
+ * When `_$createTemplate` runs in an environment without a `document` global
+ * (SSR), it cannot build a live DOM fragment. Instead it returns this object,
+ * carrying the original `TemplateDef` and `dynamics` so the SSR renderer can
+ * serialize it to HTML (with hydration markers) and the hydration walker can
+ * attach to the resulting DOM.
+ */
+export const SINWAN_SERVER_TEMPLATE = Symbol.for("sinwan.server_template");
+
+export interface SinwanServerTemplateResult {
+  [SINWAN_SERVER_TEMPLATE]: true;
+  /** The compiled template definition (static HTML + slot descriptors). */
+  def: TemplateDef;
+  /** Dynamic values for each slot, in render order. */
+  dynamics: unknown[];
+}
+
+/**
+ * Parsed-template cache keyed by the active `document`.
+ *
+ * Hoisted `TemplateDef`s are module-level singletons, so the parsed
+ * `<template>` element only needs to be built once per def per document. Tests
+ * that swap `globalThis.document` get a fresh inner map automatically (the
+ * outer `WeakMap` key is the document itself), so cache staleness across
+ * environments is impossible. Each render then performs only a cheap
+ * `cloneNode(true)` instead of re-parsing `def.html`.
+ */
+const templateCache = new WeakMap<
+  Document,
+  Map<TemplateDef, HTMLTemplateElement>
+>();
+
 // ─── Compiler-driven binding descriptors (Phase 2) ─────────────────
 
 interface TextBindingDescriptor {
@@ -54,7 +88,9 @@ type BindingDescriptor =
   | StyleBindingDescriptor
   | ClassBindingDescriptor;
 
-function isBindingDescriptor(value: unknown): value is BindingDescriptor {
+export function isBindingDescriptor(
+  value: unknown,
+): value is BindingDescriptor {
   return (
     value != null &&
     typeof value === "object" &&
@@ -98,20 +134,58 @@ export function isTemplateResult(
   );
 }
 
+/** Check if a value is a server-side template result (no DOM available). */
+export function isServerTemplateResult(
+  value: unknown,
+): value is SinwanServerTemplateResult {
+  return (
+    value != null &&
+    typeof value === "object" &&
+    (value as any)[SINWAN_SERVER_TEMPLATE] === true
+  );
+}
+
+/**
+ * Hydration mode flag. When true, `_$createTemplate` returns a
+ * `SinwanServerTemplateResult` (def + dynamics) instead of building a live DOM
+ * fragment, so the hydration walker can bind effects/events to the EXISTING
+ * server-rendered DOM rather than creating + swapping new nodes.
+ *
+ * Set by `hydrate()` via `setHydrationMode(true)` around the component render.
+ */
+let hydrationMode = false;
+
+/** Enable/disable hydration mode. Called by `hydrate()`. */
+export function setHydrationMode(value: boolean): void {
+  hydrationMode = value;
+}
+
 /** Create a DOM tree from a compiled template and bind dynamic expressions. */
 export function _$createTemplate(
   def: TemplateDef,
   dynamics: unknown[],
-): SinwanTemplateResult {
-  if (typeof document === "undefined") {
-    throw new Error("_$createTemplate can only be used in the browser");
+): SinwanTemplateResult | SinwanServerTemplateResult {
+  // SSR / no-DOM environment, or hydration mode: defer binding to the server
+  // renderer or the hydration walker. Return a carrier object carrying the
+  // def + dynamics so the consumer can serialize or in-place-bind them.
+  if (typeof document === "undefined" || hydrationMode) {
+    return { [SINWAN_SERVER_TEMPLATE]: true, def, dynamics };
   }
 
-  // Create a fresh template element each call so it belongs to the current
-  // document. A module-level cache is risky in tests / SSR environments where
-  // the global document is swapped between calls.
-  const templateEl = document.createElement("template");
-  templateEl.innerHTML = def.html;
+  // Reuse the parsed <template> element across renders. Hoisted defs are
+  // module-level singletons, so we cache one parsed element per def per
+  // document (see `templateCache` doc for the document-keying rationale).
+  let perDocument = templateCache.get(document);
+  if (!perDocument) {
+    perDocument = new Map();
+    templateCache.set(document, perDocument);
+  }
+  let templateEl = perDocument.get(def);
+  if (!templateEl) {
+    templateEl = document.createElement("template");
+    templateEl.innerHTML = def.html;
+    perDocument.set(def, templateEl);
+  }
   const root = templateEl.content.cloneNode(true) as DocumentFragment;
   const disposers: CleanupFn[] = [];
 
@@ -126,7 +200,7 @@ export function _$createTemplate(
 
   // Pre-resolve attr/event slot targets on the unmutated DOM tree.
   const slotTargets: (Node | null)[] = def.slots.map((slot) =>
-    slot.type === "child" ? null : walkToSlot(root, slot.path),
+    slot.type === "child" ? null : walkToSlot(root, slot.path, def),
   );
 
   // Walk slots and bind dynamic expressions
@@ -228,38 +302,29 @@ function collectSlotMarkers(node: Node, out: Comment[]): void {
   }
 }
 
-function walkToSlot(root: Node, path: number[]): Node {
+function walkToSlot(root: Node, path: number[], def: TemplateDef): Node {
   let node: Node = root;
   // If root is a fragment, start from first child
   if (node instanceof DocumentFragment) {
-    node = node.firstChild!;
+    if (!node.firstChild) {
+      throw new Error(
+        `Sinwan template: invalid slot path [${path.join(",")}] — template fragment has no children. Template html: "${def.html.slice(0, 120)}"`,
+      );
+    }
+    node = node.firstChild;
   }
-  for (const idx of path) {
+  for (let p = 0; p < path.length; p++) {
+    const idx = path[p]!;
     let child = node.firstChild;
     for (let i = 0; i < idx && child; i++) {
       child = child.nextSibling;
     }
-    if (child) node = child;
+    if (!child) {
+      throw new Error(
+        `Sinwan template: invalid slot path [${path.join(",")}] — no child at index ${idx} (depth ${p}). Template html: "${def.html.slice(0, 120)}"`,
+      );
+    }
+    node = child;
   }
   return node;
-}
-
-function findCommentMarker(node: Node, _path: number[]): Comment | null {
-  if (
-    node instanceof Comment &&
-    DEFAULT_TEMPLATE_SLOT_PROTOCOL.decodeSlot(node) !== null
-  ) {
-    return node;
-  }
-  if (node instanceof Element) {
-    for (const child of node.childNodes) {
-      if (
-        child instanceof Comment &&
-        DEFAULT_TEMPLATE_SLOT_PROTOCOL.decodeSlot(child) !== null
-      ) {
-        return child;
-      }
-    }
-  }
-  return null;
 }

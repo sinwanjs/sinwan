@@ -5,8 +5,19 @@
  * Imported automatically when using JSX syntax.
  */
 
-import type { SinwanElement, SinwanNode } from "../types.ts";
+import type { SinwanComponent, SinwanElement, SinwanNode } from "../types.ts";
 import type { SinwanIntrinsicElements, SinwanSVGElements } from "./jsx-types";
+
+// ─── Internal JSX types ─────────────────────────────────────
+
+/** Type of the first argument to jsx/jsxs/jsxDEV — tag name, Fragment symbol, or component. */
+type JSXElementType = string | symbol | SinwanComponent<any>;
+
+/** Props object passed to jsx/jsxs/jsxDEV. */
+type JSXProps = Record<string, unknown>;
+
+/** Enhancer function for enhanced intrinsic elements. */
+type EnhancerFn = (props: JSXProps) => JSXProps | SinwanElement;
 
 /**
  * React-compatible `Fragment` — `[SHARED]`.
@@ -89,11 +100,11 @@ function mergeAdjacentText(children: SinwanNode[]): SinwanNode[] {
 /**
  * Normalize children into an array of SinwanNode.
  */
-export function normalizeChildren(children: any): SinwanNode[] {
+export function normalizeChildren(children: unknown): SinwanNode[] {
   if (children == null || typeof children === "boolean") return [];
   if (Array.isArray(children))
-    return mergeAdjacentText(children.flat(Infinity));
-  return [children];
+    return mergeAdjacentText(children.flat(Infinity) as SinwanNode[]);
+  return [children as SinwanNode];
 }
 
 const EMPTY_PROPS: Record<string, unknown> = {};
@@ -101,29 +112,29 @@ const EMPTY_PROPS: Record<string, unknown> = {};
 /** Registry populated by enhanced-elements.ts (side-effect import at bottom).
  * Declared with `var` because the import is hoisted and runs while this module
  * is still in its temporal dead zone; `var` is hoisted and safe to assign. */
-var enhancedRegistry:
-  | Record<string, (props: any) => Record<string, unknown> | SinwanElement>
-  | undefined;
+var enhancedRegistry: Record<string, EnhancerFn> | undefined;
 
 /** Register enhanced element wrappers — called once by enhanced-elements.ts.
  * Each enhancer receives props (including `children`) and returns either
  * modified props for the same tag, or a full SinwanElement replacement. */
 export function registerEnhancedElements(
-  registry: Record<
-    string,
-    (props: any) => Record<string, unknown> | SinwanElement
-  >,
+  registry: Record<string, EnhancerFn>,
 ): void {
   enhancedRegistry = registry;
 }
 
 /** Build a plain intrinsic element, skipping the enhanced-element interceptor.
  * Used by enhanced element wrappers to avoid infinite recursion. */
-export function jsxIntrinsic(type: any, props: any): SinwanElement {
+export function jsxIntrinsic(
+  type: JSXElementType,
+  props: JSXProps,
+): SinwanElement {
   return buildElement(type, props, normalizeChildren(props?.children), true);
 }
 
-function stripChildrenProp(props: any): Record<string, unknown> {
+function stripChildrenProp(
+  props: JSXProps | undefined,
+): Record<string, unknown> {
   if (!props) return EMPTY_PROPS;
   if (!Object.prototype.hasOwnProperty.call(props, "children")) return props;
   const next: Record<string, unknown> = {};
@@ -140,8 +151,8 @@ function stripChildrenProp(props: any): Record<string, unknown> {
  * Shared logic for jsx, jsxs, and jsxDEV.
  */
 function buildElement(
-  type: any,
-  props: any,
+  type: JSXElementType,
+  props: JSXProps | undefined,
   children: SinwanNode[],
   skipEnhance = false,
 ): SinwanElement {
@@ -188,14 +199,22 @@ function buildElement(
  * JSX factory — called for elements with 0 or 1 child.
  * TypeScript auto-imports this in production mode (`react-jsx`).
  */
-export function jsx(type: any, props: any, key?: any): SinwanElement {
+export function jsx(
+  type: JSXElementType,
+  props: JSXProps,
+  key?: string | number | null,
+): SinwanElement {
   return buildElement(type, props, normalizeChildren(props?.children));
 }
 
 /**
  * JSX static factory — called for elements with 2+ children.
  */
-export function jsxs(type: any, props: any, key?: any): SinwanElement {
+export function jsxs(
+  type: JSXElementType,
+  props: JSXProps,
+  key?: string | number | null,
+): SinwanElement {
   return buildElement(type, props, normalizeChildren(props?.children));
 }
 
@@ -213,9 +232,9 @@ export interface JSXSource {
  * Receives extra source/debug info for better error messages.
  */
 export function jsxDEV(
-  type: any,
-  props: any,
-  key: any,
+  type: JSXElementType,
+  props: JSXProps,
+  key: string | number | null | undefined,
   isStaticChildren: boolean,
   source?: JSXSource,
   self?: unknown,

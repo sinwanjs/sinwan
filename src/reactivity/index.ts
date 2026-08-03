@@ -23,4 +23,4 @@ export type { Observer, Subscription, Observable } from "./observable.ts";
 // Batching & scheduling
 export { batch } from "./batch.ts";
 export { nextTick, flushSync } from "./scheduler.ts";
-export { isReactive, resolve } from "./normalization.ts";
+export { isReactive, resolve, unwrap } from "./normalization.ts";

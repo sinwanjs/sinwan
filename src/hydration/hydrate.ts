@@ -26,6 +26,7 @@ import {
   handleComponentError,
 } from "../component/instance.ts";
 import { domOps } from "../renderer/dom-ops.ts";
+import { setHydrationMode } from "../renderer/template.ts";
 import { hydrateNode, hydrateElement, type HydrationCursor } from "./walk.ts";
 import { DEFAULT_HYDRATION_ADAPTER } from "./markers.ts";
 import type { HydrationAdapter } from "./adapter.ts";
@@ -64,6 +65,11 @@ export function hydrate(
   setCurrentInstance(instance);
 
   try {
+    // Enable hydration mode so _$createTemplate returns def + dynamics
+    // (instead of building a live fragment), allowing the walker to bind
+    // effects/events to the EXISTING server-rendered DOM.
+    setHydrationMode(true);
+
     // 1. Run setup — creates signals, computed, registers hooks
     result = component(mergedProps);
 
@@ -80,6 +86,8 @@ export function hydrate(
       root = hydrateNode(result as SinwanNode, cursor);
     }
   } catch (err) {
+    setHydrationMode(false);
+    setCurrentInstance(null);
     setCurrentInstance(null);
     handleComponentError(instance, err as Error);
     return {
@@ -89,7 +97,8 @@ export function hydrate(
     };
   }
 
-  // Restore
+  // Restore — disable hydration mode after the walk is complete.
+  setHydrationMode(false);
   setCurrentInstance(null);
 
   instance.element = root;

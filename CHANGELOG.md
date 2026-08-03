@@ -2,9 +2,14 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
 
-## [1.2.6] — Template Slot Resolution, JSXFragment Compiler Fix & For Reconciliation Optimization
+## [1.2.6] — Template Slot Resolution, JSXFragment Compiler Fix, For Reconciliation Optimization & React API Expansion
 
-Sinwan 1.2.6 fixes two compiler/runtime bugs — incorrect slot target resolution after child mutations and JSXFragment children being silently dropped in hoisted templates — and optimizes `<For>` list reconciliation to minimize DOM mutations on array updates.
+Sinwan 1.2.6 fixes two compiler/runtime bugs — incorrect slot target resolution after child mutations and JSXFragment children being silently dropped in hoisted templates — optimizes `<For>` list reconciliation to minimize DOM mutations on array updates, tightens JSX runtime type safety, fixes README errors, and adds `forwardRef` and `Children` to the React-compatible API surface.
+
+### Added
+
+- **`forwardRef` (`sinwan/react`)**: React-compatible `forwardRef<T, P>(render)` that wraps a render function to receive a `ref` as its second argument, allowing parent components to access the underlying DOM element or imperative handle of a child component. Uses `REACT_FORWARD_REF_TYPE` symbol for identity. The wrapper transparently strips `ref` from props and passes it to the render function — no renderer changes needed. Supports ref objects, callback refs, `useImperativeHandle` composition, nested forwardRef, and SSR. Added `ForwardRefExoticComponent<P>` and `ForwardRefRenderFunction<P, T>` types to `_types/core.ts`. 15 tests covering reference metadata, ref forwarding (object + callback), props passthrough, no-ref rendering, useImperativeHandle integration, children handling, ref stripping, nesting, and SSR safety.
+- **`Children` (`sinwan/react`)**: React-compatible `Children` utilities — `map`, `forEach`, `count`, `only`, `toArray`. Flattens nested arrays, filters out null/undefined/boolean nodes, and matches React's API exactly. 31 tests covering all five methods with single child, multiple children, null/undefined/boolean, nested arrays, and edge cases.
 
 ### Fixed
 
@@ -23,6 +28,8 @@ Sinwan 1.2.6 fixes two compiler/runtime bugs — incorrect slot target resolutio
 
 - **`<For>` Swap Path Premature Return (`render-control-flow.ts`)**: Fixed two premature `return` statements in the swap DOM reorder path that left `lastList` stale and skipped `onMounted`/`onUpdated` lifecycle hooks when DOM nodes were missing (`nodeI`/`nodeJ` null) or detached (`parentNode` null). The swap path now updates `lastList`, fires `queueUpdatedHooks`, and sets `initialized = true` before returning, matching the contract of all other exit paths in `renderForBlock`.
 - **`cc` Children Type Error (`create.ts`, `types.ts`)**: Fixed `Type 'SinwanNode | SinwanSlots' is not assignable to type 'SinwanNode'` — the `cc` factory and `SinwanComponent` interface typed `children` as `SinwanNode | SinwanSlots`, but `SinwanSlots` (a `Record<string, SinwanNode>`) is not a `SinwanNode`, so embedding `{children}` in JSX failed. Introduced `PropsWithAutoChildren<P>` conditional type that injects `children?: SinwanNode` only when `P` doesn't already declare a `children` key, letting users opt into named slots via `children?: SinwanSlots` in their props type. Constrained `R extends SinwanNode` and removed both `as any` casts from `cc`.
+- **README Duplicate `mount` Import**: The Quick Start example imported `mount` twice — once from `sinwan/component` (which does not export it) and once from `sinwan/renderer`. Removed the incorrect `sinwan/component` import.
+- **README Missing Positioning Section**: Added a "Why Sinwan?" section explaining the library's value proposition (no virtual DOM, fine-grained reactivity, React-compatible JSX, SSR/hydration, single dependency) — critical context for new users evaluating the library.
 
 ### Changed (cont.)
 
@@ -33,12 +40,31 @@ Sinwan 1.2.6 fixes two compiler/runtime bugs — incorrect slot target resolutio
   - **Duplicate `Usable` type**: `Usable` was exported from `_shared.ts` (via `_types/hooks.ts`) and also from `_type.ts` (via `_types/index.ts` → `_types/hooks.ts`). Removed from `_shared.ts` since `_type.ts` covers all types.
   - Updated all doc comments in `src/react/*.ts` from `sinwan/react-client` / `sinwan/react-server` to `sinwan/react`.
   - Fixed 3 test files (`use.test.ts`, `suspense.test.ts`, `use-deferred-value.test.ts`) that imported `use` from `_client.ts` directly — updated to import from `_shared.ts`.
+- **JSX Runtime Type Safety (`jsx-runtime.ts`)**: Replaced all `any` types in the JSX factory functions with proper typed aliases. Introduced `JSXElementType` (`string | symbol | SinwanComponent<any>`), `JSXProps` (`Record<string, unknown>`), and `EnhancerFn` types. Updated signatures for `jsx`, `jsxs`, `jsxDEV`, `buildElement`, `jsxIntrinsic`, `normalizeChildren`, `stripChildrenProp`, `registerEnhancedElements`, and the `enhancedRegistry` variable. `normalizeChildren` now accepts `unknown` with explicit `SinwanNode` casts at the boundary instead of `any` passthrough. Key parameters now include `null` to match the TypeScript JSX transform's output for missing keys.
+- **Scheduler `extractEffects` Simplification (`scheduler.ts`)**: Replaced the 14-line implementation with a 5-line version. Removed the redundant `size <= 1` early-return branch — sorting a 0-1 element array is trivially fast, so the optimization was unnecessary complexity.
 
 ### Internal
 
 - Added 6 compiler tests for slot path generation: reactive child + attr sibling ordering, multiple reactive children, JSXFragment basic children, JSXFragment with reactive children (slot path verification), nested JSXFragments, and attr + event on same element after reactive sibling.
 - Compiler tests: 102 pass / 0 fail.
 - Added 9 tests for `collectExportedComponents` in `sinwan-compiler/__tests__/exports.test.ts`.
+
+### Added (cont.)
+
+- **Auto-`cc` Component Wrapping (`sinwan-compiler/src/auto-cc.ts`)**: New `autoWrapComponents()` compiler pass that detects exported uppercase functions returning JSX (0–1 params) and automatically wraps them with `cc(...)`, injecting `import { cc } from "sinwan/component"` only when needed. Previously, only functions explicitly wrapped with `cc(fn)` were treated as components by the compiler — a bare `export function App() { return <div/> }` was skipped entirely, so reactive expressions inside it were never wrapped. The pass is idempotent: it skips functions already wrapped with `cc(...)`. Wired into both `transform.ts` (before `wrapReactiveExpressions`) and `analyze.ts` (before `trackReactiveImports`). Exported from `sinwan-compiler/src/index.ts`.
+- **`useFetch` as a Reactive Source (`sinwan-compiler/src/reactive-wrap.ts`)**: Added `sinwan/hook` to `REACTIVE_SOURCE_MODULES` and `useFetch` to `ImportNames` / `isReactiveSourceCall`. Previously, `const { data } = useFetch(...)` produced zero bindings because `sinwan/hook` was not in the reactive source module list, so `scope.bindings.size === 0` caused the function body to be skipped — reactive reads of `data.value` were never wrapped. Also added a `signalObject` binding kind for whole-shell useFetch returns used via property access (e.g., `const f = useFetch(...).json(); const { data } = f`).
+- **`signalObject` Binding Kind (`sinwan-compiler/src/reactive-wrap.ts`)**: New binding kind for variables that hold a reactive shell object (e.g., the return of `useFetch(...).json()`), so that destructured members like `data`, `error`, `isLoading` are tracked as reactive signals and member-access reads (`data.value`, `error.value`) are wrapped in zero-arity getters.
+
+### Fixed (cont.)
+
+- **Optional Chaining (`?.`) and Non-Null (`!.`) Not Recognized as Reactive Reads (`sinwan-compiler/src/reactive-wrap.ts`)**: `isReactiveRead` / `getMemberExpressionRootAndPath` only matched `MemberExpression`, never `OptionalMemberExpression` or `TSNonNullExpression`. So `data.value?.message` and `state.user!.name` produced zero wrapped reads — the expression was passed through as-is, breaking reactivity for any code using optional chaining or non-null assertions on reactive sources. `getMemberExpressionRootAndPath`, `isReactiveRead`, `isReactiveValue`, and `transformPropMemberAccess` now walk `OptionalMemberExpression` and `TSNonNullExpression` nodes, unwrapping them to find the underlying reactive root.
+- **Built-in Control-Flow Direct Reactive Children Not Wrapped (`sinwan-compiler/src/reactive-wrap.ts`)**: `isReactiveComponentProp` required a non-null `attributeName`, so direct child expressions of any component (including built-in control-flow like `<Show>`, `<For>`, `<Dynamic>`, `<Index>`) were skipped — `<Show when={data.value}>{data.value?.message}</Show>` compiled with `when` wrapped but `children` passed through as a bare expression, so `<Show>` rendered nothing even when `data` resolved. Direct reactive children of built-in control-flow components are now wrapped in zero-arity getters, matching the behavior of attribute props.
+
+### Internal (cont.)
+
+- Added 18 compiler tests in `sinwan-compiler/__tests__/transform.test.ts`: auto-cc wraps exported JSX-returning function, auto-cc skips already-cc-wrapped function, auto-cc injects `cc` import only when needed, useFetch destructure tracks `data.value` as reactive, useFetch whole-shell property access tracks `data.value`, optional chaining `?.` on reactive signal wrapped, optional chaining on mutable proxy wrapped, non-null assertion `!.` on reactive signal wrapped, `<Show>` direct reactive child wrapped, `<Show>` `when` prop wrapped, non-regression for plain (non-reactive) children, non-regression for event handlers, non-regression for plain identifiers, auto-cc + useFetch combined, nested optional chaining, `<For>` direct reactive child, `<Dynamic>` direct reactive child, and useFetch with `.json()` chain.
+- Compiler tests: 137 pass / 0 fail (119 existing + 18 new). `bunx tsc --noEmit` clean.
+- Rebuilt `sinwan-compiler/dist`, `bun-plugin-sinwan/dist`, and `sinwan/dist`.
 
 ---
 
