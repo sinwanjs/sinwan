@@ -5,7 +5,11 @@ import {
   setCurrentInstance,
 } from "../component/instance.ts";
 import { isServer } from "./_internal/is-server.ts";
-import { effect as sinwanEffect } from "../reactivity/effect.ts";
+import {
+  effect as sinwanEffect,
+  setActiveEffectScope,
+  type EffectScope,
+} from "../reactivity/effect.ts";
 import { depsAreEqual } from "./use-memo.ts";
 import type { EffectCallback, GetterDependencyList } from "./_types/hooks.ts";
 
@@ -34,10 +38,15 @@ function registerEffect(
 
   function runEffect(): (() => void) | void {
     if (!instance) return effect();
+    // Run the user callback with the component instance as the active effect
+    // scope so any `effect()` calls inside it auto-register on
+    // `instance.effects` and are disposed on unmount / soft-hide / HMR.
     const prev = setCurrentInstance(instance);
+    const prevScope = setActiveEffectScope(instance as unknown as EffectScope);
     try {
       return effect();
     } finally {
+      setActiveEffectScope(prevScope);
       setCurrentInstance(prev);
     }
   }

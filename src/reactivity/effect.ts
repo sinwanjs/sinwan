@@ -18,6 +18,47 @@ let activeEffect: ReactiveEffect | null = null;
 const effectStack: ReactiveEffect[] = [];
 let effectIdCounter = 0;
 
+// ─── Effect scope ──────────────────────────────────────────
+
+/**
+ * An effect scope collects effect dispose functions so they can be torn down
+ * together — e.g. when a component instance is unmounted, soft-hidden, or
+ * hot-swapped via HMR.
+ *
+ * `ComponentInstance` structurally satisfies this interface via its
+ * `effects: CleanupFn[]` field, so an instance can serve directly as a scope.
+ */
+export interface EffectScope {
+  effects: CleanupFn[];
+}
+
+const EFFECT_SCOPE_KEY = Symbol.for("sinwan.effectScope");
+type ScopeSlot = { [EFFECT_SCOPE_KEY]?: EffectScope | null };
+const scopeSlot = globalThis as unknown as ScopeSlot;
+if (!(EFFECT_SCOPE_KEY in scopeSlot)) {
+  scopeSlot[EFFECT_SCOPE_KEY] = null;
+}
+
+/**
+ * Set the active effect scope. Effects created via `effect()` while a scope is
+ * active auto-register their dispose function on it, so they are cleaned up
+ * when the scope is torn down. Returns the previous scope for restoration.
+ */
+export function setActiveEffectScope(
+  scope: EffectScope | null,
+): EffectScope | null {
+  const prev = scopeSlot[EFFECT_SCOPE_KEY] ?? null;
+  scopeSlot[EFFECT_SCOPE_KEY] = scope;
+  return prev;
+}
+
+/**
+ * Returns the currently active effect scope (or null outside any scope).
+ */
+export function getActiveEffectScope(): EffectScope | null {
+  return scopeSlot[EFFECT_SCOPE_KEY] ?? null;
+}
+
 // ─── Subscription interface ────────────────────────────────
 
 /**
@@ -153,7 +194,20 @@ export function effect(fn: EffectFn): CleanupFn {
   const e = new ReactiveEffect(fn);
   // Run immediately (synchronous first run for initial tracking)
   e.run();
-  return () => e.dispose();
+  const dispose = () => e.dispose();
+
+  // Auto-register on the active effect scope (e.g. a component instance) so
+  // the effect is disposed when the scope is torn down — unmount, Activity
+  // soft-hide, or HMR hot-swap. Without this, effects created directly in a
+  // component body leak across HMR edits and fire once per accumulated
+  // version. ReactiveEffect.dispose() is idempotent, so a manual dispose()
+  // call by the caller is still safe.
+  const scope = getActiveEffectScope();
+  if (scope) {
+    scope.effects.push(dispose);
+  }
+
+  return dispose;
 }
 
 // ─── Tracking helpers (used by signals/computed) ───────────

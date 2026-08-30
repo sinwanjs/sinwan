@@ -14,6 +14,10 @@ import type { SinwanComponent } from "../types.ts";
 import type { MountedNode } from "../renderer/types.ts";
 import type { CleanupFn } from "../reactivity/index.ts";
 import { nextTick } from "../reactivity/scheduler.ts";
+import {
+  setActiveEffectScope,
+  type EffectScope,
+} from "../reactivity/effect.ts";
 
 // ─── ComponentInstance ─────────────────────────────────────
 
@@ -155,6 +159,46 @@ export function withInstance<T>(instance: ComponentInstance, fn: () => T): T {
   } finally {
     setCurrentInstance(prev);
   }
+}
+
+/**
+ * Run a component's setup function with `instance` as the active effect scope,
+ * so effects created via `effect()` in the setup body auto-register on
+ * `instance.effects` and are disposed on unmount / soft-hide / HMR hot-swap.
+ *
+ * After setup returns, the scope is cleared (set to null) so the subsequent
+ * render phase does NOT auto-register renderer-internal DOM-binding effects —
+ * those are tracked via `node.disposers` and must survive Activity/Key
+ * soft-hide (which disposes `instance.effects` but preserves the DOM).
+ *
+ * `setCurrentInstance(instance)` must already be active (callers do this).
+ * Returns the previous effect scope so the caller can restore it after the
+ * render phase completes. On setup error the previous scope is restored and
+ * the error rethrown.
+ */
+export function runComponentSetup<T>(
+  instance: ComponentInstance,
+  fn: () => T,
+): { result: T; prevScope: EffectScope | null } {
+  const prevScope = setActiveEffectScope(instance as unknown as EffectScope);
+  try {
+    const result = fn();
+    // Clear the scope for the render phase — renderer-internal effects
+    // (reactive text/attribute bindings) must NOT auto-register here.
+    setActiveEffectScope(null);
+    return { result, prevScope };
+  } catch (err) {
+    setActiveEffectScope(prevScope);
+    throw err;
+  }
+}
+
+/**
+ * Restore the effect scope saved by `runComponentSetup` after rendering is
+ * complete. Safe to call with any scope value (including null).
+ */
+export function restoreEffectScope(scope: EffectScope | null): void {
+  setActiveEffectScope(scope);
 }
 
 // ─── Lifecycle execution ───────────────────────────────────
@@ -332,12 +376,19 @@ export function softShowInstance(instance: ComponentInstance): void {
   // Re-run setup to re-register effects and lifecycle hooks.
   // The component function should be idempotent; any state that
   // must survive soft-hide/soft-show should live in hook slots.
+  // Run with `instance` as the active effect scope so user `effect()`
+  // calls re-register on `instance.effects`.
   const prev = setCurrentInstance(instance);
+  let prevScope: EffectScope | null = null;
   try {
-    instance.component(instance.props);
+    const setup = runComponentSetup(instance, () =>
+      instance.component(instance.props),
+    );
+    prevScope = setup.prevScope;
   } catch (err) {
     handleComponentError(instance, err as Error);
   } finally {
+    restoreEffectScope(prevScope);
     setCurrentInstance(prev);
   }
 

@@ -14,6 +14,8 @@ export type { Computed } from "./computed.ts";
 
 export { effect, untrack } from "./effect.ts";
 export type { CleanupFn, EffectFn } from "./effect.ts";
+export { setActiveEffectScope, getActiveEffectScope } from "./effect.ts";
+export type { EffectScope } from "./effect.ts";
 
 // Explicit deps & Observable interop
 export { on } from "./on.ts";
