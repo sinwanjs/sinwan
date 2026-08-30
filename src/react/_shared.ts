@@ -9,6 +9,9 @@ export { Fragment } from "./fragment.ts";
 export { createContext } from "./create-context.ts";
 export { memo } from "./memo.ts";
 export { lazy } from "./lazy.ts";
+export { forwardRef } from "./forward-ref.ts";
+export { Children } from "./children.ts";
+export type { Children as ChildrenType } from "./children.ts";
 export { use } from "./use.ts";
 export { cache } from "./cache.ts";
 export { cacheSignal } from "./cache-signal.ts";
@@ -34,6 +37,8 @@ export type {
   PropsWithChildren,
   MemoExoticComponent,
   LazyExoticComponent,
+  ForwardRefExoticComponent,
+  ForwardRefRenderFunction,
   ErrorInfo,
 } from "./_types/core.ts";
 export type {

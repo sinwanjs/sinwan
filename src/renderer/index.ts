@@ -21,9 +21,16 @@ export {
   _$bindStyle,
   _$bindClass,
   isTemplateResult,
+  isServerTemplateResult,
+  isBindingDescriptor,
+  setHydrationMode,
   SINWAN_TEMPLATE,
+  SINWAN_SERVER_TEMPLATE,
 } from "./template.ts";
-export type { SinwanTemplateResult } from "./template.ts";
+export type {
+  SinwanTemplateResult,
+  SinwanServerTemplateResult,
+} from "./template.ts";
 export { DEFAULT_TEMPLATE_SLOT_PROTOCOL } from "./template-protocol.ts";
 export type {
   TemplateSlot,

@@ -21,6 +21,16 @@
 
 Sinwan gives you signals, component lifecycle hooks, a direct DOM renderer, and a React-shaped JSX runtime without a virtual DOM.
 
+## Why Sinwan?
+
+Sinwan combines the developer experience of React's JSX with the performance of fine-grained reactivity — no virtual DOM diffing, no reconciliation overhead. Signals drive surgical DOM updates directly.
+
+- **No virtual DOM** — components return plain element trees; the renderer patches the DOM at the exact node that changed.
+- **Fine-grained reactivity** — `signal`, `computed`, and `effect` track dependencies automatically. Only the effects that read a changed signal re-run.
+- **React-compatible JSX** — use the same JSX syntax, component props, and TypeScript types you already know. `jsxImportSource: "sinwan"` and you're done.
+- **SSR + hydration** — `renderToString` / `streamPage` on the server, `hydrate` on the client. Hydratable strings and streaming supported.
+- **Single dependency** — only `csstype` at runtime. No React, no Solid, no Vue.
+
 ## Install
 
 ```sh
@@ -47,7 +57,7 @@ Use the automatic JSX runtime:
 ## Quick Start
 
 ```tsx
-import { cc, mount } from "sinwan/component";
+import { cc } from "sinwan/component";
 import { signal } from "sinwan/reactivity";
 import { mount } from "sinwan/renderer";
 

@@ -188,4 +188,52 @@ describe("Template result hydration", () => {
 
     expect(container.textContent).toContain("Bob");
   });
+
+  it("hydrates a mixed-tree template with a component child slot", async () => {
+    // Mirrors the compiler's mixed-tree hoisting output: a static native
+    // shell (<div><p>static</p></div>) with a child slot whose dynamic is a
+    // component call. Verifies the runtime child-slot branch routes the
+    // component through renderNodeToDOM and the component's internal
+    // reactivity survives hydration.
+    const { _$createTemplate } = await import("../src/renderer/template.ts");
+    const { hydrate } = await import("../src/hydration/hydrate.ts");
+    const { cc } = await import("../src/component/create.ts");
+    const { signal } = await import("../src/reactivity/signal.ts");
+    const { nextTick } = await import("../src/reactivity/index.ts");
+
+    const count = signal(0);
+
+    // Card reads the signal via an explicit getter (no compiler in this test,
+    // so the reactive read must be wrapped manually for the effect to track).
+    const Card = cc(() => <span class="card">Card: {() => count.value}</span>);
+
+    // Compiler-emitted shape: <div><!--s:0--><p>static</p></div>
+    // with the component call as the dynamic for slot 0.
+    const def: TemplateDef = {
+      html: "<div><!--s:0--><p>static</p></div>",
+      slots: [{ path: [0], type: "child" }],
+    };
+
+    const App = cc(() => {
+      return _$createTemplate(def, [<Card />]);
+    });
+
+    // Pre-rendered SSR HTML: the component rendered inline + the static <p>.
+    container.innerHTML =
+      '<div><span class="card">Card: 0</span><p>static</p></div>';
+    expect(container.textContent).toContain("Card: 0");
+    expect(container.textContent).toContain("static");
+
+    const app = hydrate(App, container);
+    expect(container.textContent).toContain("Card: 0");
+    expect(container.textContent).toContain("static");
+    expect(container.querySelector("span.card")).not.toBeNull();
+
+    // Reactive update propagates through the component's own effect.
+    count.value = 7;
+    await nextTick();
+    expect(container.textContent).toContain("Card: 7");
+
+    app.unmount();
+  });
 });

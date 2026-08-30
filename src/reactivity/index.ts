@@ -14,6 +14,8 @@ export type { Computed } from "./computed.ts";
 
 export { effect, untrack } from "./effect.ts";
 export type { CleanupFn, EffectFn } from "./effect.ts";
+export { setActiveEffectScope, getActiveEffectScope } from "./effect.ts";
+export type { EffectScope } from "./effect.ts";
 
 // Explicit deps & Observable interop
 export { on } from "./on.ts";
@@ -23,4 +25,4 @@ export type { Observer, Subscription, Observable } from "./observable.ts";
 // Batching & scheduling
 export { batch } from "./batch.ts";
 export { nextTick, flushSync } from "./scheduler.ts";
-export { isReactive, resolve } from "./normalization.ts";
+export { isReactive, resolve, unwrap } from "./normalization.ts";

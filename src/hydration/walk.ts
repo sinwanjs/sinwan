@@ -40,7 +40,12 @@ import {
 import { renderNodeToDOM } from "../renderer/render-children.ts";
 import {
   isTemplateResult,
+  isServerTemplateResult,
+  isBindingDescriptor,
+  setHydrationMode,
+  _$createTemplate,
   type SinwanTemplateResult,
+  type SinwanServerTemplateResult,
 } from "../renderer/template.ts";
 import { applyRef, renderElementToDOM } from "../renderer/render-element.ts";
 import { removeMountedNode, getMountedDomNodes } from "../renderer/unmount.ts";
@@ -157,6 +162,12 @@ export function hydrateNode(
     }
   }
 
+  // Binding descriptor (from explicitBindings mode in non-hoisted JSX).
+  // Unwrap to the getter function — the function-getter path below handles it.
+  if (isBindingDescriptor(node)) {
+    return hydrateReactiveFunction((node as any).getter, cursor);
+  }
+
   // Plain function getter (0-arity) — resolve for hydration,
   // attach effect so it stays reactive when dependencies change.
   if (typeof node === "function" && (node as any).length === 0) {
@@ -169,9 +180,19 @@ export function hydrateNode(
   }
 
   // Compiler-generated template result — replace SSR nodes with live template
+  // Compiler-generated template result (live fragment from CSR).
   if (isTemplateResult(node as unknown)) {
     return hydrateTemplateResult(
       node as unknown as SinwanTemplateResult,
+      cursor,
+    );
+  }
+
+  // Server template result (from hydration mode or SSR). Bind in-place to
+  // the existing server-rendered DOM instead of creating + swapping.
+  if (isServerTemplateResult(node as unknown)) {
+    return hydrateServerTemplateResult(
+      node as unknown as SinwanServerTemplateResult,
       cursor,
     );
   }
@@ -464,6 +485,152 @@ function hydrateTemplateResult(
   };
 }
 
+/**
+ * Hydrate a server template result by binding effects/events to the EXISTING
+ * server-rendered DOM (Phase B — true in-place hydration).
+ *
+ * For the common case of templates with only reactive text child slots (the
+ * `Counter` pattern: `<div><p>Count: {count}</p></div>`), this finds the
+ * `<!--sinwan-t:N-->` markers in the existing DOM and binds effects to the
+ * text nodes between them — no DOM swap needed.
+ *
+ * For templates with attr/event slots or non-scalar child slots (components,
+ * elements, arrays), the path-based slot resolution would require index
+ * adjustment for expanded child markers, which is fragile. These cases fall
+ * back to the swap-based `hydrateTemplateResult` approach.
+ */
+function hydrateServerTemplateResult(
+  result: SinwanServerTemplateResult,
+  cursor: HydrationCursor,
+): MountedNode {
+  const { def, dynamics } = result;
+  const owner = getCurrentInstance();
+  const root = cursor.current;
+
+  // Phase B only handles the common case: all slots are child slots with
+  // reactive scalar dynamics (signals/computed/getters/binding descriptors).
+  // Anything else (attr, event, component children, element children) falls
+  // back to the swap approach.
+  const canInPlace = def.slots.every((slot) => {
+    if (slot.type !== "child") return false;
+    const value = dynamics[def.slots.indexOf(slot)];
+    return (
+      isSignal(value) ||
+      isComputed(value) ||
+      isBindingDescriptor(value) ||
+      (typeof value === "function" && (value as any).length === 0)
+    );
+  });
+
+  if (!canInPlace || !root || root.nodeType !== 1 /* ELEMENT_NODE */) {
+    // Fall back: build a live fragment and swap. This requires temporarily
+    // disabling hydration mode so _$createTemplate creates a real fragment.
+    return swapHydrateTemplate(def, dynamics, cursor);
+  }
+
+  // In-place binding: find all <!--sinwan-t:N--> open markers in the root
+  // element's subtree, in document order. Match them 1:1 with the child slots
+  // (also in order, since SSR renders them sequentially).
+  const disposers: CleanupFn[] = [];
+  const textMarkers: Comment[] = [];
+  collectTextOpenMarkers(root as Element, cursor.adapter, textMarkers);
+
+  // If the SSR DOM doesn't have sinwan-t markers (e.g. plain pre-rendered HTML
+  // without the SSR template serializer), fall back to swap.
+  if (textMarkers.length === 0) {
+    return swapHydrateTemplate(def, dynamics, cursor);
+  }
+
+  let markerIdx = 0;
+  for (let i = 0; i < def.slots.length; i++) {
+    const slot = def.slots[i]!;
+    if (slot.type !== "child") continue;
+    const value = dynamics[i];
+    const marker = textMarkers[markerIdx++];
+
+    if (!marker) continue;
+    // The text node is the next sibling after the open marker.
+    const textNode = marker.nextSibling;
+    if (!textNode || textNode.nodeType !== 3 /* TEXT_NODE */) continue;
+
+    // Create the effect that updates the text node when the reactive value
+    // changes. This binds to the EXISTING text node — no swap.
+    const getter = resolveChildGetter(value);
+    if (getter) {
+      const dispose = effect(() => {
+        const resolved = getter();
+        (textNode as Text).textContent =
+          resolved == null ? "" : String(resolved);
+      });
+      disposers.push(dispose);
+    }
+  }
+
+  // Advance the cursor past the root element (single top-level node).
+  advance(cursor);
+
+  return {
+    type: "element" as const,
+    node: root as Element,
+    children: [],
+    eventCleanups: null,
+    attrDisposers: disposers,
+    refCleanup: null,
+  };
+}
+
+/**
+ * Fallback for templates that can't be hydrated in-place: temporarily disable
+ * hydration mode, build a live fragment via _$createTemplate, and swap the SSR
+ * nodes for the live fragment (the original Phase A behavior).
+ */
+function swapHydrateTemplate(
+  def: import("../renderer/template-protocol.ts").TemplateDef,
+  dynamics: unknown[],
+  cursor: HydrationCursor,
+): MountedNode {
+  // Temporarily disable hydration mode so _$createTemplate builds a real
+  // fragment, then swap the SSR nodes for the live fragment.
+  setHydrationMode(false);
+  try {
+    const liveResult = _$createTemplate(def, dynamics);
+    return hydrateTemplateResult(liveResult as SinwanTemplateResult, cursor);
+  } finally {
+    setHydrationMode(true);
+  }
+}
+
+/** Resolve a child slot dynamic to a getter function, or null if not reactive. */
+function resolveChildGetter(value: unknown): (() => unknown) | null {
+  if (isBindingDescriptor(value)) {
+    return (value as any).getter as () => unknown;
+  }
+  if (isSignal(value) || isComputed(value)) {
+    return () => (value as any).value;
+  }
+  if (typeof value === "function" && (value as any).length === 0) {
+    return value as () => unknown;
+  }
+  return null;
+}
+
+/** Collect all <!--sinwan-t:N--> open markers in an element's subtree, in order. */
+function collectTextOpenMarkers(
+  element: Element,
+  adapter: HydrationCursor["adapter"],
+  out: Comment[],
+): void {
+  for (const child of element.childNodes) {
+    if (child.nodeType === 8 /* COMMENT_NODE */) {
+      if (adapter.parseTextOpenMarker(child as Comment) >= 0) {
+        out.push(child as Comment);
+      }
+    } else if (child.nodeType === 1 /* ELEMENT_NODE */) {
+      collectTextOpenMarkers(child as Element, adapter, out);
+    }
+  }
+}
+
 // ─── Element hydration ────────────────────────────────────
 
 /**
@@ -612,6 +779,21 @@ function hydrateAttributes(
       let initialized = false;
       const dispose = effect(() => {
         setSingleAttribute(el, key, (value as any).value, state);
+        if (initialized) {
+          queueUpdatedHooks(owner);
+        }
+        initialized = true;
+      });
+      if (!disposers) disposers = [];
+      disposers.push(dispose);
+    } else if (isBindingDescriptor(value)) {
+      // Binding descriptor (from explicitBindings mode) — unwrap to getter
+      // and attach an effect, same as a reactive function attribute.
+      const getter = (value as any).getter;
+      const state = { previousStyleProps: new Set<string>() };
+      let initialized = false;
+      const dispose = effect(() => {
+        setSingleAttribute(el, key, resolve(getter), state);
         if (initialized) {
           queueUpdatedHooks(owner);
         }

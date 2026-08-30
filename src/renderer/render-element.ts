@@ -48,6 +48,8 @@ import {
   getCurrentInstance,
   setCurrentInstance,
   handleComponentError,
+  runComponentSetup,
+  restoreEffectScope,
   type ComponentInstance,
 } from "../component/instance.ts";
 import { getActiveSuspenseBoundary } from "./suspense-boundary.ts";
@@ -266,6 +268,9 @@ function renderComponentToDOM(
 
   let result: any;
   let child: MountedNode;
+  // Saved effect scope — restored after rendering so renderer-internal effects
+  // created during the render phase do NOT auto-register on `instance.effects`.
+  let prevScope: import("../reactivity/effect.ts").EffectScope | null = null;
 
   const boundary = getActiveSuspenseBoundary();
 
@@ -275,7 +280,13 @@ function renderComponentToDOM(
     if (boundary && boundary.asyncComponentResults?.has(component)) {
       result = boundary.asyncComponentResults.get(component);
     } else {
-      result = component(props);
+      // Run setup with `instance` as the active effect scope so user-created
+      // effects (via `effect()`) auto-register on `instance.effects`. After
+      // setup the scope is cleared so the render phase below does not
+      // auto-register renderer-internal DOM-binding effects.
+      const setup = runComponentSetup(instance, () => component(props));
+      result = setup.result;
+      prevScope = setup.prevScope;
     }
 
     // If the component returned a Promise and we're inside a Suspense
@@ -290,7 +301,8 @@ function renderComponentToDOM(
       }
     }
 
-    // Render the returned element tree (still under this instance)
+    // Render the returned element tree (still under this instance, but with
+    // the effect scope cleared so internal bindings go to node.disposers).
     if (result && typeof result === "object" && "tag" in result) {
       child = renderElementToDOM(
         result as SinwanElement,
@@ -302,7 +314,8 @@ function renderComponentToDOM(
       child = renderNodeToDOM(result as SinwanNode, parent, anchor, namespace);
     }
   } catch (err) {
-    // Restore parent before error handling
+    // Restore parent + scope before error handling
+    restoreEffectScope(prevScope);
     setCurrentInstance(prevInstance);
 
     const boundary = getActiveSuspenseBoundary();
@@ -341,7 +354,8 @@ function renderComponentToDOM(
     };
   }
 
-  // Restore parent instance
+  // Restore parent instance + effect scope
+  restoreEffectScope(prevScope);
   setCurrentInstance(prevInstance);
 
   instance.element = child;

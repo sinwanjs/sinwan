@@ -30,7 +30,11 @@ import {
   withInstance,
 } from "../component/instance.ts";
 import { removeMountedNode } from "./unmount.ts";
-import { isTemplateResult, type SinwanTemplateResult } from "./template.ts";
+import {
+  isTemplateResult,
+  isBindingDescriptor,
+  type SinwanTemplateResult,
+} from "./template.ts";
 import { getActiveSuspenseBoundary } from "./suspense-boundary.ts";
 
 type PromiseRecord =
@@ -81,6 +85,17 @@ export function renderNodeToDOM(
   // Compiler-generated template result
   if (isTemplateResult(node)) {
     return renderTemplateResultToDOM(node, parent, anchor);
+  }
+
+  // Binding descriptor (from explicitBindings mode in non-hoisted JSX).
+  // Unwrap to the getter function — isReactive handles it below.
+  if (isBindingDescriptor(node)) {
+    return renderReactiveNodeToDOM(
+      (node as any).getter,
+      parent,
+      anchor,
+      namespace,
+    );
   }
 
   // SinwanElement (common case)

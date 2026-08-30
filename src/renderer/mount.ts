@@ -19,7 +19,10 @@ import {
   fireMountedHooks,
   fireUnmountedHooks,
   handleComponentError,
+  runComponentSetup,
+  restoreEffectScope,
 } from "../component/instance.ts";
+import type { EffectScope } from "../reactivity/effect.ts";
 
 /**
  * Mount a component into a DOM container.
@@ -62,13 +65,22 @@ export function mount(
 
   let result: any;
   let root: MountedNode;
+  // Saved effect scope — restored after rendering so renderer-internal effects
+  // created during the render phase do NOT auto-register on `instance.effects`.
+  let prevScope: EffectScope | null = null;
 
   // Set instance as current for BOTH setup AND rendering,
   // so child components can discover their parent.
   setCurrentInstance(instance);
 
   try {
-    result = component(mergedProps);
+    // Run setup with `instance` as the active effect scope so user `effect()`
+    // calls auto-register on `instance.effects` (disposed on unmount/HMR).
+    // After setup the scope is cleared so the render phase below does not
+    // auto-register renderer-internal DOM-binding effects.
+    const setup = runComponentSetup(instance, () => component(mergedProps));
+    result = setup.result;
+    prevScope = setup.prevScope;
 
     if (result instanceof Promise) {
       // Async component — render placeholder, then swap
@@ -80,6 +92,7 @@ export function mount(
       const rootRef: { current: MountedNode } = { current: root };
 
       setCurrentInstance(null);
+      restoreEffectScope(prevScope);
 
       result.then(
         (resolved) => {
@@ -115,6 +128,7 @@ export function mount(
       root = renderNodeToDOM(result as SinwanNode, container);
     }
   } catch (err) {
+    restoreEffectScope(prevScope);
     setCurrentInstance(null);
     handleComponentError(instance, err as Error);
     return {
@@ -124,6 +138,7 @@ export function mount(
   }
 
   // Restore — no instance is current at the top level
+  restoreEffectScope(prevScope);
   setCurrentInstance(null);
 
   instance.element = root;

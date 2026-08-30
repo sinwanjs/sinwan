@@ -10,6 +10,8 @@ import {
   fireUnmountedHooks,
   handleComponentError,
   resetHookCursorLocal,
+  runComponentSetup,
+  restoreEffectScope,
   type ComponentInstance,
 } from "../component/instance.ts";
 import { renderElementToDOM } from "../renderer/render-element.ts";
@@ -289,9 +291,18 @@ export function hotSwapRootInstance(
     const prev = setCurrentInstance(instance);
     let result: any;
     let root: MountedNode;
+    // Saved effect scope — restored after rendering so renderer-internal
+    // effects do not auto-register on `instance.effects` during the render
+    // phase. User `effect()` calls in the setup body DO auto-register, so
+    // they are disposed by the next softHideInstance (no HMR duplication).
+    let prevScope: import("../reactivity/effect.ts").EffectScope | null = null;
 
     try {
-      result = newComponent(instance.props);
+      const setup = runComponentSetup(instance, () =>
+        newComponent(instance.props),
+      );
+      result = setup.result;
+      prevScope = setup.prevScope;
 
       if (result && typeof result === "object" && "tag" in result) {
         root = renderElementToDOM(result as SinwanElement, container);
@@ -299,6 +310,7 @@ export function hotSwapRootInstance(
         root = renderNodeToDOM(result as SinwanNode, container);
       }
     } catch (err) {
+      restoreEffectScope(prevScope);
       setCurrentInstance(prev);
       hmrGlobal[HMR_CONTEXT_KEY] = null;
       hmrGlobal[HMR_HOOK_KEY] = null;
@@ -306,6 +318,7 @@ export function hotSwapRootInstance(
       return false;
     }
 
+    restoreEffectScope(prevScope);
     setCurrentInstance(prev);
 
     // 8. Deactivate HMR context
