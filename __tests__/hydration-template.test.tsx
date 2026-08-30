@@ -106,6 +106,7 @@ describe("Template result hydration", () => {
       _$bindAttr,
       _$bindStyle,
       _$bindClass,
+      isTemplateResult,
     } = await import("../src/renderer/template.ts");
     const { signal } = await import("../src/reactivity/signal.ts");
     const { nextTick } = await import("../src/reactivity/index.ts");
@@ -131,6 +132,7 @@ describe("Template result hydration", () => {
       _$bindStyle(() => ({ color: color.value })),
       _$bindClass(() => ({ active: active.value })),
     ]);
+    if (!isTemplateResult(result)) throw new Error("expected template result");
 
     container.appendChild(result.fragment);
 
