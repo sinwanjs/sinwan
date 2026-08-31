@@ -2,9 +2,16 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
 
-## [1.2.7] — Hydration Marker Consistency,stripMarkers Completeness & Post-Hydration DOM Cleanup
+## [1.2.7] — Hydration Marker Consistency, stripMarkers Completeness, Post-Hydration DOM Cleanup & Template Hoisting with Refs
 
-Sinwan 1.2.7 fixes three hydration system issues: a case-sensitivity mismatch between client-side comment anchors and the SSR/hydration marker protocol, an incomplete `stripMarkers` function that left reactive block markers and runtime attributes in static markup, and SSR comment markers remaining in the DOM after hydration was complete.
+Sinwan 1.2.7 fixes three hydration system issues — a case-sensitivity mismatch between client-side comment anchors and the SSR/hydration marker protocol, an incomplete `stripMarkers` function that left reactive block markers and runtime attributes in static markup, and SSR comment markers remaining in the DOM after hydration — and adds support for template hoisting with `ref` attributes, eliminating the `Cannot hoist element with ref` compiler warning.
+
+### Added
+
+- **Template Hoisting with Ref Slots (`template-protocol.ts`, `template.ts`, `walk.ts`)**: The compiler now emits a new `"ref"` slot type for elements with `ref` attributes instead of throwing `Cannot hoist element with ref` and skipping hoisting. The runtime `_$createTemplate` handles ref slots by calling `applyRef()` on the cloned element after template instantiation. The SSR renderer skips ref slots entirely (no `ref=` attribute in server output). The hydration walker binds refs to existing DOM elements during in-place hydration. Supports function refs, object refs, nested elements with correct path resolution, and combinations with attr/event/child slots. `walkToSlot` is now exported from `template.ts` for use by the hydration walker.
+- **`stripMarkers` Test Coverage (`hydration-adapter.test.ts`)**: Added 6 new test cases verifying that `stripMarkers` removes `sinwan-r`/`/sinwan-r`, `data-sinwan-activity`, `data-sinwan-root`, `data-sinwan-island`, `data-sinwan-island-props`, and a combined test with all new markers in a single HTML string.
+- **Ref Slot Runtime Tests (`hydration-template.test.tsx`)**: Added 4 tests covering function ref binding to cloned element, object ref binding, nested element ref with path resolution, and ref + reactive text slot combination.
+- **Ref Slot SSR & Hydration Tests (`ssr-template.test.ts`)**: Added 3 tests: SSR serialization of ref slot (no ref attribute in HTML), SSR serialization of ref + attr slot combination, and in-place hydration of template with ref slot binding to existing DOM element.
 
 ### Fixed
 
@@ -12,14 +19,11 @@ Sinwan 1.2.7 fixes three hydration system issues: a case-sensitivity mismatch be
 - **Incomplete `stripMarkers` (`markers.ts`)**: The `DEFAULT_HYDRATION_ADAPTER.stripMarkers` function stripped `data-sinwan-id`, `data-sinwan-ev`, and `sinwan-t` markers but missed `sinwan-r`/`/sinwan-r` (function/reactive block markers), `data-sinwan-activity`, `data-sinwan-root`, `data-sinwan-island`, and `data-sinwan-island-props`. This caused `renderToStaticMarkup` to leave reactive block markers and runtime attributes in the output. All missing patterns are now stripped.
 - **SSR Comment Markers Not Removed After Hydration (`walk.ts`)**: After hydration, the `sinwan-t:N` and `/sinwan-t` comment markers remained in the DOM — only `data-sinwan-*` attributes were being cleaned up. `hydrateReactiveText` and `hydrateServerTemplateResult` now remove the text markers after binding the reactive effect to the text node. The `sinwan-r`/`/sinwan-r` markers are intentionally **kept** — they are reused as `startAnchor`/`endAnchor` of the `MountedReactiveBlock` for reactive updates (the update effect inserts new content before `endAnchor`, and `removeMountedNode` uses the anchors to find the node range).
 
-### Added
-
-- **`stripMarkers` Test Coverage (`hydration-adapter.test.ts`)**: Added 6 new test cases verifying that `stripMarkers` removes `sinwan-r`/`/sinwan-r`, `data-sinwan-activity`, `data-sinwan-root`, `data-sinwan-island`, `data-sinwan-island-props`, and a combined test with all new markers in a single HTML string.
-
 ### Internal
 
 - Updated `ssr-template.test.ts` to verify that `sinwan-t` markers are removed from the DOM after hydration while preserving text node identity and reactivity.
-- All 2492 tests pass, typecheck clean.
+- `TemplateSlot.type` extended to accept `"ref"` in addition to `"child"`, `"attr"`, and `"event"`.
+- All 2499 tests pass, typecheck clean.
 
 ## [1.2.6] — Template Slot Resolution, JSXFragment Compiler Fix, For Reconciliation Optimization & React API Expansion
 

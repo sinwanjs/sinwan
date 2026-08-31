@@ -11,8 +11,8 @@
 export interface TemplateSlot {
   /** Path from the template root to the target node. */
   path: number[];
-  /** Slot type: child, attribute, or event. */
-  type: "child" | "attr" | "event";
+  /** Slot type: child, attribute, event, or ref. */
+  type: "child" | "attr" | "event" | "ref";
   /** Attribute or event name (for attr/event slots). */
   name?: string;
 }

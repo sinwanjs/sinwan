@@ -238,4 +238,108 @@ describe("Template result hydration", () => {
 
     app.unmount();
   });
+
+  it("binds function ref to cloned element via ref slot", async () => {
+    const { _$createTemplate, isTemplateResult } =
+      await import("../src/renderer/template.ts");
+
+    const def: TemplateDef = {
+      html: "<input />",
+      slots: [{ path: [], type: "ref", name: "ref" }],
+    };
+
+    let receivedEl: Element | null = null;
+    const refFn = (el: Element | null) => {
+      receivedEl = el;
+    };
+
+    const result = _$createTemplate(def, [refFn]);
+    if (!isTemplateResult(result)) throw new Error("expected template result");
+    container.appendChild(result.fragment);
+
+    const input = container.querySelector("input");
+    expect(input).not.toBeNull();
+    expect(receivedEl).toBe(input as any);
+
+    // Cleanup should set ref to null
+    result.disposers.forEach((d) => d());
+    expect(receivedEl).toBeNull();
+  });
+
+  it("binds object ref to cloned element via ref slot", async () => {
+    const { _$createTemplate, isTemplateResult } =
+      await import("../src/renderer/template.ts");
+
+    const def: TemplateDef = {
+      html: "<textarea></textarea>",
+      slots: [{ path: [], type: "ref", name: "ref" }],
+    };
+
+    const refObj = { current: null as Element | null };
+    const result = _$createTemplate(def, [refObj]);
+    if (!isTemplateResult(result)) throw new Error("expected template result");
+    container.appendChild(result.fragment);
+
+    const textarea = container.querySelector("textarea");
+    expect(textarea).not.toBeNull();
+    expect(refObj.current).toBe(textarea);
+
+    // Cleanup should set ref.current to null
+    result.disposers.forEach((d) => d());
+    expect(refObj.current).toBeNull();
+  });
+
+  it("binds ref to nested element via ref slot with path", async () => {
+    const { _$createTemplate, isTemplateResult } =
+      await import("../src/renderer/template.ts");
+
+    const def: TemplateDef = {
+      html: "<form><input /></form>",
+      slots: [{ path: [0], type: "ref", name: "ref" }],
+    };
+
+    let receivedEl: Element | null = null;
+    const refFn = (el: Element | null) => {
+      receivedEl = el;
+    };
+
+    const result = _$createTemplate(def, [refFn]);
+    if (!isTemplateResult(result)) throw new Error("expected template result");
+    container.appendChild(result.fragment);
+
+    const input = container.querySelector("input");
+    expect(input).not.toBeNull();
+    expect(receivedEl).toBe(input as any);
+  });
+
+  it("binds ref + reactive text slot together", async () => {
+    const { _$createTemplate, isTemplateResult } =
+      await import("../src/renderer/template.ts");
+    const { signal } = await import("../src/reactivity/signal.ts");
+    const { nextTick } = await import("../src/reactivity/index.ts");
+
+    const count = signal(0);
+    const refObj = { current: null as Element | null };
+
+    const def: TemplateDef = {
+      html: "<div><input /><span><!--s:0--></span></div>",
+      slots: [
+        { path: [0], type: "ref", name: "ref" },
+        { path: [1, 0], type: "child" },
+      ],
+    };
+
+    const result = _$createTemplate(def, [refObj, () => count.value]);
+    if (!isTemplateResult(result)) throw new Error("expected template result");
+    container.appendChild(result.fragment);
+
+    const input = container.querySelector("input");
+    expect(input).not.toBeNull();
+    expect(refObj.current).toBe(input as any);
+    expect(container.querySelector("span")?.textContent).toBe("0");
+
+    count.value = 42;
+    await nextTick();
+    expect(container.querySelector("span")?.textContent).toBe("42");
+  });
 });

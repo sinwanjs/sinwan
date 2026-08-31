@@ -156,6 +156,51 @@ describe("SSR template serialization (Phase A)", () => {
     expect(html).toContain("Card: hello");
     expect(html).toContain("<p>static</p>");
   });
+
+  it("serializes a template with a ref slot (no ref attribute in HTML)", async () => {
+    const { _$createTemplate } = await import("../src/renderer/template.ts");
+    const { renderToHydratableString } =
+      await import("../src/server/hydration-markers.ts");
+    const { cc } = await import("../src/component/create.ts");
+
+    const def = {
+      html: "<input />",
+      slots: [{ path: [], type: "ref" as const, name: "ref" }],
+    };
+
+    const App = cc(() => {
+      return _$createTemplate(def, [(el: any) => el?.focus()]);
+    });
+
+    const html = await renderToHydratableString(App, {});
+    // Refs are client-only — no ref attribute should appear in SSR output.
+    expect(html).toContain("<input");
+    expect(html).not.toContain("ref=");
+    expect(html).not.toContain("data-sinwan-ev");
+  });
+
+  it("serializes a template with ref + attr slot (attr emitted, ref not)", async () => {
+    const { _$createTemplate } = await import("../src/renderer/template.ts");
+    const { renderToHydratableString } =
+      await import("../src/server/hydration-markers.ts");
+    const { cc } = await import("../src/component/create.ts");
+
+    const def = {
+      html: '<input placeholder="" />',
+      slots: [
+        { path: [], type: "ref" as const, name: "ref" },
+        { path: [], type: "attr" as const, name: "placeholder" },
+      ],
+    };
+
+    const App = cc(() => {
+      return _$createTemplate(def, [(el: any) => el?.focus(), "Enter text"]);
+    });
+
+    const html = await renderToHydratableString(App, {});
+    expect(html).toContain('placeholder="Enter text"');
+    expect(html).not.toContain("ref=");
+  });
 });
 
 /**
@@ -289,5 +334,58 @@ describe("SSR template in-place hydration (Phase B)", () => {
     expect(container.textContent).toContain("Count: 5");
 
     app.unmount();
+  });
+
+  it("hydrates a template with ref slot in-place", async () => {
+    // Step 1: SSR — render the template to HTML.
+    delete (globalThis as any).document;
+    delete (globalThis as any).window;
+
+    const { _$createTemplate } = await import("../src/renderer/template.ts");
+    const { renderToHydratableString } =
+      await import("../src/server/hydration-markers.ts");
+    const { cc } = await import("../src/component/create.ts");
+    const { signal } = await import("../src/reactivity/signal.ts");
+    const { nextTick } = await import("../src/reactivity/index.ts");
+
+    const count = signal(0);
+    const refObj = { current: null as Element | null };
+
+    const def = {
+      html: "<div><input /><span><!--s:0--></span></div>",
+      slots: [
+        { path: [0], type: "ref" as const, name: "ref" },
+        { path: [1, 0], type: "child" as const },
+      ],
+    };
+
+    const App = cc(() => _$createTemplate(def, [refObj, () => count.value]));
+
+    const html = await renderToHydratableString(App, {});
+    expect(html).toContain("<input");
+    expect(html).not.toContain("ref=");
+
+    // Step 2: Set up the client DOM with the SSR HTML.
+    (globalThis as any).document = doc;
+    (globalThis as any).window = originalWindow;
+    container.innerHTML = html;
+    expect(container.querySelector("input")).not.toBeNull();
+
+    // Step 3: Hydrate — should bind ref to existing input, not swap.
+    const { hydrate } = await import("../src/hydration/hydrate.ts");
+    const app = hydrate(App, container);
+
+    // Ref should be bound to the existing input element
+    const input = container.querySelector("input");
+    expect(refObj.current).toBe(input as any);
+
+    // Reactive text should work
+    expect(container.querySelector("span")?.textContent).toBe("0");
+    count.value = 99;
+    await nextTick();
+    expect(container.querySelector("span")?.textContent).toBe("99");
+
+    app.unmount();
+    expect(refObj.current).toBeNull();
   });
 });

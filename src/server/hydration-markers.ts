@@ -337,6 +337,9 @@ async function renderServerTemplate(
       const placeholder = ` ${slot.name}=""`;
       const replacement = ` ${adapter.eventAttr}="${eventName}:${ctx.eventIndex++}"`;
       html = html.replace(placeholder, replacement);
+    } else if (slot.type === "ref") {
+      // Refs are client-only — no SSR output
+      continue;
     }
   }
 

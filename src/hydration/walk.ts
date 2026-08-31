@@ -44,6 +44,7 @@ import {
   isBindingDescriptor,
   setHydrationMode,
   _$createTemplate,
+  walkToSlot,
   type SinwanTemplateResult,
   type SinwanServerTemplateResult,
 } from "../renderer/template.ts";
@@ -529,10 +530,12 @@ function hydrateServerTemplateResult(
   const root = cursor.current;
 
   // Phase B only handles the common case: all slots are child slots with
-  // reactive scalar dynamics (signals/computed/getters/binding descriptors).
+  // reactive scalar dynamics (signals/computed/getters/binding descriptors),
+  // or ref slots (which don't affect DOM structure).
   // Anything else (attr, event, component children, element children) falls
   // back to the swap approach.
   const canInPlace = def.slots.every((slot) => {
+    if (slot.type === "ref") return true;
     if (slot.type !== "child") return false;
     const value = dynamics[def.slots.indexOf(slot)];
     return (
@@ -601,6 +604,18 @@ function hydrateServerTemplateResult(
     marker.remove();
   }
 
+  // Bind refs to the existing DOM elements (no DOM swap needed).
+  let refCleanup: CleanupFn | null = null;
+  for (let i = 0; i < def.slots.length; i++) {
+    const slot = def.slots[i]!;
+    if (slot.type !== "ref") continue;
+    const value = dynamics[i];
+    const target = walkToSlot(root as Node, slot.path, def);
+    if (target instanceof Element) {
+      refCleanup = applyRef(target, value);
+    }
+  }
+
   // Advance the cursor past the root element (single top-level node).
   advance(cursor);
 
@@ -610,7 +625,7 @@ function hydrateServerTemplateResult(
     children: [],
     eventCleanups: null,
     attrDisposers: disposers,
-    refCleanup: null,
+    refCleanup,
   };
 }
 
