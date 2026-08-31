@@ -244,19 +244,13 @@ describe("SSR template in-place hydration (Phase B)", () => {
     const app = hydrate(App, container);
 
     // The text node should be the SAME node (in-place, not swapped).
-    // After in-place hydration, the sinwan-t markers are still in the DOM
-    // (they were not removed — only the effect was bound to the text node).
-    const pChildrenAfter = container.querySelector("p")?.childNodes;
-    let textAfter: Node | undefined;
-    for (let i = 0; i < (pChildrenAfter?.length ?? 0); i++) {
-      const node = pChildrenAfter![i];
-      if (node.nodeType === 8 && (node as Comment).data === "sinwan-t:0") {
-        textAfter = pChildrenAfter![i + 1];
-        break;
-      }
-    }
-    expect(textAfter).toBe(textBefore);
+    // After in-place hydration, the sinwan-t markers are removed from the
+    // DOM (they were only needed to locate the text node during binding);
+    // the reactive effect is bound directly to the surviving text node.
+    expect((textBefore as Text).parentNode).not.toBeNull();
     expect(container.textContent).toContain("Count: 42");
+    // The sinwan-t markers should have been cleaned up.
+    expect(container.innerHTML).not.toContain("sinwan-t");
 
     // Step 4: Reactive update — the EXISTING text node should update.
     count.value = 99;

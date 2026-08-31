@@ -204,6 +204,12 @@ export const DEFAULT_HYDRATION_ADAPTER: HydrationAdapter = {
       .replace(/\s+data-sinwan-id="c\d+"/g, "")
       .replace(/\s+data-sinwan-ev="[^"]*"/g, "")
       .replace(/<!--sinwan-t:\d+-->/g, "")
-      .replace(/<!--\/sinwan-t-->/g, "");
+      .replace(/<!--\/sinwan-t-->/g, "")
+      .replace(/<!--sinwan-r-->/g, "")
+      .replace(/<!--\/sinwan-r-->/g, "")
+      .replace(/\s+data-sinwan-activity="[^"]*"/g, "")
+      .replace(/\s+data-sinwan-root="[^"]*"/g, "")
+      .replace(/\s+data-sinwan-island="[^"]*"/g, "")
+      .replace(/\s+data-sinwan-island-props="[^"]*"/g, "");
   },
 };
