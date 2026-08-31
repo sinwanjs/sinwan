@@ -1,24 +1,25 @@
 /**
- * SinwanJS Release Metadata — from 1.0.0 to 1.2.6
+ * SinwanJS Release Metadata — from 1.0.0 to 1.2.7
  */
 
 import { describe, it, expect } from "bun:test";
 
 describe("release metadata", () => {
   /**
-   * Publishes package version 1.2.6
+   * Publishes package version 1.2.7
    */
-  it("publishes package version 1.2.6", async () => {
+  it("publishes package version 1.2.7", async () => {
     const pkg = await Bun.file("package.json").json();
-    expect(pkg.version).toBe("1.2.6");
+    expect(pkg.version).toBe("1.2.7");
     expect(pkg.exports["./renderer"]).toBeDefined();
   });
 
   /**
-   * Uses a 1.2.6 changelog entry without removed patch entries
+   * Uses a 1.2.7 changelog entry without removed patch entries
    */
-  it("uses a 1.2.6 changelog entry without removed patch entries", async () => {
+  it("uses a 1.2.7 changelog entry without removed patch entries", async () => {
     const changelog = await Bun.file("CHANGELOG.md").text();
+    expect(changelog).toContain("## [1.2.7]");
     expect(changelog).toContain("## [1.2.6]");
     expect(changelog).toContain("## [1.2.5]");
     expect(changelog).toContain("## [1.2.4]");

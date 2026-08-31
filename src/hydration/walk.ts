@@ -44,6 +44,7 @@ import {
   isBindingDescriptor,
   setHydrationMode,
   _$createTemplate,
+  walkToSlot,
   type SinwanTemplateResult,
   type SinwanServerTemplateResult,
 } from "../renderer/template.ts";
@@ -81,7 +82,12 @@ import {
   createDynamicElement,
   normalizeContent,
 } from "../component/control-flow.ts";
-import { DEFAULT_HYDRATION_ADAPTER, type HydrationAdapter } from "./markers.ts";
+import {
+  DEFAULT_HYDRATION_ADAPTER,
+  FUNCTION_MARKER_OPEN,
+  FUNCTION_MARKER_CLOSE,
+  type HydrationAdapter,
+} from "./markers.ts";
 import {
   createComponentInstance,
   getCurrentInstance,
@@ -246,7 +252,16 @@ function hydrateReactiveText(
       cursor.adapter.isTextCloseMarker(closeComment as Comment)
     ) {
       advance(cursor);
+      // Remove the SSR close marker now that the text node is bound.
+      // The reactive effect below updates textNode.data directly, so the
+      // marker is no longer needed as a DOM anchor.
+      (closeComment as Comment).remove();
     }
+
+    // Remove the SSR open marker too. The cursor has already advanced past
+    // it and the text node is the only runtime anchor for this slot, so
+    // removing the comment is safe and keeps the DOM clean post-hydration.
+    (openComment as Comment).remove();
 
     // Attach reactive effect
     let initialized = false;
@@ -315,6 +330,13 @@ function hydrateReactiveFunction(
   // If the server rendered function block markers, reuse them instead of
   // inserting our own. This avoids collapsing scalar function values into
   // adjacent text nodes during SSR.
+  //
+  // NOTE: The SSR <!--sinwan-r-->/<!--/sinwan-r--> markers are NOT removed
+  // after hydration. They are reused as the startAnchor/endAnchor of the
+  // MountedReactiveBlock, and the update effect relies on endAnchor to
+  // insert replacement content (renderNodeToDOM(newValue, parent, endAnchor))
+  // while removeMountedNode uses the anchors to find the node range. Removing
+  // them would break the reactive update system. They stay as runtime anchors.
   const hasServerMarkers =
     firstNode &&
     firstNode.nodeType === 8 /* COMMENT_NODE */ &&
@@ -325,7 +347,7 @@ function hydrateReactiveFunction(
     startAnchor = firstNode as Comment;
     advance(cursor);
   } else {
-    startAnchor = document.createComment("Sinwan-r");
+    startAnchor = document.createComment(FUNCTION_MARKER_OPEN);
     if (firstNode) {
       parent.insertBefore(startAnchor, firstNode);
     } else {
@@ -361,7 +383,7 @@ function hydrateReactiveFunction(
       advance(cursor);
     } else {
       // Fallback if the close marker is missing.
-      endAnchor = document.createComment("/Sinwan-r");
+      endAnchor = document.createComment(FUNCTION_MARKER_CLOSE);
       const contentNodes = getMountedDomNodes(mountedContent);
       const lastNode = contentNodes[contentNodes.length - 1];
       if (lastNode && lastNode.nextSibling) {
@@ -371,7 +393,7 @@ function hydrateReactiveFunction(
       }
     }
   } else {
-    endAnchor = document.createComment("/Sinwan-r");
+    endAnchor = document.createComment(FUNCTION_MARKER_CLOSE);
     const contentNodes = getMountedDomNodes(mountedContent);
     const lastNode = contentNodes[contentNodes.length - 1];
     if (lastNode && lastNode.nextSibling) {
@@ -443,7 +465,7 @@ function hydrateTemplateResult(
 
   // Insert a positioning anchor comment (mirrors renderTemplateResultToDOM)
   // so getMountedDomNodes / removeMountedNode track this fragment correctly.
-  const anchorComment = document.createComment("Sinwan-t");
+  const anchorComment = document.createComment("sinwan-t");
   const insertBefore = cursor.current;
   if (insertBefore) {
     parent.insertBefore(anchorComment, insertBefore);
@@ -508,10 +530,12 @@ function hydrateServerTemplateResult(
   const root = cursor.current;
 
   // Phase B only handles the common case: all slots are child slots with
-  // reactive scalar dynamics (signals/computed/getters/binding descriptors).
+  // reactive scalar dynamics (signals/computed/getters/binding descriptors),
+  // or ref slots (which don't affect DOM structure).
   // Anything else (attr, event, component children, element children) falls
   // back to the swap approach.
   const canInPlace = def.slots.every((slot) => {
+    if (slot.type === "ref") return true;
     if (slot.type !== "child") return false;
     const value = dynamics[def.slots.indexOf(slot)];
     return (
@@ -564,6 +588,32 @@ function hydrateServerTemplateResult(
       });
       disposers.push(dispose);
     }
+
+    // Remove the SSR text markers now that the text node is bound. The
+    // reactive effect above updates textNode.textContent directly, so the
+    // open/close markers are no longer needed as DOM anchors. Only the
+    // text node itself is retained as the runtime anchor.
+    const closeMarker = textNode.nextSibling;
+    if (
+      closeMarker &&
+      closeMarker.nodeType === 8 /* COMMENT_NODE */ &&
+      cursor.adapter.isTextCloseMarker(closeMarker as Comment)
+    ) {
+      (closeMarker as Comment).remove();
+    }
+    marker.remove();
+  }
+
+  // Bind refs to the existing DOM elements (no DOM swap needed).
+  let refCleanup: CleanupFn | null = null;
+  for (let i = 0; i < def.slots.length; i++) {
+    const slot = def.slots[i]!;
+    if (slot.type !== "ref") continue;
+    const value = dynamics[i];
+    const target = walkToSlot(root as Node, slot.path, def);
+    if (target instanceof Element) {
+      refCleanup = applyRef(target, value);
+    }
   }
 
   // Advance the cursor past the root element (single top-level node).
@@ -575,7 +625,7 @@ function hydrateServerTemplateResult(
     children: [],
     eventCleanups: null,
     attrDisposers: disposers,
-    refCleanup: null,
+    refCleanup,
   };
 }
 
@@ -1470,7 +1520,7 @@ function hydrateArray(
   // Insert the anchor after the last child node of the fragment.
   // After hydrating all children, cursor.current points to the next sibling
   // after the fragment, which is the correct insertion point for the anchor.
-  const anchor = document.createComment("Sinwan-f");
+  const anchor = document.createComment("sinwan-f");
   if (cursor.current) {
     cursor.parent.insertBefore(anchor, cursor.current);
   } else {
@@ -1493,8 +1543,8 @@ function hydrateErrorBoundary(
   let error: Error | null = null;
   const owner = getCurrentInstance();
 
-  const startAnchor = document.createComment("Sinwan-b");
-  const endAnchor = document.createComment("/Sinwan-b");
+  const startAnchor = document.createComment("sinwan-b");
+  const endAnchor = document.createComment("/sinwan-b");
   const parent = cursor.parent;
   const currentDOMNode = cursor.current;
 
@@ -1594,8 +1644,8 @@ function hydrateSuspense(
   const retrySignal = signal(0);
   const owner = getCurrentInstance();
 
-  const startAnchor = document.createComment("Sinwan-b");
-  const endAnchor = document.createComment("/Sinwan-b");
+  const startAnchor = document.createComment("sinwan-b");
+  const endAnchor = document.createComment("/sinwan-b");
   const parent = cursor.parent;
   const currentDOMNode = cursor.current;
 
@@ -1775,8 +1825,8 @@ function hydrateActivity(
   };
   const owner = getCurrentInstance();
 
-  const startAnchor = document.createComment("Sinwan-b");
-  const endAnchor = document.createComment("/Sinwan-b");
+  const startAnchor = document.createComment("sinwan-b");
+  const endAnchor = document.createComment("/sinwan-b");
   const parent = cursor.parent;
   const currentDOMNode = cursor.current;
 
@@ -1919,8 +1969,8 @@ function hydrateKey(
   const key = resolve((element.props as any).when);
   const owner = getCurrentInstance();
 
-  const startAnchor = document.createComment("Sinwan-b");
-  const endAnchor = document.createComment("/Sinwan-b");
+  const startAnchor = document.createComment("sinwan-b");
+  const endAnchor = document.createComment("/sinwan-b");
   const parent = cursor.parent;
   const currentDOMNode = cursor.current;
 

@@ -7,6 +7,7 @@ import {
 } from "../component/instance.ts";
 import { renderNodeToDOM } from "./render-children.ts";
 import { setSingleAttribute } from "./attributes.ts";
+import { applyRef } from "./render-element.ts";
 import {
   DEFAULT_TEMPLATE_SLOT_PROTOCOL,
   type TemplateSlot,
@@ -281,6 +282,11 @@ export function _$createTemplate(
             target.removeEventListener(eventName, value as any);
           });
         }
+      } else if (slot.type === "ref") {
+        if (target instanceof Element) {
+          const refCleanup = applyRef(target, value);
+          if (refCleanup) disposers.push(refCleanup);
+        }
       }
     }
   }
@@ -302,7 +308,7 @@ function collectSlotMarkers(node: Node, out: Comment[]): void {
   }
 }
 
-function walkToSlot(root: Node, path: number[], def: TemplateDef): Node {
+export function walkToSlot(root: Node, path: number[], def: TemplateDef): Node {
   let node: Node = root;
   // If root is a fragment, start from first child
   if (node instanceof DocumentFragment) {

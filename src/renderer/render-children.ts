@@ -36,6 +36,10 @@ import {
   type SinwanTemplateResult,
 } from "./template.ts";
 import { getActiveSuspenseBoundary } from "./suspense-boundary.ts";
+import {
+  FUNCTION_MARKER_OPEN,
+  FUNCTION_MARKER_CLOSE,
+} from "../hydration/markers.ts";
 
 type PromiseRecord =
   | { status: "pending"; promise: PromiseLike<unknown> }
@@ -132,8 +136,8 @@ export function renderNodeToDOM(
       throw record.promise;
     }
 
-    const startAnchor = domOps.createComment("Sinwan-a");
-    const endAnchor = domOps.createComment("/Sinwan-a");
+    const startAnchor = domOps.createComment("sinwan-a");
+    const endAnchor = domOps.createComment("/sinwan-a");
     const placeholder = domOps.createTextNode("");
     insertNode(parent, startAnchor, anchor);
     insertNode(parent, placeholder, anchor);
@@ -180,7 +184,7 @@ function renderTemplateResultToDOM(
   parent: Node,
   anchor: Node | null,
 ): MountedNode {
-  const anchorComment = domOps.createComment("Sinwan-t");
+  const anchorComment = domOps.createComment("sinwan-t");
   insertNode(parent, anchorComment, anchor);
 
   const children: MountedNode[] = [];
@@ -220,7 +224,7 @@ function renderArrayToDOM(
   anchor: Node | null,
   namespace: string | null,
 ): MountedNode {
-  const anchorComment = anchor ? domOps.createComment("Sinwan-f") : null;
+  const anchorComment = anchor ? domOps.createComment("sinwan-f") : null;
   if (anchorComment) {
     insertNode(parent, anchorComment, anchor);
   }
@@ -259,8 +263,8 @@ function renderReactiveNodeToDOM(
   anchor: Node | null,
   namespace: string | null,
 ): MountedNode {
-  const startAnchor = domOps.createComment("Sinwan-r");
-  const endAnchor = domOps.createComment("/Sinwan-r");
+  const startAnchor = domOps.createComment(FUNCTION_MARKER_OPEN);
+  const endAnchor = domOps.createComment(FUNCTION_MARKER_CLOSE);
   insertNode(parent, startAnchor, anchor);
   insertNode(parent, endAnchor, anchor);
 

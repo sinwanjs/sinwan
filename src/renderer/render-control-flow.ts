@@ -94,8 +94,8 @@ export function renderControlFlowToDOM(
     return renderPortal(element, parent, anchor, namespace);
   }
 
-  const startAnchor = domOps.createComment("Sinwan-b");
-  const endAnchor = domOps.createComment("/Sinwan-b");
+  const startAnchor = domOps.createComment("sinwan-b");
+  const endAnchor = domOps.createComment("/sinwan-b");
   insertNode(parent, startAnchor, anchor);
   insertNode(parent, endAnchor, anchor);
 

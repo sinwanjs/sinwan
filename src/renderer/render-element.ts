@@ -377,7 +377,7 @@ function renderFragmentToDOM(
   anchor: Node | null,
   namespace: string | null,
 ): MountedNode {
-  const anchorComment = domOps.createComment("Sinwan-f");
+  const anchorComment = domOps.createComment("sinwan-f");
   if (anchor) {
     domOps.insertBefore(parent, anchorComment, anchor);
   } else {

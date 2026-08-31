@@ -132,6 +132,48 @@ describe("HydrationAdapter", () => {
     );
   });
 
+  it("strips function/reactive block markers from HTML", () => {
+    const html = `<div><!--sinwan-r--><span>hi</span><!--/sinwan-r--></div>`;
+    expect(DEFAULT_HYDRATION_ADAPTER.stripMarkers(html)).toBe(
+      "<div><span>hi</span></div>",
+    );
+  });
+
+  it("strips data-sinwan-activity markers from HTML", () => {
+    const html = `<div data-sinwan-activity="abc123">content</div>`;
+    expect(DEFAULT_HYDRATION_ADAPTER.stripMarkers(html)).toBe(
+      "<div>content</div>",
+    );
+  });
+
+  it("strips data-sinwan-root markers from HTML", () => {
+    const html = `<div data-sinwan-root="root0">content</div>`;
+    expect(DEFAULT_HYDRATION_ADAPTER.stripMarkers(html)).toBe(
+      "<div>content</div>",
+    );
+  });
+
+  it("strips data-sinwan-island markers from HTML", () => {
+    const html = `<div data-sinwan-island="Counter">content</div>`;
+    expect(DEFAULT_HYDRATION_ADAPTER.stripMarkers(html)).toBe(
+      "<div>content</div>",
+    );
+  });
+
+  it("strips data-sinwan-island-props markers from HTML", () => {
+    const html = `<div data-sinwan-island-props="escaped-json">content</div>`;
+    expect(DEFAULT_HYDRATION_ADAPTER.stripMarkers(html)).toBe(
+      "<div>content</div>",
+    );
+  });
+
+  it("strips all newly added markers together from HTML", () => {
+    const html = `<div data-sinwan-root="root0" data-sinwan-activity="a1" data-sinwan-island="Counter" data-sinwan-island-props="{}"><!--sinwan-r--><p>x</p><!--/sinwan-r--></div>`;
+    expect(DEFAULT_HYDRATION_ADAPTER.stripMarkers(html)).toBe(
+      "<div><p>x</p></div>",
+    );
+  });
+
   it("supports a custom adapter implementation", () => {
     const el = document.createElement("div");
     el.setAttribute("data-test-id", "x7");
