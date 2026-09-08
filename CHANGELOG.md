@@ -2,6 +2,38 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
 
+## [1.3.0] — Key Remount Default, Keep-Alive Opt-In & Runtime Hardening
+
+Sinwan 1.3.0 restores `<Key>` remount semantics when `cache` is omitted, makes keep-alive opt-in, and hardens hydration, compiled templates, stores, and the React-compatible layer. Callers that relied on implicit keep-alive must pass `cache={true}`.
+
+### Changed
+
+- **`<Key>` omitted `cache` remounts (`control-flow.ts`, `render-control-flow.ts`, `walk.ts`)**: `<Key when={...}>` without `cache` (or with `cache={false}`) fully unmounts and remounts on every key change, matching React keyed remounts and the original 1.1.0 `<Key>` contract. Keep-alive is **opt-in** via `cache={true}` — previous versions treated omitted `cache` as keep-alive (`cache !== false`), which parked hidden trees, leaked cached entries on unmount, and froze compiled JSX after a hide/show. `RouterOutlet` already passed `cache={false}` and is unchanged. Migration: pass `cache={true}` only where you need the previous keep-alive behavior.
+- **`reconcile({ key: null })` positional matching (`store/modifiers.ts`)**: An explicit `key: null` now means positional matching (`pop`/`push` on shrink/grow). `options.key === undefined` still defaults to `"id"`. The documented null-key API was previously swallowed by `?? "id"`.
+
+### Fixed
+
+- **`<Key>` keep-alive compiled templates (`template.ts`, `instance.ts`)**: `_$createTemplate` no longer registers DOM-binding effects on the component instance scope, so `softHide` does not kill live bindings. While `softShowInstance` re-runs setup, template cloning is skipped (`_replayingSetup`) so a second fragment is not thrown away. Cached compiled JSX stays reactive after a key switch-back.
+- **`<Key>` hydration first-run swap (`walk.ts`)**: Hydration now marks the initial key as already shown. The first effect only subscribes to `when` instead of detaching and reattaching the just-hydrated DOM (or remounting it when `cache` is false).
+- **`<Key>` cache leak on unmount (`render-control-flow.ts`, `walk.ts`)**: Disposing a Key block unmounts every cached entry, not only the currently visible tree.
+- **Owner lost on compiled reactive children (`render-children.ts`)**: `resolve(reactive)` now runs with the owner instance active, not only the subsequent render. Filtered or cleared lists in `_$createTemplate` keep provide/inject context.
+- **`useActionState` queue drain (`use-action-state.ts`)**: Removed an unreachable `finally` re-queue. Items added during `await` are consumed by the existing `while` loop; a later `dispatchAction` starts a new drain when `running` is false.
+- **Island hydrate `try/catch` (`islands.ts`)**: Removed a dead catch around `hydrate()`, which swallows errors and never rethrows, so the island `onError` path was unreachable.
+- **SSR dummy hosts (`render-to-string.ts`, `render-to-static-markup.ts`)**: Named `ssrHostComponent()` is invoked after `createComponentInstance` so `useId` prefixing has a real host setup.
+- **Layout / insertion effect registration (`use-layout-effect.ts`, `use-insertion-effect.ts`)**: Replaced the empty `() => {}` dispose marker with a `slot.registered` flag.
+
+### Internal
+
+- Expanded regression coverage for `<Key>` (omitted cache remount, keep-alive compiled templates, hydration identity, cache dispose), Fast Refresh (`createRoot` / `hydrateRoot` child slots, primitive roots, swap failure), React adapters (`memo` non-object props, prerender abort, readable-stream abort cleanup, `useDeferredValue` in a transition, `useLayoutEffect` SSR warning), hydration walk, SSR stream/shell/markers, store modifiers, `domOps` defaults, `on()` / scheduler / `signal.valueOf()`, and JSX `jsxIntrinsic`.
+- Removed unreachable SSR/hydration arms (Virtual backward-expand after a `scrollTop = 0` window, `reconcileIntoRaw` object fallback, `resolveSlotValue` 0-arity function, hydration last-resort `insertBefore`, Virtual non-element scroll branch).
+- `bun test --coverage __tests__`: 2965 pass / 0 fail. `bun run typecheck` clean.
+
+### Planned [1.4.0]
+
+- Add Sinwan Flow — a complete visual flow system inspired by React Flow, featuring node-based editors, edge connections, zoom/pan controls, custom nodes, reactive graph rendering, and full SSR/hydration integration with the Sinwan runtime.
+
+---
+
 ## [1.2.7] — Hydration Marker Consistency, stripMarkers Completeness, Post-Hydration DOM Cleanup & Template Hoisting with Refs
 
 Sinwan 1.2.7 fixes three hydration system issues — a case-sensitivity mismatch between client-side comment anchors and the SSR/hydration marker protocol, an incomplete `stripMarkers` function that left reactive block markers and runtime attributes in static markup, and SSR comment markers remaining in the DOM after hydration — and adds support for template hoisting with `ref` attributes, eliminating the `Cannot hoist element with ref` compiler warning.
@@ -260,10 +292,6 @@ Sinwan 1.2.0 introduces a full React compatibility layer, virtualized list rende
 - Added comprehensive test suite for `useFetch` and `createFetch` (343+ lines).
 - Added regression tests for async component lifecycle hooks firing on updates.
 - Total tests expanded significantly with React integration and Virtual component coverage.
-
-### Planned [1.3.0]
-
-- Add Sinwan Flow — a complete visual flow system inspired by React Flow, featuring node-based editors, edge connections, zoom/pan controls, custom nodes, reactive graph rendering, and full SSR/hydration integration with the Sinwan runtime.
 
 ---
 
