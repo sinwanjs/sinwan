@@ -156,6 +156,8 @@ export function renderNodeToDOM(
 
     node.then((resolved) => {
       if (mounted.disposed) return;
+      // Clear async-pending flag so fireMountedHooks will fire for this instance.
+      if (owner) owner.isAsyncPending = false;
       const resolvedNode = owner
         ? withInstance(owner, () =>
             renderNodeToDOM(resolved, parent, endAnchor, namespace),
@@ -271,29 +273,31 @@ function renderReactiveNodeToDOM(
   const owner = getCurrentInstance();
   let mountedContent: MountedNode | null = null;
   let initialized = false;
+  let disposeEffect: (() => void) | undefined;
 
   const block: MountedReactiveBlock = {
     type: "reactive-block",
     startAnchor,
     endAnchor,
     children: [],
-    dispose: () => {}, // placeholder
+    dispose: () => disposeEffect?.(),
   };
 
-  block.dispose = effect(() => {
+  disposeEffect = effect(() => {
     // 1. Cleanup previous content
     if (mountedContent) {
       removeMountedNode(mountedContent);
     }
 
     // 2. Resolve and render new content
-    const value = resolve(reactive);
-    mountedContent = renderNodeToDOM(
-      value as SinwanNode,
-      parent,
-      endAnchor,
-      namespace,
-    );
+    const render = () =>
+      renderNodeToDOM(
+        resolve(reactive) as SinwanNode,
+        parent,
+        endAnchor,
+        namespace,
+      );
+    mountedContent = owner ? withInstance(owner, render) : render();
     block.children = [mountedContent];
 
     // 3. Trigger lifecycle hooks

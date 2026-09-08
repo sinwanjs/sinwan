@@ -96,12 +96,8 @@ export function hydrateIslands(
       }
     }
 
-    try {
-      const instance = hydrate(component, el, props);
-      hydrated.push({ name, element: el, instance });
-    } catch (err) {
-      onError(name, err, el);
-    }
+    const instance = hydrate(component, el, props);
+    hydrated.push({ name, element: el, instance });
   });
 
   return hydrated;

@@ -7,6 +7,10 @@ import {
 import { _$createTemplate } from "../src/renderer/template.ts";
 import { hydrate } from "../src/hydration/hydrate.ts";
 import { cc } from "../src/component/create.ts";
+import { mount } from "../src/renderer/mount.ts";
+import { provide, inject } from "../src/component/provide-inject.ts";
+import { getCurrentInstance } from "../src/component/instance.ts";
+import type { SinwanNode } from "../src/types.ts";
 import { signal } from "../src/reactivity/signal.ts";
 import { nextTick } from "../src/reactivity/index.ts";
 import type { TemplateDef } from "../src/renderer/template-protocol.ts";
@@ -57,7 +61,9 @@ describe("TemplateSlotProtocol", () => {
 
   it("round-trips all slot indices", () => {
     for (let i = 0; i < 10; i++) {
-      const comment = document.createComment(DEFAULT_TEMPLATE_SLOT_PROTOCOL.encodeSlot(i));
+      const comment = document.createComment(
+        DEFAULT_TEMPLATE_SLOT_PROTOCOL.encodeSlot(i),
+      );
       expect(DEFAULT_TEMPLATE_SLOT_PROTOCOL.decodeSlot(comment)).toBe(i);
     }
   });
@@ -72,10 +78,61 @@ describe("TemplateSlotProtocol", () => {
 });
 
 describe("TemplateSlotProtocol + _$createTemplate", () => {
+  it.each([false, true])(
+    "preserves injection on filtered child updates (compiled: %s)",
+    async (compiled) => {
+      const routerKey = Symbol("router");
+      const router = { path: "/users" };
+      const query = signal("");
+      const names = ["Alice", "Bob", "Carol"];
+      const def: TemplateDef = {
+        html: "<div><!--s:0--></div>",
+        slots: [{ path: [0], type: "child" }],
+      };
+      const Link = cc<{ name: string }>(({ name }) => ({
+        tag: "a",
+        props: { href: inject(routerKey, { path: "missing" }).path },
+        children: [name],
+      }));
+      const App = cc(() => {
+        provide(routerKey, router);
+        const render = (): SinwanNode => {
+          const children = names
+            .filter((name) => name.includes(query.value))
+            .map((name) => ({
+              tag: Link,
+              props: { name },
+              children: [],
+            }));
+          return compiled
+            ? (_$createTemplate(def, [children]) as unknown as SinwanNode)
+            : { tag: "div", props: {}, children };
+        };
+        return { tag: "section", props: {}, children: [render] };
+      });
+      const app = mount(App, container);
+      try {
+        for (const search of ["", "Ali", "", "missing", "Bob", ""]) {
+          query.value = search;
+          await nextTick();
+          const expected = names.filter((name) => name.includes(search));
+          const links = [...container.querySelectorAll("a")];
+          expect(links.map((link) => link.textContent)).toEqual(expected);
+          expect(links.map((link) => link.getAttribute("href"))).toEqual(
+            expected.map(() => "/users"),
+          );
+          expect(getCurrentInstance()).toBeNull();
+        }
+      } finally {
+        app.unmount();
+      }
+    },
+  );
+
   it("renders and hydrates a template using default slot markers", async () => {
     const count = signal(0);
     const def: TemplateDef = {
-      html: '<div><p>Count: <!--s:0--></p></div>',
+      html: "<div><p>Count: <!--s:0--></p></div>",
       slots: [{ path: [0, 1], type: "child" }],
     };
 
@@ -83,7 +140,7 @@ describe("TemplateSlotProtocol + _$createTemplate", () => {
       return _$createTemplate(def, [() => count.value]);
     });
 
-    container.innerHTML = '<div><p>Count: 0</p></div>';
+    container.innerHTML = "<div><p>Count: 0</p></div>";
     const app = hydrate(App, container);
     expect(container.textContent).toContain("Count: 0");
 
@@ -96,7 +153,7 @@ describe("TemplateSlotProtocol + _$createTemplate", () => {
 
   it("rejects unknown slot markers", () => {
     const def: TemplateDef = {
-      html: '<div><p>Count: <!--x:0--></p></div>',
+      html: "<div><p>Count: <!--x:0--></p></div>",
       slots: [{ path: [0, 1], type: "child" }],
     };
 
@@ -106,7 +163,7 @@ describe("TemplateSlotProtocol + _$createTemplate", () => {
 
     // Since the slot marker does not match the default protocol, the child
     // is not rendered at the marker position and the original comment remains.
-    container.innerHTML = '<div><p>Count: <!--x:0--></p></div>';
+    container.innerHTML = "<div><p>Count: <!--x:0--></p></div>";
     const app = hydrate(App, container);
     expect(container.textContent).toContain("Count:");
     // The original comment should still be there because the protocol could not decode it.

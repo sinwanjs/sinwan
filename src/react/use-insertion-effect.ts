@@ -9,6 +9,7 @@ interface InsertionEffectSlot {
   deps: any[] | undefined;
   cleanup: (() => void) | void;
   dispose: (() => void) | undefined;
+  registered?: boolean;
 }
 
 /**
@@ -46,7 +47,8 @@ export function useInsertionEffect(
   }));
 
   if (isServer()) return;
-  if (slot.dispose) return;
+  if (slot.registered) return;
+  slot.registered = true;
 
   let unmounted = false;
 
@@ -55,8 +57,6 @@ export function useInsertionEffect(
     // React: runs synchronously after every render (mount + every update).
     // Sinwan equivalent: wrap the effect body in a reactive sinwanEffect
     // so it re-runs whenever any signal read inside changes.
-    slot.dispose = () => {}; // mark as registered
-
     let cleanup: (() => void) | void;
 
     const innerDispose = sinwanEffect(() => {
@@ -68,7 +68,6 @@ export function useInsertionEffect(
       cleanup = effect() as (() => void) | void;
     });
 
-    // Replace the no-op dispose with the real one so onUnmounted can stop it
     slot.dispose = innerDispose;
 
     onUnmounted(() => {

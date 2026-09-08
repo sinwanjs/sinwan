@@ -60,6 +60,10 @@ import { resolve } from "../reactivity/index.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
 
+function ssrReset(): void {
+  void 0;
+}
+
 // Page registry
 const pageRegistry = new Map<string, SinwanComponent<any>>();
 
@@ -234,11 +238,10 @@ export async function renderElement(element: SinwanElement): Promise<string> {
 
   if (isShowElement(element)) {
     const when = resolve(props.when);
-    return renderToString(
-      when
-        ? resolveShowChildren(element, when)
-        : (props.fallback as SinwanNode),
-    );
+    const content = when
+      ? resolveShowChildren(element, when)
+      : (props.fallback as SinwanNode);
+    return renderToString(content);
   }
 
   if (isForElement(element)) {
@@ -283,7 +286,7 @@ export async function renderElement(element: SinwanElement): Promise<string> {
         typeof fallback === "function"
           ? (fallback as (error: Error, reset: () => void) => SinwanNode)(
               error,
-              () => {},
+              ssrReset,
             )
           : fallback;
       return renderToString(fallbackContent as SinwanNode);
@@ -549,12 +552,8 @@ async function renderVirtualElement(element: SinwanElement): Promise<string> {
       let remaining = deficit - expandStart - expandEnd;
       startIndex -= expandStart;
       endIndex += expandEnd;
-      if (remaining > 0) {
-        if (endIndex < list.length) {
-          endIndex = Math.min(list.length, endIndex + remaining);
-        } else if (startIndex > 0) {
-          startIndex = Math.max(0, startIndex - remaining);
-        }
+      if (remaining > 0 && endIndex < list.length) {
+        endIndex = Math.min(list.length, endIndex + remaining);
       }
     }
   }

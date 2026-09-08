@@ -12,6 +12,8 @@ import {
   Dynamic,
   Visible,
   Portal,
+  ErrorBoundary,
+  Virtual,
 } from "../src/component/control-flow.ts";
 import { raw, HtmlEscapedString } from "../src/common/escaper.ts";
 import { island } from "../src/component/island.ts";
@@ -21,6 +23,9 @@ import {
   streamHydratableNode,
 } from "../src/server/stream.ts";
 import type { SinwanElement } from "../src/types.ts";
+import { Suspense } from "../src/react/suspense.ts";
+import { Activity } from "../src/react/activity.ts";
+import { ViewTransition } from "../src/react/view-transition.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
 
@@ -1175,5 +1180,268 @@ describe("renderHydratableAttributes", () => {
     const App = cc(() => el("button", { onClick: () => {} }, "click"));
     const html = await collectStream(streamHydratablePage(App));
     expect(html).toContain('data-sinwan-ev="click:0"');
+  });
+});
+
+describe("stream remaining control-flow and getters", () => {
+  it("streams a plain 0-arity getter as text", async () => {
+    const html = await collectStream(streamPage(() => (() => "plain") as any, {}));
+    expect(html).toBe("plain");
+  });
+
+  it("streams fragment children", async () => {
+    const html = await collectStream(
+      streamPage(
+        () => ({
+          tag: "",
+          props: {},
+          children: [el("span", {}, "a"), el("span", {}, "b")],
+        }),
+        {},
+      ),
+    );
+    expect(html).toBe("<span>a</span><span>b</span>");
+  });
+
+  it("streams hydratable 0-arity getters with text markers", async () => {
+    const html = await collectStream(
+      streamHydratableNode((() => "plain") as any),
+    );
+    expect(html).toContain("<!--sinwan-t:0-->");
+    expect(html).toContain("plain");
+  });
+
+  it("streams ErrorBoundary success and function fallbacks", async () => {
+    const ok = await collectStream(
+      streamPage(
+        () =>
+          ErrorBoundary({
+            children: "safe",
+            fallback: "nope",
+          }),
+        {},
+      ),
+    );
+    expect(ok).toBe("safe");
+
+    const Boom = () => {
+      throw new Error("boom");
+    };
+    const html = await collectStream(
+      streamPage(
+        () =>
+          ErrorBoundary({
+            children: el(Boom as any, {}),
+            fallback: (error, reset) => {
+              reset();
+              return `fb:${error.message}`;
+            },
+          }),
+        {},
+      ),
+    );
+    expect(html).toBe("fb:boom");
+  });
+
+  it("streams hydratable ErrorBoundary function fallbacks", async () => {
+    const Boom = () => {
+      throw new Error("h-boom");
+    };
+    const html = await collectStream(
+      streamHydratablePage(
+        cc(() =>
+          ErrorBoundary({
+            children: el(Boom as any, {}),
+            fallback: (error, reset) => {
+              reset();
+              return el("span", {}, error.message);
+            },
+          }),
+        ),
+      ),
+    );
+    expect(html).toContain("h-boom");
+  });
+
+  it("streams Virtual empty fallbacks and item windows", async () => {
+    const empty = await collectStream(
+      streamPage(
+        () =>
+          Virtual({
+            each: [],
+            itemHeight: 10,
+            containerHeight: 20,
+            fallback: "empty",
+            children: (item: string) => item,
+          }),
+        {},
+      ),
+    );
+    expect(empty).toBe("empty");
+
+    const none = await collectStream(
+      streamPage(
+        () =>
+          Virtual({
+            each: [],
+            itemHeight: 10,
+            containerHeight: 20,
+            children: (item: string) => item,
+          }),
+        {},
+      ),
+    );
+    expect(none).toBe("");
+
+    const html = await collectStream(
+      streamPage(
+        () =>
+          Virtual({
+            each: Array.from({ length: 8 }, (_, i) => `item-${i}`),
+            itemHeight: 10,
+            containerHeight: 10,
+            overscan: 0,
+            minRendered: 5,
+            children: (item: string) => el("span", {}, item),
+          }),
+        {},
+      ),
+    );
+    expect(html).toContain("overflow:auto");
+    expect(html).toContain("item-0");
+    expect(html).toContain("item-4");
+    expect(html).not.toContain("item-7");
+
+    const noChild = await collectStream(
+      streamPage(
+        () =>
+          Virtual({
+            each: ["a"],
+            itemHeight: 10,
+            containerHeight: 10,
+            overscan: 0,
+          } as any),
+        {},
+      ),
+    );
+    expect(noChild).toContain("</div></div>");
+  });
+
+  it("streams hydratable Virtual empty fallbacks and item windows", async () => {
+    const empty = await collectStream(
+      streamHydratablePage(
+        cc(() =>
+          Virtual({
+            each: [],
+            itemHeight: 10,
+            containerHeight: 20,
+            fallback: "empty",
+            children: (item: string) => item,
+          }),
+        ),
+      ),
+    );
+    expect(empty).toContain("empty");
+
+    const none = await collectStream(
+      streamHydratablePage(
+        cc(() =>
+          Virtual({
+            each: [],
+            itemHeight: 10,
+            containerHeight: 20,
+            children: (item: string) => item,
+          }),
+        ),
+      ),
+    );
+    expect(none).not.toContain("item-");
+
+    const html = await collectStream(
+      streamHydratablePage(
+        cc(() =>
+          Virtual({
+            each: Array.from({ length: 8 }, (_, i) => `item-${i}`),
+            itemHeight: 10,
+            containerHeight: 10,
+            overscan: 0,
+            minRendered: 5,
+            children: (item: string) => el("span", {}, item),
+          }),
+        ),
+      ),
+    );
+    expect(html).toContain("item-0");
+    expect(html).toContain("item-4");
+
+    const noChild = await collectStream(
+      streamHydratablePage(
+        cc(() =>
+          Virtual({
+            each: ["a"],
+            itemHeight: 10,
+            containerHeight: 10,
+            overscan: 0,
+          } as any),
+        ),
+      ),
+    );
+    expect(noChild).toContain("</div></div>");
+  });
+
+  it("streams hydratable Suspense, ViewTransition, and Activity", async () => {
+    const suspense = await collectStream(
+      streamHydratablePage(
+        cc(() =>
+          Suspense({
+            fallback: "loading",
+            children: el("p", {}, "ready"),
+          }),
+        ),
+      ),
+    );
+    expect(suspense).toContain("ready");
+
+    const unnamed = await collectStream(
+      streamHydratablePage(
+        cc(() => ViewTransition({ children: "plain" })),
+      ),
+    );
+    expect(unnamed).toContain("plain");
+
+    const named = await collectStream(
+      streamHydratablePage(
+        cc(() =>
+          ViewTransition({
+            name: "page",
+            as: "section",
+            children: "named",
+          }),
+        ),
+      ),
+    );
+    expect(named).toContain("<section");
+    expect(named).toContain("named");
+
+    const hidden = await collectStream(
+      streamHydratablePage(
+        cc(() =>
+          Activity({
+            mode: "hidden",
+            as: "article",
+            children: "kept",
+          }),
+        ),
+      ),
+    );
+    expect(hidden).toContain("data-sinwan-activity");
+    expect(hidden).toContain("kept");
+
+    const visible = await collectStream(
+      streamHydratablePage(
+        cc(() => Activity({ mode: "visible", children: "shown" })),
+      ),
+    );
+    expect(visible).toContain("shown");
   });
 });

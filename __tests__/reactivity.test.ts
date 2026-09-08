@@ -5,12 +5,15 @@
  * Run with: bun test src/client/reactivity/__tests__/reactivity.test.ts
  */
 
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, spyOn } from "bun:test";
 import { signal, isSignal } from "../src/reactivity/signal.ts";
 import { computed, isComputed } from "../src/reactivity/computed.ts";
-import { effect } from "../src/reactivity/effect.ts";
+import { effect, untrack, getActiveEffect } from "../src/reactivity/effect.ts";
 import { batch, isBatching } from "../src/reactivity/batch.ts";
-import { nextTick } from "../src/reactivity/scheduler.ts";
+import {
+  nextTick,
+  isFlushingEffects,
+} from "../src/reactivity/scheduler.ts";
 
 // ─── Signal ────────────────────────────────────────────────
 
@@ -89,6 +92,11 @@ describe("signal", () => {
     const s = signal(123);
     expect(`${s}`).toBe("123");
   });
+
+  it("valueOf() returns the current value", () => {
+    const count = signal(3);
+    expect(Number(count)).toBe(3);
+  });
 });
 
 // ─── Effect ────────────────────────────────────────────────
@@ -119,6 +127,16 @@ describe("effect", () => {
     count.value = 2;
     await nextTick();
     expect(log).toEqual([0, 1, 2]);
+  });
+
+  it("exposes the currently active effect", () => {
+    expect(getActiveEffect()).toBeNull();
+    let inner: ReturnType<typeof getActiveEffect> = null;
+    effect(() => {
+      inner = getActiveEffect();
+    });
+    expect(inner).not.toBeNull();
+    expect(getActiveEffect()).toBeNull();
   });
 
   it("tracks multiple signals", async () => {
@@ -425,5 +443,629 @@ describe("integration", () => {
       "count=1, doubled=2",
       "count=20, doubled=40",
     ]);
+  });
+});
+
+describe("reactive failure-mode contracts", () => {
+  it("retains every subscription when dependency read order is reversed", async () => {
+    const reversed = signal(false);
+    const left = signal(1);
+    const right = signal(10);
+    const values: number[] = [];
+    const dispose = effect(() => {
+      values.push(
+        reversed.value ? right.value + left.value : left.value + right.value,
+      );
+    });
+
+    try {
+      reversed.value = true;
+      await nextTick();
+      right.value = 20;
+      await nextTick();
+      left.value = 2;
+      await nextTick();
+      expect(values).toEqual([11, 11, 21, 22]);
+    } finally {
+      dispose();
+      await nextTick();
+    }
+  });
+
+  it("keeps a shared computed dependency when an earlier branch dependency is pruned", () => {
+    const includeExtra = signal(true);
+    const extra = signal(10);
+    const shared = signal(1);
+    let evaluations = 0;
+    const total = computed(() => {
+      evaluations++;
+      return (includeExtra.value ? extra.value : 0) + shared.value;
+    });
+
+    expect(total.value).toBe(11);
+    includeExtra.value = false;
+    expect(total.value).toBe(1);
+    extra.value = 20;
+    expect(total.value).toBe(1);
+    expect(evaluations).toBe(2);
+    shared.value = 2;
+    expect(total.value).toBe(2);
+    expect(evaluations).toBe(3);
+  });
+
+  it("retains a repeatedly read dependency after the number of reads shrinks", async () => {
+    const repetitions = signal(3);
+    const source = signal(2);
+    const tail = signal(10);
+    const values: number[] = [];
+    const dispose = effect(() => {
+      let sum = 0;
+      const count = repetitions.value;
+      for (let i = 0; i < count; i++) sum += source.value;
+      values.push(sum + tail.value);
+    });
+
+    try {
+      repetitions.value = 1;
+      await nextTick();
+      source.value = 3;
+      await nextTick();
+      tail.value = 20;
+      await nextTick();
+      expect(values).toEqual([16, 12, 13, 23]);
+    } finally {
+      dispose();
+      await nextTick();
+    }
+  });
+
+  it("refreshes a computed synchronously and caches between invalidations", () => {
+    const source = signal(1);
+    let evaluations = 0;
+    const doubled = computed(() => {
+      evaluations++;
+      return source.value * 2;
+    });
+
+    expect(doubled.value).toBe(2);
+    expect(evaluations).toBe(1);
+    source.value = 2;
+    source.value = 3;
+    expect(evaluations).toBe(1);
+    expect(doubled.value).toBe(6);
+    expect(doubled.peek()).toBe(6);
+    expect(doubled.value).toBe(6);
+    expect(evaluations).toBe(2);
+    source.value = 4;
+    expect(doubled.peek()).toBe(8);
+    expect(doubled.value).toBe(8);
+    expect(evaluations).toBe(3);
+  });
+
+  it("reads a fresh diamond inside nested batches without exposing intermediate values to effects", async () => {
+    const source = signal(1);
+    const doubled = computed(() => source.value * 2);
+    const tripled = computed(() => source.value * 3);
+    const total = computed(() => doubled.value + tripled.value);
+    const values: number[] = [];
+    const dispose = effect(() => {
+      values.push(total.value);
+    });
+
+    try {
+      batch(() => {
+        source.value = 2;
+        expect(total.value).toBe(10);
+        batch(() => {
+          source.value = 3;
+          expect(total.peek()).toBe(15);
+        });
+        expect(values).toEqual([5]);
+        source.value = 4;
+        expect(total.value).toBe(20);
+      });
+      expect(values).toEqual([5, 20]);
+      await nextTick();
+      expect(values).toEqual([5, 20]);
+    } finally {
+      dispose();
+      await nextTick();
+    }
+  });
+
+  it("does not subscribe an effect to a dirty computed read through peek", async () => {
+    const source = signal(1);
+    const rerun = signal(0);
+    const doubled = computed(() => source.value * 2);
+    source.value = 2;
+    const values: number[] = [];
+    const dispose = effect(() => {
+      void rerun.value;
+      values.push(doubled.peek());
+    });
+
+    try {
+      source.value = 3;
+      await nextTick();
+      expect(values).toEqual([4]);
+      rerun.value = 1;
+      await nextTick();
+      expect(values).toEqual([4, 6]);
+      source.value = 4;
+      await nextTick();
+      expect(values).toEqual([4, 6]);
+    } finally {
+      dispose();
+      await nextTick();
+    }
+  });
+
+  it("suppresses repeated NaN writes for both reactive and manual subscribers", async () => {
+    const source = signal(NaN);
+    const reactiveValues: number[] = [];
+    const manualValues: number[] = [];
+    const dispose = effect(() => {
+      reactiveValues.push(source.value);
+    });
+    const unsubscribe = source.subscribe((value) => {
+      manualValues.push(value);
+    });
+
+    try {
+      source.value = NaN;
+      await nextTick();
+      expect(reactiveValues).toEqual([NaN]);
+      expect(manualValues).toEqual([]);
+      source.value = 1;
+      await nextTick();
+      source.value = NaN;
+      await nextTick();
+      source.value = NaN;
+      await nextTick();
+      expect(reactiveValues).toEqual([NaN, 1, NaN]);
+      expect(manualValues).toEqual([1, NaN]);
+    } finally {
+      unsubscribe();
+      dispose();
+      await nextTick();
+    }
+  });
+
+  it("distinguishes signed zero through computed values and manual subscriptions", async () => {
+    const source = signal(0);
+    const reciprocal = computed(() => 1 / source.value);
+    const values: number[] = [];
+    const manualValues: number[] = [];
+    const dispose = effect(() => {
+      values.push(reciprocal.value);
+    });
+    const unsubscribe = source.subscribe((value) => {
+      manualValues.push(1 / value);
+    });
+
+    try {
+      source.value = -0;
+      await nextTick();
+      expect(Object.is(source.value, -0)).toBe(true);
+      source.value = -0;
+      await nextTick();
+      source.value = 0;
+      await nextTick();
+      expect(values).toEqual([Infinity, -Infinity, Infinity]);
+      expect(manualValues).toEqual([-Infinity, Infinity]);
+    } finally {
+      unsubscribe();
+      dispose();
+      await nextTick();
+    }
+  });
+
+  it("rethrows falsy batch exceptions unchanged while flushing writes and restoring batching", async () => {
+    const source = signal(0);
+    const values: number[] = [];
+    const dispose = effect(() => {
+      values.push(source.value);
+    });
+    const thrownValues: unknown[] = [undefined, null, false, 0, "", NaN];
+    const caughtValues: unknown[] = [];
+
+    try {
+      for (const thrown of thrownValues) {
+        try {
+          batch(() => {
+            source.value = source.peek() + 1;
+            throw thrown;
+          });
+        } catch (error: unknown) {
+          caughtValues.push(error);
+        }
+        expect(isBatching()).toBe(false);
+      }
+      expect(values).toEqual([0, 1, 2, 3, 4, 5, 6]);
+      source.value = 7;
+      await nextTick();
+      expect(values).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+      expect(caughtValues).toEqual(thrownValues);
+    } finally {
+      dispose();
+      await nextTick();
+    }
+  });
+
+  it("defers writes from a caught nested batch error until the outer batch ends", async () => {
+    const source = signal(0);
+    const values: number[] = [];
+    const failure = new Error("nested batch failure");
+    const dispose = effect(() => {
+      values.push(source.value);
+    });
+
+    try {
+      const result = batch(() => {
+        source.value = 1;
+        let caught: unknown;
+        try {
+          batch(() => {
+            source.value = 2;
+            throw failure;
+          });
+        } catch (error: unknown) {
+          caught = error;
+        }
+        expect(caught).toBe(failure);
+        expect(isBatching()).toBe(true);
+        expect(values).toEqual([0]);
+        source.value = 3;
+        return "finished";
+      });
+      expect(result).toBe("finished");
+      expect(isBatching()).toBe(false);
+      expect(values).toEqual([0, 3]);
+      await nextTick();
+      expect(values).toEqual([0, 3]);
+    } finally {
+      dispose();
+      await nextTick();
+    }
+  });
+
+  it("restores both untrack layers and the enclosing effect after an exception", async () => {
+    const ignored = signal(0);
+    const alsoIgnored = signal(0);
+    const tracked = signal(0);
+    const failure = new Error("untrack failure");
+    const values: number[] = [];
+    const caughtValues: unknown[] = [];
+    const dispose = effect(() => {
+      untrack(() => {
+        try {
+          untrack(() => {
+            void ignored.value;
+            throw failure;
+          });
+        } catch (error: unknown) {
+          caughtValues.push(error);
+        }
+        void alsoIgnored.value;
+      });
+      values.push(tracked.value);
+    });
+
+    try {
+      ignored.value = 1;
+      alsoIgnored.value = 1;
+      await nextTick();
+      expect(values).toEqual([0]);
+      tracked.value = 1;
+      await nextTick();
+      expect(values).toEqual([0, 1]);
+      expect(caughtValues).toEqual([failure, failure]);
+    } finally {
+      dispose();
+      await nextTick();
+    }
+  });
+
+  it("retries a throwing computed read without caching failure or losing enclosing dependencies", async () => {
+    const source = signal(1);
+    const tail = signal(0);
+    const failure = new Error("computed failure");
+    let shouldThrow = false;
+    let evaluations = 0;
+    const derived = computed(() => {
+      evaluations++;
+      const value = source.value;
+      if (shouldThrow) throw failure;
+      return value * 2;
+    });
+    const values: number[] = [];
+    const caughtValues: unknown[] = [];
+    const dispose = effect(() => {
+      try {
+        values.push(derived.value);
+      } catch (error: unknown) {
+        caughtValues.push(error);
+      }
+      void tail.value;
+    });
+
+    try {
+      shouldThrow = true;
+      source.value = 2;
+      await nextTick();
+      expect(caughtValues).toEqual([failure]);
+      expect(() => derived.peek()).toThrow(failure);
+      shouldThrow = false;
+      expect(derived.value).toBe(4);
+      expect(evaluations).toBe(4);
+      tail.value = 1;
+      await nextTick();
+      source.value = 3;
+      await nextTick();
+      expect(values).toEqual([2, 4, 6]);
+    } finally {
+      shouldThrow = false;
+      dispose();
+      await nextTick();
+    }
+  });
+
+  it("continues the flush after an effect throws and reruns it on a later write", async () => {
+    const source = signal(0);
+    const failure = new Error("scheduled effect failure");
+    const values: number[] = [];
+    const peerValues: number[] = [];
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    const dispose = effect(() => {
+      const value = source.value;
+      if (value === 1) throw failure;
+      values.push(value);
+    });
+    const disposePeer = effect(() => {
+      peerValues.push(source.value);
+    });
+
+    try {
+      source.value = 1;
+      await nextTick();
+      expect(peerValues).toEqual([0, 1]);
+      expect(errors).toHaveBeenCalledWith(
+        "[Sinwan] Effect flush error:",
+        failure,
+      );
+      source.value = 2;
+      await nextTick();
+      expect(values).toEqual([0, 2]);
+      expect(peerValues).toEqual([0, 1, 2]);
+      expect(errors).toHaveBeenCalledTimes(1);
+    } finally {
+      dispose();
+      disposePeer();
+      await nextTick();
+      errors.mockRestore();
+    }
+  });
+
+  it("continues a nested drain flush after a newly queued effect throws", async () => {
+    const trigger = signal(0);
+    const nested = signal(0);
+    let throwOnNested = false;
+    const failure = new Error("drain effect failure");
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    const disposeNested = effect(() => {
+      void nested.value;
+      if (throwOnNested) throw failure;
+    });
+    const disposeTrigger = effect(() => {
+      void trigger.value;
+      if (trigger.value > 0) {
+        throwOnNested = true;
+        nested.value = 1;
+      }
+    });
+
+    try {
+      trigger.value = 1;
+      await nextTick();
+      expect(errors).toHaveBeenCalledWith(
+        "[Sinwan] Effect flush error:",
+        failure,
+      );
+    } finally {
+      throwOnNested = false;
+      disposeNested();
+      disposeTrigger();
+      await nextTick();
+      errors.mockRestore();
+    }
+  });
+
+  it("reports whether the scheduler is flushing effects", async () => {
+    expect(isFlushingEffects()).toBe(false);
+    const source = signal(0);
+    let seenDuringFlush = false;
+    const dispose = effect(() => {
+      void source.value;
+      if (source.value > 0) {
+        seenDuringFlush = isFlushingEffects();
+      }
+    });
+
+    try {
+      source.value = 1;
+      await nextTick();
+      expect(seenDuringFlush).toBe(true);
+      expect(isFlushingEffects()).toBe(false);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("recovers scheduling after a cleanup throws without blocking peer effects", async () => {
+    const source = signal(0);
+    const failure = new Error("cleanup failure");
+    let shouldThrow = true;
+    let observed = -1;
+    const peerValues: number[] = [];
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    const dispose = effect(() => {
+      observed = source.value;
+      return () => {
+        if (shouldThrow) {
+          shouldThrow = false;
+          throw failure;
+        }
+      };
+    });
+    const disposePeer = effect(() => {
+      peerValues.push(source.value);
+    });
+
+    try {
+      source.value = 1;
+      await nextTick();
+      expect(peerValues).toEqual([0, 1]);
+      expect(errors).toHaveBeenCalledWith(
+        "[Sinwan] Effect flush error:",
+        failure,
+      );
+      source.value = 2;
+      await nextTick();
+      expect(observed).toBe(2);
+      expect(peerValues).toEqual([0, 1, 2]);
+      expect(errors).toHaveBeenCalledTimes(1);
+    } finally {
+      shouldThrow = false;
+      dispose();
+      disposePeer();
+      await nextTick();
+      errors.mockRestore();
+    }
+  });
+
+  it("cleans up exactly once when disposed after invalidation but before its queued rerun", async () => {
+    const source = signal(0);
+    const events: string[] = [];
+    const dispose = effect(() => {
+      const value = source.value;
+      events.push(`run:${value}`);
+      return () => {
+        events.push(`cleanup:${value}`);
+      };
+    });
+
+    try {
+      source.value = 1;
+      await nextTick();
+      source.value = 2;
+      dispose();
+      dispose();
+      await nextTick();
+      source.value = 3;
+      await nextTick();
+      expect(events).toEqual(["run:0", "cleanup:0", "run:1", "cleanup:1"]);
+    } finally {
+      dispose();
+      await nextTick();
+    }
+  });
+
+  it("does not run a queued sibling disposed by an earlier effect in the same flush", async () => {
+    const source = signal(0);
+    const events: string[] = [];
+    let disposeSibling = () => {};
+    const disposeFirst = effect(() => {
+      if (source.value === 1) disposeSibling();
+    });
+    disposeSibling = effect(() => {
+      events.push(`run:${source.value}`);
+      return () => {
+        events.push("cleanup");
+      };
+    });
+
+    try {
+      source.value = 1;
+      await nextTick();
+      source.value = 2;
+      await nextTick();
+      expect(events).toEqual(["run:0", "cleanup"]);
+    } finally {
+      disposeFirst();
+      disposeSibling();
+      await nextTick();
+    }
+  });
+
+  it("restores outer dependency tracking after an effect synchronously flushes a nested batch", async () => {
+    const source = signal(0);
+    const forwarded = signal(0);
+    const tail = signal(0);
+    const innerValues: number[] = [];
+    const outerValues: number[] = [];
+    const disposeInner = effect(() => {
+      innerValues.push(forwarded.value);
+    });
+    const disposeOuter = effect(() => {
+      const value = source.value;
+      batch(() => {
+        forwarded.value = value;
+      });
+      outerValues.push(tail.value);
+    });
+
+    try {
+      source.value = 1;
+      await nextTick();
+      tail.value = 1;
+      await nextTick();
+      forwarded.value = 2;
+      await nextTick();
+      expect(innerValues).toEqual([0, 1, 2]);
+      expect(outerValues).toEqual([0, 0, 1]);
+    } finally {
+      disposeOuter();
+      disposeInner();
+      await nextTick();
+    }
+  });
+
+  it("drains a finite cascade of newly scheduled effects before nextTick callbacks", async () => {
+    const source = signal(0);
+    const middle = signal(0);
+    const end = signal(0);
+    const values: number[] = [];
+    const callbackValues: number[] = [];
+    const disposeEnd = effect(() => {
+      values.push(end.value);
+    });
+    const disposeMiddle = effect(() => {
+      end.value = middle.value * 2;
+    });
+    const disposeSource = effect(() => {
+      middle.value = source.value + 1;
+    });
+
+    try {
+      await nextTick();
+      values.length = 0;
+      source.value = 3;
+      await nextTick(() => {
+        callbackValues.push(end.peek());
+      });
+      expect(values).toEqual([8]);
+      expect(callbackValues).toEqual([8]);
+      source.value = 4;
+      await nextTick(() => {
+        callbackValues.push(end.peek());
+      });
+      expect(values).toEqual([8, 10]);
+      expect(callbackValues).toEqual([8, 10]);
+    } finally {
+      disposeSource();
+      disposeMiddle();
+      disposeEnd();
+      await nextTick();
+    }
   });
 });

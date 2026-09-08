@@ -91,21 +91,36 @@ export function mount(
       // Mutable cell so unmount() sees the resolved root after swap
       const rootRef: { current: MountedNode } = { current: root };
 
+      // Track whether this app has been unmounted or superseded so the
+      // async resolution does not render into a container owned by a newer mount.
+      let unmounted = false;
+
+      // Mark the instance as async-pending so fireMountedHooks defers it.
+      instance.isAsyncPending = true;
+
       setCurrentInstance(null);
       restoreEffectScope(prevScope);
 
       result.then(
         (resolved) => {
+          if (unmounted) return;
+          // If a newer mount has taken over the container, skip rendering.
+          if (appContainer.__sinwan_app__ !== app) return;
           container.innerHTML = "";
           setCurrentInstance(instance);
+          instance.isAsyncPending = false;
           rootRef.current = renderElementToDOM(resolved, container);
+          app.root = rootRef.current;
           setCurrentInstance(null);
           instance.element = rootRef.current;
           fireMountedHooks(instance);
         },
         (err) => {
+          if (unmounted) return;
+          if (appContainer.__sinwan_app__ !== app) return;
           // Promise rejected — clear placeholder and report error
           container.innerHTML = "";
+          instance.isAsyncPending = false;
           handleComponentError(instance, err as Error);
         },
       );
@@ -113,10 +128,17 @@ export function mount(
       const app: AppInstance = {
         root: rootRef.current,
         unmount() {
+          unmounted = true;
+          // If a newer mount has taken over this container, only clean up
+          // our own resources (hooks, effects, nodes) without clearing the
+          // container or removing the current app reference.
+          const isCurrent = appContainer.__sinwan_app__ === app;
           fireUnmountedHooks(instance);
           unmountNode(rootRef.current);
-          container.innerHTML = "";
-          delete appContainer.__sinwan_app__;
+          if (isCurrent) {
+            container.innerHTML = "";
+            delete appContainer.__sinwan_app__;
+          }
         },
         _instance: instance,
       };
@@ -149,12 +171,18 @@ export function mount(
   const app: AppInstance = {
     root,
     unmount() {
+      // If a newer mount has taken over this container, only clean up
+      // our own resources (hooks, effects, nodes) without clearing the
+      // container or removing the current app reference.
+      const isCurrent = appContainer.__sinwan_app__ === app;
       // Fire onUnmounted hooks and dispose all effects
       fireUnmountedHooks(instance);
       // Clean up DOM tree
       unmountNode(root);
-      container.innerHTML = "";
-      delete appContainer.__sinwan_app__;
+      if (isCurrent) {
+        container.innerHTML = "";
+        delete appContainer.__sinwan_app__;
+      }
     },
     _instance: instance,
   };
@@ -179,9 +207,12 @@ export function render(node: SinwanNode, container: Element): AppInstance {
   const app: AppInstance = {
     root,
     unmount() {
+      const isCurrent = appContainer.__sinwan_app__ === app;
       unmountNode(root);
-      container.innerHTML = "";
-      delete appContainer.__sinwan_app__;
+      if (isCurrent) {
+        container.innerHTML = "";
+        delete appContainer.__sinwan_app__;
+      }
     },
   };
   appContainer.__sinwan_app__ = app;

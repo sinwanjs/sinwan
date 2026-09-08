@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { mount } from "../../../../src/renderer/mount.ts";
 import { cc } from "../../../../src/component/create.ts";
+import { effect } from "../../../../src/reactivity/effect.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 import {
   useActionState,
@@ -899,6 +900,111 @@ describe("useActionState — Edge cases", () => {
 
     expect(results).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(api[0]()).toBe(55); // 1+2+...+10
+    expect(api[2]()).toBe(false);
+  });
+
+  it("rejects remaining queued actions when an earlier action throws", async () => {
+    let api: any;
+    const App = cc(() => {
+      api = useActionState((prev: number, p: number) => {
+        if (p === 1) throw new Error("first-failed");
+        return prev + p;
+      }, 0);
+      return el("div");
+    });
+    mount(App, container);
+
+    let first!: Promise<number>;
+    let second!: Promise<number>;
+    let third!: Promise<number>;
+    startTransition(() => {
+      first = api[1](1);
+      second = api[1](2);
+      third = api[1](3);
+    });
+
+    const results = await Promise.allSettled([first, second, third]);
+    expect(results[0]).toEqual({
+      status: "rejected",
+      reason: expect.objectContaining({ message: "first-failed" }),
+    });
+    expect(results[1]?.status).toBe("rejected");
+    expect((results[1] as PromiseRejectedResult).reason.message).toBe(
+      "Action cancelled due to previous error",
+    );
+    expect(results[2]?.status).toBe("rejected");
+    expect((results[2] as PromiseRejectedResult).reason.message).toBe(
+      "Action cancelled due to previous error",
+    );
+    expect(api[2]()).toBe(false);
+  });
+
+  it("keeps processing when a new action is queued during an in-flight await", async () => {
+    let api: any;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const App = cc(() => {
+      api = useActionState(async (prev: number, p: number) => {
+        if (p === 1) await gate;
+        return prev + p;
+      }, 0);
+      return el("div");
+    });
+    mount(App, container);
+
+    startTransition(() => {
+      api[1](1);
+    });
+    await new Promise((r) => queueMicrotask(() => r(null)));
+
+    startTransition(() => {
+      api[1](2);
+    });
+    release();
+
+    for (let i = 0; i < 20; i++) {
+      if (api[0]() === 3 && api[2]() === false) break;
+      await new Promise((r) => queueMicrotask(() => r(null)));
+    }
+    expect(api[0]()).toBe(3);
+    expect(api[2]()).toBe(false);
+  });
+
+  it("restarts the queue when a new action is dispatched while cancelling", async () => {
+    let api: any;
+    let armRestart = false;
+    const App = cc(() => {
+      api = useActionState((prev: number, p: number) => {
+        if (p === 1) throw new Error("fail");
+        return prev + p;
+      }, 0);
+      effect(() => {
+        const pending = api[2]();
+        if (!pending && armRestart) {
+          armRestart = false;
+          startTransition(() => {
+            void api[1](4);
+          });
+        }
+      });
+      return el("div");
+    });
+    mount(App, container);
+
+    armRestart = true;
+    let failed!: Promise<number>;
+    startTransition(() => {
+      failed = api[1](1);
+    });
+
+    await Promise.allSettled([failed]);
+    for (let i = 0; i < 20; i++) {
+      if (api[0]() === 4 && api[2]() === false) break;
+      await new Promise((r) => queueMicrotask(() => r(null)));
+    }
+    expect(api[0]()).toBe(4);
     expect(api[2]()).toBe(false);
   });
 });

@@ -86,7 +86,7 @@ export function reconcile<T>(
     const result = reconcileIntoRaw(
       state,
       value,
-      options?.key ?? "id",
+      options == null || options.key === undefined ? "id" : options.key,
       options?.merge ?? false,
     );
     return result as T;

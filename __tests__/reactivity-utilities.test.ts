@@ -288,6 +288,29 @@ describe("on", () => {
     );
     expect(wrapped()).toBe(3);
   });
+
+  it("returns the previous value when standalone deps are unchanged", () => {
+    const a = signal(1);
+    const wrapped = on(
+      () => a.value,
+      (av) => av * 10,
+    );
+
+    expect(wrapped()).toBe(10);
+    expect(wrapped(10)).toBe(10);
+  });
+
+  it("recomputes a standalone wrapper when a dep value changes", () => {
+    const a = signal(1);
+    const wrapped = on(
+      () => a.value,
+      (av) => av * 10,
+    );
+
+    expect(wrapped()).toBe(10);
+    a.value = 2;
+    expect(wrapped()).toBe(20);
+  });
 });
 
 // ─── observable ──────────────────────────────────────────

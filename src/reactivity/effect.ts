@@ -86,7 +86,8 @@ export class ReactiveEffect implements EffectNode {
 
   /** All deps this effect is subscribed to (for bidirectional cleanup) */
   deps: Dep[] = [];
-  _depsLength = 0;
+  /** Deps tracked in the current run (used by cleanupDeps to prune stale ones) */
+  _newDeps: Set<Dep> = new Set();
 
   constructor(fn: EffectFn) {
     this.id = effectIdCounter++;
@@ -112,6 +113,7 @@ export class ReactiveEffect implements EffectNode {
     effectStack.push(this);
     const prevEffect = activeEffect;
     activeEffect = this;
+    this._newDeps.clear();
 
     try {
       const result = this.fn();
@@ -128,14 +130,19 @@ export class ReactiveEffect implements EffectNode {
 
   /**
    * Unsubscribe from deps that were not re-tracked in the latest run.
-   * Truncates the deps array to only keep actively tracked deps.
+   * Rebuilds the deps array from the newly tracked set.
    */
   private cleanupDeps(): void {
-    for (let i = this._depsLength; i < this.deps.length; i++) {
-      this.deps[i].subscribers.delete(this);
+    for (const dep of this.deps) {
+      if (!this._newDeps.has(dep)) {
+        dep.subscribers.delete(this);
+      }
     }
-    this.deps.length = this._depsLength;
-    this._depsLength = 0;
+    this.deps = [];
+    for (const dep of this._newDeps) {
+      this.deps.push(dep);
+    }
+    this._newDeps.clear();
   }
 
   /**
@@ -163,7 +170,7 @@ export class ReactiveEffect implements EffectNode {
       dep.subscribers.delete(this);
     }
     this.deps.length = 0;
-    this._depsLength = 0;
+    this._newDeps.clear();
 
     unscheduleEffect(this);
   }
@@ -220,25 +227,13 @@ export function track(dep: Dep): void {
   if (activeEffect) {
     const effect = activeEffect;
 
-    // Optimization & bugfix: prevent duplicate tracking in the same run.
-    // Without this, tracking the same dep multiple times (e.g. in a loop)
-    // then running the loop fewer times later causes cleanupDeps() to
-    // fully unsubscribe from the dep!
-    for (let i = 0; i < effect._depsLength; i++) {
-      if (effect.deps[i] === dep) {
-        return;
-      }
+    // Prevent duplicate tracking in the same run.
+    if (effect._newDeps.has(dep)) {
+      return;
     }
 
+    effect._newDeps.add(dep);
     dep.subscribers.add(effect);
-    const oldDep = effect.deps[effect._depsLength];
-    if (oldDep !== dep) {
-      if (oldDep) {
-        oldDep.subscribers.delete(effect);
-      }
-      effect.deps[effect._depsLength] = dep;
-    }
-    effect._depsLength++;
   }
 }
 

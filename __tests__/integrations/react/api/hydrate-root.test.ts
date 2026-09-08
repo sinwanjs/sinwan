@@ -355,3 +355,49 @@ describe("hydrateRoot — Edge cases", () => {
     root.unmount();
   });
 });
+
+describe("hydrateRoot — DEV hot-swap", () => {
+  it("hot-swaps on subsequent render and accepts Fast Refresh callbacks", async () => {
+    const prevDev = (globalThis as any).__DEV__;
+    (globalThis as any).__DEV__ = true;
+    try {
+      const App = cc(() => el("div", {}, "hello"));
+      const Next = cc(() => el("div", {}, "swapped"));
+      container.innerHTML = "<div>hello</div>";
+      const root = hydrateRoot(container, App);
+      root.render(Next);
+      expect(container.textContent).toContain("swapped");
+      const { rerenderRefreshRoots } = await import(
+        "../../../../src/hmr/component-registry.ts"
+      );
+      rerenderRefreshRoots();
+      root.unmount();
+      rerenderRefreshRoots();
+    } finally {
+      (globalThis as any).__DEV__ = prevDev;
+    }
+  });
+
+  it("falls back to remount when hot-swap fails", () => {
+    const prevDev = (globalThis as any).__DEV__;
+    (globalThis as any).__DEV__ = true;
+    try {
+      const App = cc(() => el("div", {}, "hello"));
+      let remainingThrows = 1;
+      const Flaky = cc(() => {
+        if (remainingThrows > 0) {
+          remainingThrows -= 1;
+          throw new Error("swap-fail");
+        }
+        return el("div", {}, "recovered");
+      });
+      container.innerHTML = "<div>hello</div>";
+      const root = hydrateRoot(container, App);
+      root.render(Flaky);
+      expect(container.textContent).toContain("recovered");
+      root.unmount();
+    } finally {
+      (globalThis as any).__DEV__ = prevDev;
+    }
+  });
+});

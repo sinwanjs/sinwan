@@ -130,7 +130,7 @@ export function createStore<T extends object = {}>(
         });
       } else if (isWrappable(arg)) {
         batch(() => {
-          reconcileIntoRaw(raw, arg, "id", false);
+          reconcileIntoRaw(raw, arg, "id", true);
           syncStoreFromRaw(raw);
         });
       } else {

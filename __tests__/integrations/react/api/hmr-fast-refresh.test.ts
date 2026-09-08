@@ -15,8 +15,10 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { cc } from "../../../../src/component/create.ts";
-import { createRoot } from "../../../../src/react/create-root.ts";
+import { createRoot, hotSwapRootInstance, _hmrOnChildCreated } from "../../../../src/react/create-root.ts";
 import { useState } from "../../../../src/react/use-state.ts";
+import { onUnmounted } from "../../../../src/component/lifecycle.ts";
+import { nextTick } from "../../../../src/reactivity/index.ts";
 import { signal, type Signal } from "../../../../src/reactivity/signal.ts";
 import type { SinwanElement } from "../../../../src/types.ts";
 
@@ -153,5 +155,65 @@ describe("Fast Refresh — useState + signal isolation across hot-swap", () => {
     expect(b()).toBe("hello");
     expect(cSig.value).toBe(true);
     expect(d()).toBe(999);
+  });
+});
+
+describe("Fast Refresh — child slots, primitive roots, and fallbacks", () => {
+  it("preserves child hook slots across a parent hot-swap", () => {
+    let childName!: () => string;
+    let setChildName!: (v: string) => void;
+
+    const Grand = cc(() => {
+      const [n] = useState(1);
+      return el("i", {}, () => String(n()));
+    });
+    const Child = cc(() => {
+      const extra = signal(1);
+      void extra.value;
+      const [name, setName] = useState("alice");
+      childName = name;
+      setChildName = setName;
+      return el("span", {}, name, el(Grand as any, {}));
+    });
+    const Parent = cc(() => el("div", {}, el(Child as any, {})));
+
+    const root = createRoot(container);
+    root.render(Parent as any);
+    setChildName("bob");
+    expect(childName()).toBe("bob");
+
+    root.render(Parent as any);
+    expect(childName()).toBe("bob");
+    expect(container.textContent).toContain("bob");
+  });
+
+  it("hot-swaps a root that renders a primitive node", () => {
+    const TextApp = cc(() => "hello");
+    const root = createRoot(container);
+    root.render(TextApp as any);
+    expect(container.textContent).toContain("hello");
+    root.render(TextApp as any);
+    expect(container.textContent).toContain("hello");
+  });
+
+  it("returns false from hotSwapRootInstance when the instance cannot be swapped", () => {
+    expect(
+      hotSwapRootInstance({ children: null } as any, () => null, container),
+    ).toBe(false);
+
+    _hmrOnChildCreated({ parent: null } as any);
+
+    const ctxKey = Symbol.for("sinwan.hmr.context");
+    const prev = (globalThis as any)[ctxKey];
+    (globalThis as any)[ctxKey] = {
+      savedSlots: new Map(),
+      rootInstance: { children: [] },
+    };
+    try {
+      _hmrOnChildCreated({ parent: null } as any);
+      _hmrOnChildCreated({ parent: { children: [] } } as any);
+    } finally {
+      (globalThis as any)[ctxKey] = prev;
+    }
   });
 });

@@ -3,6 +3,7 @@ import {
   jsx,
   jsxs,
   jsxDEV,
+  jsxIntrinsic,
   Fragment,
   HtmlEscapedString,
   raw,
@@ -107,5 +108,14 @@ describe("buildElement fragments", () => {
   it("merges adjacent text children in fragments", () => {
     const element = jsx(Fragment, { children: ["a", "b"] });
     expect(element.children).toEqual(["ab"]);
+  });
+});
+
+describe("jsxIntrinsic", () => {
+  it("builds an intrinsic element without running enhancers", () => {
+    const element = jsxIntrinsic("div", { class: "raw", children: "x" });
+    expect(element.tag).toBe("div");
+    expect(element.props.class).toBe("raw");
+    expect(element.children).toEqual(["x"]);
   });
 });

@@ -109,6 +109,7 @@ describe("Key + Switch + For + Match + useState + useEffect + signal", () => {
         {},
         el(Key, {
           when: viewKey,
+          cache: true,
           children: (view: string) =>
             el(Switch, {
               fallback: el("p", {}, "Unknown view"),

@@ -748,14 +748,6 @@ export function renderForBlock<T>(
         if (nodesI.length === 1 && nodesJ.length === 1) {
           const nodeI = nodesI[0];
           const nodeJ = nodesJ[0];
-          if (!nodeI || !nodeJ) {
-            lastList = list;
-            if (initialized) {
-              queueUpdatedHooks(owner);
-            }
-            initialized = true;
-            return;
-          }
           const nextI = nodeI.nextSibling;
           const nextJ = nodeJ.nextSibling;
           const parentNode = nodeI.parentNode;
@@ -767,23 +759,10 @@ export function renderForBlock<T>(
             initialized = true;
             return;
           }
-          // determine if I is before J
-          let iBeforeJ = false;
-          let n: Node | null = nodeI;
-          while (n) {
-            if (n === nodeJ) {
-              iBeforeJ = true;
-              break;
-            }
-            n = n.nextSibling;
-          }
-          if (iBeforeJ) {
-            parentNode.insertBefore(nodeJ, nodeI);
-            parentNode.insertBefore(nodeI, nextJ);
-          } else {
-            parentNode.insertBefore(nodeI, nodeJ);
-            parentNode.insertBefore(nodeJ, nextI);
-          }
+          // nodeI is always before nodeJ in the DOM because changedIndices
+          // are collected in ascending order and DOM order matches array order.
+          parentNode.insertBefore(nodeJ, nodeI);
+          parentNode.insertBefore(nodeI, nextJ);
         }
 
         if (
@@ -1191,9 +1170,9 @@ function renderKeyBlock(
   let currentKey: unknown;
   let currentEntry: KeyCacheEntry | null = null;
   const cache = new Map<unknown, KeyCacheEntry>();
-  const useCache = (element.props as any).cache !== false;
+  const useCache = (element.props as any).cache === true;
 
-  return effect(() => {
+  const disposeEffect = effect(() => {
     const key = resolve((element.props as any).when);
     if (initialized && Object.is(currentKey, key)) {
       return;
@@ -1295,6 +1274,17 @@ function renderKeyBlock(
       queueUpdatedHooks(owner);
     }
   });
+
+  return () => {
+    disposeEffect();
+    for (const entry of cache.values()) {
+      for (const child of entry.mounted) {
+        unmountNode(child);
+      }
+    }
+    cache.clear();
+    currentEntry = null;
+  };
 }
 
 function renderDynamicBlock(
@@ -1446,17 +1436,6 @@ function clearPortalChildren(portal: MountedPortal): void {
     removeMountedNode(child);
   }
   portal.children = [];
-}
-
-function moveBeforeEnd(
-  parent: Node,
-  mounted: MountedNode,
-  endAnchor: Node,
-): void {
-  for (const node of getMountedDomNodes(mounted)) {
-    domOps.insertBefore(parent, node, endAnchor);
-  }
-  syncPortalOrder(mounted);
 }
 
 function containsPortal(mounted: MountedNode): boolean {

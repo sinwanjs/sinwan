@@ -202,6 +202,66 @@ describe("renderShell", () => {
     expect(html).toContain('<html lang="fr" dir="rtl">');
     expect(html).toContain('<body class="dark">');
   });
+
+  it("rejects a non-function component", async () => {
+    expect(() =>
+      renderShell({ component: "nope" as any }),
+    ).toThrow("component` must be a function component");
+  });
+
+  it("surfaces serializeProps failures", async () => {
+    const App = cc(() => el("div", {}, "x"));
+    await expect(
+      renderShell({
+        component: App,
+        serializeProps: () => {
+          throw new Error("bad json");
+        },
+      }),
+    ).rejects.toThrow("failed to serialise props");
+  });
+
+  it("emits stylesheet and script integrity attributes", async () => {
+    const App = cc(() => el("p", {}, "x"));
+    const html = await renderShell({
+      component: App,
+      stylesheets: [
+        {
+          href: "/styles.css",
+          crossOrigin: "anonymous",
+          integrity: "sha384-sheet",
+        },
+      ],
+      scripts: [
+        {
+          src: "/app.js",
+          crossOrigin: "anonymous",
+          integrity: "sha384-script",
+        },
+      ],
+    });
+    expect(html).toContain('crossorigin="anonymous"');
+    expect(html).toContain('integrity="sha384-sheet"');
+    expect(html).toContain('integrity="sha384-script"');
+  });
+
+  it("splits hydrate and component modules in the boot snippet", async () => {
+    const App = cc(() => el("div", {}, "boot"));
+    const html = await renderShell({
+      component: App,
+      bootScript: {
+        module: "/app.js",
+        hydrateModule: "/hydrate.js",
+        componentExport: "App",
+        hydrateExport: "hydrateApp",
+      },
+    });
+    expect(html).toContain("Promise.all");
+    expect(html).toContain('import("/app.js")');
+    expect(html).toContain('import("/hydrate.js")');
+    expect(html).toContain('m["App"]');
+    expect(html).toContain('h["hydrateApp"]');
+  });
 });
 
 // ─── streamShell ───────────────────────────────────────────
@@ -227,6 +287,24 @@ describe("streamShell", () => {
     expect(html).toContain("<!--sinwan-t:0-->7<!--/sinwan-t-->");
     expect(html).toContain('<script src="/client.js" type="module"></script>');
     expect(html.endsWith("</body></html>")).toBe(true);
+  });
+
+  it("errors the stream when the inner page throws", async () => {
+    const stream = streamShell({
+      component: () => {
+        throw new Error("shell boom");
+      },
+    });
+    const reader = stream.getReader();
+    try {
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+      expect(false).toBe(true);
+    } catch (e: any) {
+      expect(e.message).toContain("shell boom");
+    }
   });
 });
 

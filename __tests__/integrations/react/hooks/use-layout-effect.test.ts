@@ -700,3 +700,35 @@ describe("useLayoutEffect — Dependency Array", () => {
     expect(cleanupCount).toBe(2);
   });
 });
+
+describe("useLayoutEffect — SSR development warning", () => {
+  it("warns when used on the server in development", () => {
+    const prevDev = (globalThis as any).__DEV__;
+    const prevWindow = (globalThis as any).window;
+    const prevDocument = (globalThis as any).document;
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (msg: unknown) => {
+      warnings.push(String(msg));
+    };
+    (globalThis as any).__DEV__ = true;
+    delete (globalThis as any).window;
+    delete (globalThis as any).document;
+    try {
+      const dummy = createComponentInstance(() => el("div"), {}, null);
+      withInstance(dummy, () => {
+        useLayoutEffect(() => {});
+      });
+      expect(
+        warnings.some((msg) =>
+          msg.includes("useLayoutEffect does nothing on the server"),
+        ),
+      ).toBe(true);
+    } finally {
+      console.warn = originalWarn;
+      (globalThis as any).__DEV__ = prevDev;
+      (globalThis as any).window = prevWindow;
+      (globalThis as any).document = prevDocument;
+    }
+  });
+});

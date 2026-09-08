@@ -221,6 +221,18 @@ describe("renderToHydratableString + island()", () => {
     expect(html).toContain('data-sinwan-island="iso"');
     expect(html).toContain('data-sinwan-id="c0"'); // outer App component id
   });
+
+  it("throws when island props serialization fails", async () => {
+    const Inner = cc(() => el("span", {}, "x"));
+    const Island = island(Inner, {
+      name: "bad",
+      serializeProps: () => {
+        throw new Error("bad props");
+      },
+    });
+    const App = cc(() => el(Island as any, {}));
+    await expect(renderToHydratableString(App)).rejects.toThrow("bad props");
+  });
 });
 
 describe("streamHydratablePage + island()", () => {

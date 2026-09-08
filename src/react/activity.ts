@@ -2,11 +2,13 @@ import type { ReactNode } from "./_types/core.ts";
 import type { SinwanElement } from "../types.ts";
 import { ACTIVITY_TYPE } from "../component/control-flow.ts";
 import { REACT_ACTIVITY_TYPE } from "./_internal/symbols.ts";
+import type { Signal } from "../reactivity/signal.ts";
 
 export type ActivityMode = "visible" | "hidden";
 
 export interface ActivityProps {
-  mode?: ActivityMode;
+  mode?: ActivityMode | Signal<ActivityMode>;
+  as?: string;
   children?: ReactNode;
 }
 
@@ -39,6 +41,7 @@ export function Activity(props: ActivityProps): SinwanElement {
     tag: ACTIVITY_TYPE,
     props: {
       mode: props.mode ?? "visible",
+      as: props.as,
       children: props.children,
     },
     children: [],

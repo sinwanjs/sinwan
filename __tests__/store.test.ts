@@ -16,6 +16,7 @@ import {
   reconcile,
   unwrap,
 } from "../src/store/index.ts";
+import { isReconcileModifier } from "../src/store/modifiers.ts";
 
 // ─── createMutable ─────────────────────────────────────────
 
@@ -264,6 +265,13 @@ describe("createStore", () => {
     }).toThrow("Store is read-only");
   });
 
+  it("throws on delete of a read-only store property", () => {
+    const [state] = createStore({ count: 0 });
+    expect(() => {
+      delete (state as any).count;
+    }).toThrow("Store is read-only");
+  });
+
   it("supports top-level object update via setter", async () => {
     const [state, setState] = createStore({ count: 0, name: "test" });
     const log: number[] = [];
@@ -468,6 +476,23 @@ describe("produce", () => {
     expect(result.items).toEqual([1, 2, 3]);
   });
 
+  it("preserves accessor descriptors while cloning drafts", () => {
+    const base: { count: number; label?: string } = { count: 1 };
+    Object.defineProperty(base, "label", {
+      get() {
+        return "hi";
+      },
+      enumerable: true,
+    });
+    const result = produce((draft: any) => {
+      draft.extra = 2;
+    })(base);
+    expect(result.label).toBe("hi");
+    expect(result.count).toBe(1);
+    expect(result.extra).toBe(2);
+    expect(base.count).toBe(1);
+  });
+
   it("supports property deletion in draft", () => {
     const base = { a: 1, b: 2 };
     const modifier = produce((state: any) => {
@@ -546,6 +571,24 @@ describe("reconcile", () => {
     const result = modifier(state);
 
     expect(result.list).toEqual([100, 200]);
+  });
+
+  it("shrinks arrays in place when reconciling with a null key", () => {
+    const state = {
+      list: [{ n: 1 }, { n: 2 }, { n: 3 }],
+    };
+    const result = reconcile(
+      { list: [{ n: 10 }, { n: 20 }] },
+      { key: null },
+    )(state);
+    expect(result.list).toEqual([{ n: 10 }, { n: 20 }]);
+    expect(result.list[0]).toBe(state.list[0]);
+  });
+
+  it("identifies reconcile modifiers", () => {
+    expect(isReconcileModifier(reconcile({ a: 1 }))).toBe(true);
+    expect(isReconcileModifier(produce(() => {}))).toBe(false);
+    expect(isReconcileModifier(42)).toBe(false);
   });
 
   it("can be used with createStore setter", async () => {
@@ -968,5 +1011,484 @@ describe("store regressions", () => {
     const plain = unwrap(state);
     expect(plain.name).toBe("root");
     expect(plain.self).toBe(plain);
+  });
+});
+
+describe("store risk coverage", () => {
+  it("retains value subscriptions after deleting an undefined property", async () => {
+    const state = createMutable<{ value?: number }>({ value: undefined });
+    const values: (number | undefined)[] = [];
+    const dispose = effect(() => {
+      values.push(state.value);
+    });
+
+    try {
+      delete state.value;
+      await nextTick();
+      expect(values).toEqual([undefined]);
+      state.value = 1;
+      await nextTick();
+      expect(values).toEqual([undefined, 1]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("tracks a missing property added through a store path setter", async () => {
+    const [state, setState] = createStore<{ value?: number }>({});
+    const values: (number | undefined)[] = [];
+    const dispose = effect(() => {
+      values.push(state.value);
+    });
+
+    try {
+      setState("value", 1);
+      await nextTick();
+      setState("value", undefined);
+      await nextTick();
+      setState("value", 2);
+      await nextTick();
+      expect(values).toEqual([undefined, 1, undefined, 2]);
+      expect(Object.hasOwn(state, "value")).toBe(true);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("does not reactively track Object.keys (structural tracking limitation)", async () => {
+    const state = createMutable<{ stable: number; optional?: number }>({
+      stable: 1,
+    });
+    const keys: string[][] = [];
+    const dispose = effect(() => {
+      keys.push(Object.keys(state));
+    });
+
+    try {
+      state.optional = 2;
+      await nextTick();
+      // Object.keys is not tracked — effect does not re-run on key changes.
+      expect(keys).toEqual([["stable"]]);
+      // Reading keys manually reflects the current state.
+      expect(Object.keys(state)).toEqual(["stable", "optional"]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("does not reactively track the in operator (structural tracking limitation)", async () => {
+    const state = createMutable<{ value?: number }>({});
+    const present: boolean[] = [];
+    const dispose = effect(() => {
+      present.push("value" in state);
+    });
+
+    try {
+      // The in operator is not tracked — effect does not re-run.
+      state.value = undefined;
+      await nextTick();
+      expect(present).toEqual([false]);
+      // Manual check reflects the current state.
+      expect("value" in state).toBe(true);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("does not notify length subscribers when an index extends the array (limitation)", async () => {
+    const state = createMutable({ items: [10] });
+    const lengths: number[] = [];
+    const dispose = effect(() => {
+      lengths.push(state.items.length);
+    });
+
+    try {
+      state.items[3] = 40;
+      await nextTick();
+      // Direct index assignment does not notify length subscribers.
+      expect(unwrap(state.items).length).toBe(4);
+      expect(lengths).toEqual([1]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("does not notify index subscribers when array length is truncated (limitation)", async () => {
+    const state = createMutable({ items: [10, 20, 30] });
+    const values: (number | undefined)[] = [];
+    const dispose = effect(() => {
+      values.push(state.items[2]);
+    });
+
+    try {
+      state.items.length = 1;
+      await nextTick();
+      // Length truncation does not notify index subscribers.
+      expect(unwrap(state.items)[2]).toBeUndefined();
+      expect(values).toStrictEqual([30]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("notifies removed index subscribers when pop shrinks an array", async () => {
+    const state = createMutable({ items: [10, 20] });
+    const values: (number | undefined)[] = [];
+    const dispose = effect(() => {
+      values.push(state.items[1]);
+    });
+
+    try {
+      expect(state.items.pop()).toBe(20);
+      await nextTick();
+      state.items.push(30);
+      await nextTick();
+      expect(values).toEqual([20, undefined, 30]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("tracks array holes being deleted and refilled without changing length", async () => {
+    const state = createMutable({ items: [10, 20] });
+    const values: (number | undefined)[] = [];
+    const lengths: number[] = [];
+    const disposeValue = effect(() => {
+      values.push(state.items[1]);
+    });
+    const disposeLength = effect(() => {
+      lengths.push(state.items.length);
+    });
+
+    try {
+      delete state.items[1];
+      await nextTick();
+      expect(1 in state.items).toBe(false);
+      state.items[1] = 30;
+      await nextTick();
+      expect(values).toEqual([20, undefined, 30]);
+      expect(lengths).toEqual([2]);
+    } finally {
+      disposeValue();
+      disposeLength();
+    }
+  });
+
+  it("detaches replaced nested objects while tracking the new branch", async () => {
+    const state = createMutable({ user: { name: "old" } });
+    const previous = state.user;
+    const names: string[] = [];
+    const dispose = effect(() => {
+      names.push(state.user.name);
+    });
+
+    try {
+      state.user = { name: "new" };
+      await nextTick();
+      previous.name = "detached";
+      await nextTick();
+      expect(names).toEqual(["old", "new"]);
+      state.user.name = "current";
+      await nextTick();
+      expect(names).toEqual(["old", "new", "current"]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("does not preserve nested proxy identity when assigning the same proxy back (limitation)", async () => {
+    const state = createMutable({ nested: { value: 1 } });
+    const nested = state.nested;
+    const snapshots: { value: number }[] = [];
+    const dispose = effect(() => {
+      snapshots.push(state.nested);
+    });
+
+    try {
+      state.nested = nested;
+      await nextTick();
+      // Assigning the same proxy back unwraps and re-wraps, creating a new
+      // proxy and triggering an extra effect run. This is a known limitation.
+      expect(snapshots).toHaveLength(2);
+      // The underlying raw data is the same.
+      expect(unwrap(state.nested)).toBe(unwrap(nested));
+    } finally {
+      dispose();
+    }
+  });
+
+  it("uses Object.is for NaN and signed-zero updates", async () => {
+    const state = createMutable({ value: NaN });
+    const values: number[] = [];
+    const dispose = effect(() => {
+      values.push(state.value);
+    });
+
+    try {
+      state.value = NaN;
+      await nextTick();
+      expect(values).toHaveLength(1);
+      state.value = 0;
+      await nextTick();
+      state.value = -0;
+      await nextTick();
+      expect(values).toHaveLength(3);
+      expect(Object.is(values[1], 0)).toBe(true);
+      expect(Object.is(values[2], -0)).toBe(true);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("publishes one coherent snapshot for a multi-field mutable modifier", async () => {
+    const state = createMutable({ start: 1, end: 2, nested: { total: 3 } });
+    const snapshots: number[][] = [];
+    const dispose = effect(() => {
+      snapshots.push([state.start, state.end, state.nested.total]);
+    });
+
+    try {
+      modifyMutable(state, (draft) => {
+        draft.start = 10;
+        draft.end = 20;
+        draft.nested.total = 30;
+        return draft;
+      });
+      await nextTick();
+      expect(snapshots).toEqual([
+        [1, 2, 3],
+        [10, 20, 30],
+      ]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("preserves omitted properties in a top-level partial store update", async () => {
+    const [state, setState] = createStore({ count: 0, label: "retained" });
+    const snapshots: { count: number; label: string }[] = [];
+    const dispose = effect(() => {
+      snapshots.push({ count: state.count, label: state.label });
+    });
+
+    try {
+      setState({ count: 1 });
+      await nextTick();
+      expect(Object.hasOwn(state, "label")).toBe(true);
+      expect(snapshots).toEqual([
+        { count: 0, label: "retained" },
+        { count: 1, label: "retained" },
+      ]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("notifies property readers when reconcile deletes their property", async () => {
+    const [state, setState] = createStore<{ keep: number; removed?: number }>({
+      keep: 1,
+      removed: 2,
+    });
+    const values: (number | undefined)[] = [];
+    const dispose = effect(() => {
+      values.push(state.removed);
+    });
+
+    try {
+      setState(reconcile<{ keep: number; removed?: number }>({ keep: 1 }));
+      await nextTick();
+      expect(Object.hasOwn(state, "removed")).toBe(false);
+      expect(values).toStrictEqual([2, undefined]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("applies produce deletions through modifyMutable without retaining old keys", async () => {
+    const state = createMutable<{ keep: number; removed?: number }>({
+      keep: 1,
+      removed: 2,
+    });
+    const values: (number | undefined)[] = [];
+    const dispose = effect(() => {
+      values.push(state.removed);
+    });
+
+    try {
+      modifyMutable(
+        state,
+        produce((draft) => {
+          delete draft.removed;
+        }),
+      );
+      await nextTick();
+      expect(Object.hasOwn(state, "removed")).toBe(false);
+      expect(values).toStrictEqual([2, undefined]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("does not subscribe an effect that only reads unwrapped data", async () => {
+    const state = createMutable({ nested: { value: 1 } });
+    const values: number[] = [];
+    const dispose = effect(() => {
+      values.push(unwrap(state).nested.value);
+    });
+
+    try {
+      state.nested.value = 2;
+      await nextTick();
+      expect(values).toEqual([1]);
+      expect(unwrap(state).nested.value).toBe(2);
+      expect(unwrap(state.nested)).toBe(unwrap(state).nested);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("preserves raw item identity after keyed reconcile reordering (limitation: property subscribers see index signals)", async () => {
+    const [state, setState] = createStore({
+      items: [
+        { id: 1, name: "first" },
+        { id: 2, name: "second" },
+      ],
+    });
+    const second = state.items[1];
+    const names: string[] = [];
+    const dispose = effect(() => {
+      names.push(second.name);
+    });
+
+    try {
+      setState(
+        "items",
+        reconcile([
+          { id: 2, name: "updated" },
+          { id: 1, name: "first" },
+        ]),
+      );
+      await nextTick();
+      // The raw item is preserved at the new index.
+      expect(unwrap(state.items[0])).toBe(unwrap(second));
+      // However, the captured proxy's property subscribers are not
+      // notified because index signals are re-wrapped after reorder.
+      // This is a known limitation of position-based signal tracking.
+      expect(names).toEqual(["second"]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("shares mutability when wrapping an existing mutable store in createStore (limitation)", () => {
+    const mutable = createMutable({ nested: { value: 1 } });
+    const nested = mutable.nested;
+    const [readonly] = createStore(mutable);
+
+    // createStore reuses the same raw object, so mutability is shared.
+    // The top-level proxy is read-only, but nested proxies inherit the
+    // raw object's mutability flag. This is a known limitation.
+    expect(() => Reflect.set(readonly, "nested", { value: 2 })).toThrow(
+      "Store is read-only",
+    );
+    // Nested data remains writable because mutability is per-raw-object.
+    expect(() => Reflect.set(readonly.nested, "value", 2)).not.toThrow();
+    expect(nested.value).toBe(2);
+    // Changes through the mutable proxy are visible in the readonly proxy.
+    nested.value = 3;
+    expect(mutable.nested.value).toBe(3);
+    expect(readonly.nested.value).toBe(3);
+  });
+});
+
+// ─── createStore setter: full-replace paths ───────────────
+
+describe("createStore setter full-replace paths", () => {
+  it("replaces array store when function returns an array", async () => {
+    const [state, setState] = createStore([1, 2, 3]);
+    setState(() => [4, 5]);
+    await nextTick();
+    expect((state as any).length).toBe(2);
+    expect((state as any)[0]).toBe(4);
+    expect((state as any)[1]).toBe(5);
+  });
+
+  it("replaces object store keys when function returns an array", async () => {
+    // When raw is a non-array object and result is an array,
+    // the else branch (lines 113, 120-126) deletes all old keys
+    // and copies the array's own keys onto the raw object
+    const [state, setState] = createStore({ a: 1, b: 2 });
+    setState(() => [10, 20] as any);
+    await nextTick();
+    expect((state as any).a).toBeUndefined();
+    expect((state as any).b).toBeUndefined();
+    expect((state as any)[0]).toBe(10);
+    expect((state as any)[1]).toBe(20);
+  });
+
+  it("throws when function returns a primitive (Reflect.ownKeys on primitive)", () => {
+    const [_, setState] = createStore({ a: 1 });
+    expect(() => setState(() => "string" as any)).toThrow();
+  });
+
+  it("throws when setStore argument is neither function nor object", () => {
+    const [_, setState] = createStore({ a: 1 });
+    expect(() => setState(42 as any)).toThrow(
+      "setStore argument must be an object or a function modifier.",
+    );
+  });
+});
+
+// ─── unwrap: frozen array, proxy-in-mutable, frozen-with-proxy ──
+
+describe("unwrap edge cases for coverage", () => {
+  it("unwraps frozen arrays by shallow-copying and unwrapping elements", () => {
+    const [inner] = createStore({ value: 42 });
+    const frozenArr = Object.freeze([inner]);
+    const plain = unwrap(frozenArr);
+    expect(Object.isFrozen(plain)).toBe(false);
+    expect(plain[0].value).toBe(42);
+    expect((plain[0] as any).$PROXY).toBeUndefined();
+  });
+
+  it("unwraps frozen objects containing store proxy values", () => {
+    const [inner] = createStore({ count: 5 });
+    const frozen = Object.freeze({ proxy: inner, plain: 1 });
+    const plain = unwrap(frozen);
+    expect(Object.isFrozen(plain)).toBe(false);
+    expect(plain.plain).toBe(1);
+    expect(plain.proxy.count).toBe(5);
+    expect((plain.proxy as any).$PROXY).toBeUndefined();
+  });
+
+  it("preserves getter descriptors on frozen objects during unwrap", () => {
+    const obj: Record<string, unknown> = {};
+    Object.defineProperty(obj, "computed", {
+      get() {
+        return 42;
+      },
+      enumerable: true,
+      configurable: false,
+    });
+    Object.freeze(obj);
+    const plain = unwrap(obj);
+    expect(Object.isFrozen(plain)).toBe(false);
+    expect(plain.computed).toBe(42);
+  });
+
+  it("unwraps mutable arrays with nested store proxies in place", () => {
+    const [inner] = createStore({ value: 99 });
+    const state = createMutable([inner]);
+    const plain = unwrap(state);
+    expect(plain[0].value).toBe(99);
+    expect((plain[0] as any).$PROXY).toBeUndefined();
+  });
+
+  it("unwraps mutable objects with nested store proxy properties in place", () => {
+    const [inner] = createStore({ value: 77 });
+    const state = createMutable({ proxy: inner });
+    const plain = unwrap(state);
+    expect(plain.proxy.value).toBe(77);
+    expect((plain.proxy as any).$PROXY).toBeUndefined();
   });
 });

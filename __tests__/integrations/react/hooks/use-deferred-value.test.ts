@@ -182,6 +182,18 @@ describe("useDeferredValue — Reference", () => {
     expect(deferred()).toBe("b");
   });
 
+  it("applies the latest value immediately on first render inside a transition", () => {
+    let v: any;
+    startTransition(() => {
+      const dummy = createComponentInstance(() => el("div"), {}, null);
+      withInstance(dummy, () => {
+        resetHookCursor(dummy);
+        v = useDeferredValue("final", "initial");
+      });
+    });
+    expect(v()).toBe("final");
+  });
+
   it("throws when called outside a component", () => {
     // Covers: Reference / usage — Call useDeferredValue at the top level of
     // your component.

@@ -49,7 +49,7 @@ import {
   type SinwanServerTemplateResult,
 } from "../renderer/template.ts";
 import { applyRef, renderElementToDOM } from "../renderer/render-element.ts";
-import { removeMountedNode, getMountedDomNodes } from "../renderer/unmount.ts";
+import { removeMountedNode, getMountedDomNodes, unmountNode } from "../renderer/unmount.ts";
 import type {
   MountedElement,
   MountedReactiveBlock,
@@ -290,16 +290,11 @@ function hydrateReactiveText(
     return { type: "reactive-text", node: textNode, dispose };
   }
 
-  // Last resort — create a new text node and insert it into the DOM
-  // at the current cursor position so it isn't orphaned.
+  // Last resort — create a new text node. `advance()` above already
+  // consumed `cursor.current`, so this path only runs when the cursor is
+  // exhausted and the new node must be appended.
   const newText = document.createTextNode(String(reactive.value));
-  const parent = cursor.parent;
-  const anchor = cursor.current;
-  if (anchor) {
-    parent.insertBefore(newText, anchor);
-  } else {
-    parent.appendChild(newText);
-  }
+  cursor.parent.appendChild(newText);
 
   let initialized = false;
   const dispose = effect(() => {
@@ -405,34 +400,34 @@ function hydrateReactiveFunction(
 
   let currentMounted = mountedContent;
 
-  const block: MountedReactiveBlock = {
-    type: "reactive-block",
+  const { block, attachDispose } = createHydrationReactiveBlock(
     startAnchor,
     endAnchor,
-    children: [mountedContent],
-    dispose: () => {},
-  };
+    [mountedContent],
+  );
 
   let initialized = false;
-  block.dispose = effect(() => {
-    const newValue = fn();
-    if (!initialized) {
-      initialized = true;
-      return;
-    }
-    if (currentMounted) {
-      removeMountedNode(currentMounted);
-    }
-    currentMounted = renderNodeToDOM(
-      newValue as SinwanNode,
-      parent,
-      endAnchor,
-      null,
-    );
-    block.children = [currentMounted];
-    if (owner) fireMountedHooks(owner);
-    queueUpdatedHooks(owner);
-  });
+  attachDispose(
+    effect(() => {
+      const newValue = fn();
+      if (!initialized) {
+        initialized = true;
+        return;
+      }
+      if (currentMounted) {
+        removeMountedNode(currentMounted);
+      }
+      currentMounted = renderNodeToDOM(
+        newValue as SinwanNode,
+        parent,
+        endAnchor,
+        null,
+      );
+      block.children = [currentMounted];
+      if (owner) fireMountedHooks(owner);
+      queueUpdatedHooks(owner);
+    }),
+  );
 
   return block;
 }
@@ -542,7 +537,11 @@ function hydrateServerTemplateResult(
       isSignal(value) ||
       isComputed(value) ||
       isBindingDescriptor(value) ||
-      (typeof value === "function" && (value as any).length === 0)
+      (typeof value === "function" && (value as any).length === 0) ||
+      value == null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
     );
   });
 
@@ -580,7 +579,7 @@ function hydrateServerTemplateResult(
     // Create the effect that updates the text node when the reactive value
     // changes. This binds to the EXISTING text node — no swap.
     const getter = resolveChildGetter(value);
-    if (getter) {
+    if (typeof getter === "function") {
       const dispose = effect(() => {
         const resolved = getter();
         (textNode as Text).textContent =
@@ -876,6 +875,34 @@ function hydrateAttributes(
   return disposers;
 }
 
+function createHydrationReactiveBlock(
+  startAnchor: Comment,
+  endAnchor: Comment,
+  children: MountedNode[],
+): {
+  block: MountedReactiveBlock;
+  attachDispose: (dispose: CleanupFn) => void;
+} {
+  let disposeFn: CleanupFn | undefined;
+  const block: MountedReactiveBlock = {
+    type: "reactive-block",
+    startAnchor,
+    endAnchor,
+    children,
+    dispose: () => {
+      if (disposeFn) {
+        disposeFn();
+      }
+    },
+  };
+  return {
+    block,
+    attachDispose: (dispose: CleanupFn) => {
+      disposeFn = dispose;
+    },
+  };
+}
+
 function hydrateControlFlow(
   element: SinwanElement,
   cursor: HydrationCursor,
@@ -973,19 +1000,19 @@ function hydrateControlFlow(
       childrenArr[i] = records[i].mounted;
     }
 
-    const block: MountedReactiveBlock = {
-      type: "reactive-block",
-      dispose: () => {},
-      children: childrenArr,
+    const { block, attachDispose } = createHydrationReactiveBlock(
       startAnchor,
       endAnchor,
-    };
+      childrenArr,
+    );
 
     const owner = getCurrentInstance();
-    block.dispose = renderForBlock(element, block, parentNode, null, owner, {
-      records,
-      lastList: list,
-    });
+    attachDispose(
+      renderForBlock(element, block, parentNode, null, owner, {
+        records,
+        lastList: list,
+      }),
+    );
     return block;
   }
 
@@ -1049,13 +1076,11 @@ function hydrateControlFlow(
       childrenArr[i] = records[i].mounted;
     }
 
-    const block: MountedReactiveBlock = {
-      type: "reactive-block",
-      dispose: () => {},
-      children: childrenArr,
+    const { block, attachDispose } = createHydrationReactiveBlock(
       startAnchor,
       endAnchor,
-    };
+      childrenArr,
+    );
 
     const owner = getCurrentInstance();
     let initialized = false;
@@ -1140,7 +1165,7 @@ function hydrateControlFlow(
       }
     });
 
-    block.dispose = disposeEffect;
+    attachDispose(disposeEffect);
     return block;
   }
 
@@ -1365,12 +1390,8 @@ function hydrateControlFlow(
               contentDiv,
               null,
               null,
-            );
-            if (rendered.type !== "element") {
-              newChildren.push(rendered);
-              continue;
-            }
-            const wrapperEl = (rendered as MountedElement).node as HTMLElement;
+            ) as MountedElement;
+            const wrapperEl = rendered.node as HTMLElement;
             newChildren.push(rendered);
             newKeyMap.set(key, {
               mounted: rendered,
@@ -1412,11 +1433,7 @@ function hydrateControlFlow(
     return hydrateActivity(element, cursor);
   }
 
-  if (isViewTransitionElement(element)) {
-    return hydrateViewTransition(element, cursor);
-  }
-
-  return hydrateArray(element.children, cursor);
+  return hydrateViewTransition(element, cursor);
 }
 
 export function hydrateContent(
@@ -1550,13 +1567,11 @@ function hydrateErrorBoundary(
 
   parent.insertBefore(startAnchor, currentDOMNode);
 
-  const block: MountedReactiveBlock = {
-    type: "reactive-block",
-    dispose: () => {},
-    children: [],
+  const { block, attachDispose } = createHydrationReactiveBlock(
     startAnchor,
     endAnchor,
-  };
+    [],
+  );
 
   let initialized = false;
   const dispose = effect(() => {
@@ -1629,7 +1644,7 @@ function hydrateErrorBoundary(
     }
   });
 
-  block.dispose = dispose;
+  attachDispose(dispose);
   return block;
 }
 
@@ -1651,13 +1666,11 @@ function hydrateSuspense(
 
   parent.insertBefore(startAnchor, currentDOMNode);
 
-  const block: MountedReactiveBlock = {
-    type: "reactive-block",
-    dispose: () => {},
-    children: [],
+  const { block, attachDispose } = createHydrationReactiveBlock(
     startAnchor,
     endAnchor,
-  };
+    [],
+  );
 
   let initialized = false;
   let disposed = false;
@@ -1674,21 +1687,20 @@ function hydrateSuspense(
       }
       contentNodes = [];
 
+      let retryScheduled = false;
       const boundary = {
         promises: new Set<PromiseLike<unknown>>(),
-        onResolved: () => {},
+        onResolved() {
+          if (disposed || retryScheduled) return;
+          retryScheduled = true;
+          queueMicrotask(() => {
+            retryScheduled = false;
+            if (!disposed) {
+              retrySignal.value = retrySignal.value + 1;
+            }
+          });
+        },
         asyncComponentResults,
-      };
-      let retryScheduled = false;
-      boundary.onResolved = () => {
-        if (disposed || retryScheduled) return;
-        retryScheduled = true;
-        queueMicrotask(() => {
-          retryScheduled = false;
-          if (!disposed) {
-            retrySignal.value = retrySignal.value + 1;
-          }
-        });
       };
 
       pushSuspenseBoundary(boundary);
@@ -1754,21 +1766,20 @@ function hydrateSuspense(
       children != null ? (Array.isArray(children) ? children : [children]) : [];
     const nodes: MountedNode[] = [];
 
+    let retryScheduled = false;
     const boundary = {
       promises: new Set<PromiseLike<unknown>>(),
-      onResolved: () => {},
+      onResolved() {
+        if (disposed || retryScheduled) return;
+        retryScheduled = true;
+        queueMicrotask(() => {
+          retryScheduled = false;
+          if (!disposed) {
+            retrySignal.value = retrySignal.value + 1;
+          }
+        });
+      },
       asyncComponentResults,
-    };
-    let retryScheduled = false;
-    boundary.onResolved = () => {
-      if (disposed || retryScheduled) return;
-      retryScheduled = true;
-      queueMicrotask(() => {
-        retryScheduled = false;
-        if (!disposed) {
-          retrySignal.value = retrySignal.value + 1;
-        }
-      });
     };
 
     pushSuspenseBoundary(boundary);
@@ -1808,10 +1819,10 @@ function hydrateSuspense(
     boundary.promises.clear();
   });
 
-  block.dispose = () => {
+  attachDispose(() => {
     disposed = true;
     dispose();
-  };
+  });
   return block;
 }
 
@@ -1832,13 +1843,11 @@ function hydrateActivity(
 
   parent.insertBefore(startAnchor, currentDOMNode);
 
-  const block: MountedReactiveBlock = {
-    type: "reactive-block",
-    dispose: () => {},
-    children: [],
+  const { block, attachDispose } = createHydrationReactiveBlock(
     startAnchor,
     endAnchor,
-  };
+    [],
+  );
 
   let initialized = false;
   let wasHidden = false;
@@ -1902,7 +1911,7 @@ function hydrateActivity(
     initialized = true;
   });
 
-  block.dispose = dispose;
+  attachDispose(dispose);
   return block;
 }
 
@@ -1976,19 +1985,17 @@ function hydrateKey(
 
   parent.insertBefore(startAnchor, currentDOMNode);
 
-  const block: MountedReactiveBlock = {
-    type: "reactive-block",
-    dispose: () => {},
-    children: [],
+  const { block, attachDispose } = createHydrationReactiveBlock(
     startAnchor,
     endAnchor,
-  };
+    [],
+  );
 
   let initialized = false;
   let currentKey: unknown;
   let currentEntry: HydratedKeyCacheEntry | null = null;
   const cache = new Map<unknown, HydratedKeyCacheEntry>();
-  const useCache = (element.props as any).cache !== false;
+  const useCache = (element.props as any).cache === true;
 
   // Hydrate initial content for the current key
   const initialMounted = hydrateContent(
@@ -2006,6 +2013,7 @@ function hydrateKey(
   cache.set(key, entry);
   currentEntry = entry;
   currentKey = key;
+  initialized = true;
 
   const disposeEffect = effect(() => {
     const newKey = resolve((element.props as any).when);
@@ -2106,7 +2114,16 @@ function hydrateKey(
     }
   });
 
-  block.dispose = disposeEffect;
+  attachDispose(() => {
+    disposeEffect();
+    for (const cached of cache.values()) {
+      for (const child of cached.mounted) {
+        unmountNode(child);
+      }
+    }
+    cache.clear();
+    currentEntry = null;
+  });
   return block;
 }
 
@@ -2158,13 +2175,11 @@ function makeReactiveBlock(
   let isFirstRun = true;
   let prevValue: unknown;
 
-  const block: MountedReactiveBlock = {
-    type: "reactive-block",
-    dispose: () => {},
-    children: [initialMounted],
+  const { block, attachDispose } = createHydrationReactiveBlock(
     startAnchor,
     endAnchor,
-  };
+    [initialMounted],
+  );
 
   const disposeEffect = effect(() => {
     // When a comparison getter is provided (Show, Dynamic), track only the
@@ -2244,6 +2259,6 @@ function makeReactiveBlock(
     }
   });
 
-  block.dispose = disposeEffect;
+  attachDispose(disposeEffect);
   return block;
 }

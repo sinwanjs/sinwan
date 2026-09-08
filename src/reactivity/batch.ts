@@ -28,10 +28,12 @@ export function batch<T>(fn: () => T): T {
   batchDepth++;
   let result: T;
   let error: unknown;
+  let hasError = false;
   try {
     result = fn();
   } catch (err) {
     error = err;
+    hasError = true;
   } finally {
     batchDepth--;
     if (batchDepth === 0) {
@@ -41,7 +43,7 @@ export function batch<T>(fn: () => T): T {
       flushSync();
     }
   }
-  if (error) {
+  if (hasError) {
     throw error;
   }
   return result!;

@@ -79,6 +79,15 @@ export interface ComponentInstance {
 
   isMounted: boolean;
   isUnmounted: boolean;
+
+  /** True while an async component's promise is pending (mounted hooks deferred). */
+  isAsyncPending: boolean;
+
+  /**
+   * True while `softShowInstance` re-runs setup to re-register hooks/effects.
+   * `_$createTemplate` must not clone a new DOM tree in this window.
+   */
+  _replayingSetup: boolean;
 }
 
 /**
@@ -108,6 +117,8 @@ export function createComponentInstance(
     identifierPrefix: parent?.identifierPrefix ?? "",
     isMounted: false,
     isUnmounted: false,
+    isAsyncPending: false,
+    _replayingSetup: false,
   };
 }
 
@@ -207,7 +218,7 @@ export function restoreEffectScope(scope: EffectScope | null): void {
  * Fire all onMounted hooks for an instance and its children (depth-first).
  */
 export function fireMountedHooks(instance: ComponentInstance): void {
-  if (instance.isUnmounted) {
+  if (instance.isUnmounted || instance.isAsyncPending) {
     return;
   }
 
@@ -380,6 +391,7 @@ export function softShowInstance(instance: ComponentInstance): void {
   // calls re-register on `instance.effects`.
   const prev = setCurrentInstance(instance);
   let prevScope: EffectScope | null = null;
+  instance._replayingSetup = true;
   try {
     const setup = runComponentSetup(instance, () =>
       instance.component(instance.props),
@@ -388,6 +400,7 @@ export function softShowInstance(instance: ComponentInstance): void {
   } catch (err) {
     handleComponentError(instance, err as Error);
   } finally {
+    instance._replayingSetup = false;
     restoreEffectScope(prevScope);
     setCurrentInstance(prev);
   }

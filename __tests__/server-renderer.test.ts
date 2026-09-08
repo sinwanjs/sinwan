@@ -20,11 +20,22 @@ import {
   Dynamic,
   Portal,
   Visible,
+  SHOW_TYPE,
 } from "../src/component/control-flow.ts";
 import { cc } from "../src/component/create.ts";
 import { ACTIVITY_TYPE } from "../src/component/control-flow.ts";
 import { island } from "../src/component/island.ts";
-import type { SinwanElement } from "../src/types.ts";
+import type { SinwanElement, SinwanNode } from "../src/types.ts";
+import { renderToHydratablePage } from "../src/server/renderer.ts";
+import {
+  renderNodeToHydratableString,
+  renderToHydratableString,
+} from "../src/server/hydration-markers.ts";
+import { renderServerAttribute } from "../src/server/attribute-utils.ts";
+import { ErrorBoundary, Virtual } from "../src/component/control-flow.ts";
+import { Suspense } from "../src/react/suspense.ts";
+import { Activity } from "../src/react/activity.ts";
+import { ViewTransition } from "../src/react/view-transition.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
 
@@ -190,6 +201,24 @@ describe("renderToString control flow", () => {
       children: [],
     });
     expect(html).toBe("");
+  });
+
+  it("renders Show fallback from a Show type element", async () => {
+    const html = await renderToString({
+      tag: SHOW_TYPE,
+      props: { when: false, fallback: el("i", {}, "no") },
+      children: [],
+    });
+    expect(html).toBe("<i>no</i>");
+  });
+
+  it("falls back to children for unknown element tags", async () => {
+    const html = await renderToString({
+      tag: 42 as any,
+      props: {},
+      children: [el("span", {}, "child")],
+    });
+    expect(html).toBe("<span>child</span>");
   });
 
   it("renders For with items", async () => {
@@ -370,6 +399,330 @@ describe("renderToString islands", () => {
       throw new Error("bad props");
     };
     expect(renderToString(node)).rejects.toThrow("bad props");
+  });
+});
+
+describe("server rendering contracts", () => {
+  for (const [name, render] of [
+    ["plain", renderToString],
+    ["hydratable", renderNodeToHydratableString],
+  ] as const) {
+    describe(name, () => {
+      it("renders fragments containing text and elements", async () => {
+        expect(
+          await render(el("", {}, "before", null, el("b", {}, "after"))),
+        ).toBe("before<b>after</b>");
+      });
+
+      it("resolves nested and empty state getters", async () => {
+        for (const value of [null, false, [el("b", {}, "nested"), "&"]]) {
+          const getter = Object.assign(() => value, {
+            [STATE_GETTER_MARKER]: true,
+          });
+          expect(await render(getter)).toBe(
+            value == null || value === false ? "" : "<b>nested</b>&amp;",
+          );
+        }
+      });
+
+      it("resolves plain getters returning trees", async () => {
+        expect(await render(() => [el("b", {}, "nested"), "&"])).toBe(
+          "<b>nested</b>&amp;",
+        );
+      });
+
+      it("catches non-Error throws and provides a callable reset", async () => {
+        const broken = (): never => {
+          throw "render failed";
+        };
+        const node = ErrorBoundary({
+          children: el(broken),
+          fallback(error, reset) {
+            expect(error).toBeInstanceOf(Error);
+            reset();
+            return el("output", {}, error.message);
+          },
+        });
+        expect(await render(node)).toBe("<output>render failed</output>");
+      });
+
+      it("renders static error fallbacks and successful boundary children", async () => {
+        const broken = (): never => {
+          throw new Error("broken");
+        };
+        expect(
+          await render(
+            ErrorBoundary({ children: el(broken), fallback: "safe" }),
+          ),
+        ).toBe("safe");
+        expect(
+          await render(
+            ErrorBoundary({ children: "healthy", fallback: "wrong" }),
+          ),
+        ).toBe("healthy");
+      });
+
+      it("awaits suspense children instead of emitting the fallback", async () => {
+        expect(
+          await render(
+            Suspense({
+              children: Promise.resolve("ready"),
+              fallback: "loading",
+            }),
+          ),
+        ).toBe("ready");
+      });
+
+      it("renders view transition wrappers only when named", async () => {
+        expect(await render(ViewTransition({ children: "plain" }))).toBe(
+          "plain",
+        );
+        expect(
+          await render(
+            ViewTransition({ name: "card", as: "section", children: "named" }),
+          ),
+        ).toBe('<section style="view-transition-name:card">named</section>');
+        expect(
+          await render(ViewTransition({ name: "card", children: "default" })),
+        ).toBe('<div style="view-transition-name:card">default</div>');
+      });
+
+      it("renders activity using its selected wrapper and reactive mode", async () => {
+        const mode = signal<"hidden" | "visible">("hidden");
+        expect(
+          await render(Activity({ mode, as: "section", children: "retained" })),
+        ).toBe(
+          '<section data-sinwan-activity="hidden" hidden>retained</section>',
+        );
+        mode.value = "visible";
+        expect(await render(Activity({ mode, children: "retained" }))).toBe(
+          '<div data-sinwan-activity="visible">retained</div>',
+        );
+      });
+
+      for (const [minRendered, expectedCount] of [
+        [0, 1],
+        [5, 5],
+        [20, 8],
+      ] as const) {
+        it(`bounds the virtual window with minRendered=${minRendered}`, async () => {
+          const calls: number[] = [];
+          const node = Virtual({
+            each: Array.from({ length: 8 }, (_, i) => `item-${i}`),
+            itemHeight: 10,
+            containerHeight: 10,
+            overscan: 0,
+            minRendered,
+            children(item, index) {
+              calls.push(index());
+              return el("span", {}, item);
+            },
+          });
+          const html = await render(node);
+          expect(calls).toEqual(
+            Array.from({ length: expectedCount }, (_, i) => i),
+          );
+          expect(html).toStartWith(
+            '<div style="overflow:auto;height:10px"><div style="position:relative;height:80px">',
+          );
+          for (let i = 0; i < expectedCount; i++) {
+            expect(html).toContain(
+              `<div style="position:absolute;top:${i * 10}px;left:0;right:0"><span>item-${i}</span></div>`,
+            );
+          }
+          expect(html).toEndWith("</div></div>");
+        });
+      }
+
+      it("uses virtual defaults and empty-list fallbacks", async () => {
+        const children = (item: number, index: () => number): SinwanNode =>
+          `${index()}:${item};`;
+        expect(
+          await render(
+            Virtual({
+              each: [],
+              itemHeight: 10,
+              containerHeight: 20,
+              children,
+              fallback: "empty",
+            }),
+          ),
+        ).toBe("empty");
+        expect(
+          await render(
+            Virtual({
+              each: [],
+              itemHeight: 10,
+              containerHeight: 20,
+              children,
+            }),
+          ),
+        ).toBe("");
+        const html = await render(
+          Virtual({
+            each: [1, 2],
+            itemHeight: 10,
+            containerHeight: 20,
+            children,
+          }),
+        );
+        expect(html).toContain("0:1;");
+        expect(html).toContain("1:2;");
+      });
+
+      it("handles index and for fallbacks without render functions", async () => {
+        for (const tag of [Index, For]) {
+          expect(
+            await render({
+              tag,
+              props: { each: [1], fallback: "missing renderer" },
+              children: [],
+            }),
+          ).toBe("missing renderer");
+          expect(
+            await render({ tag, props: { each: [1] }, children: [] }),
+          ).toBe("");
+        }
+        expect(
+          await render(
+            Index({
+              each: [],
+              children: (item: () => number) => item(),
+              fallback: "empty",
+            }),
+          ),
+        ).toBe("empty");
+      });
+    });
+  }
+
+  it("renders plain scalar and empty getters", async () => {
+    for (const [getter, expected] of [
+      [() => null, ""],
+      [() => false, ""],
+      [() => "<&", "&lt;&amp;"],
+      [() => 12, "12"],
+    ] as const) {
+      expect(await renderToString(getter)).toBe(expected);
+    }
+  });
+
+  it("renders registered hydratable pages and rejects absent registrations", async () => {
+    const Page = cc<{ title: string }>(({ title }) => el("h1", {}, title));
+    registerPage("server-coverage-hydratable", Page);
+    expect(
+      await renderToHydratablePage(
+        "server-coverage-hydratable",
+        { title: "<&" },
+        { identifierPrefix: "page-" },
+      ),
+    ).toBe('<h1 data-sinwan-id="c0">&lt;&amp;</h1>');
+    await expect(
+      renderToHydratablePage("server-coverage-unregistered", {}),
+    ).rejects.toThrow('Page "server-coverage-unregistered" not found');
+  });
+
+  it("renders async nested scalar components and promised nodes", async () => {
+    const Child = async () => "<&";
+    expect(await renderNodeToHydratableString(el(Child))).toBe("&lt;&amp;");
+    expect(
+      await renderNodeToHydratableString(Promise.resolve(el("b", {}, "ready"))),
+    ).toBe("<b>ready</b>");
+  });
+
+  it("marks the first intrinsic root after fragment text", async () => {
+    expect(
+      await renderToHydratableString(() =>
+        el("", {}, "before", el("b", {}, "first"), el("i", {}, "second")),
+      ),
+    ).toBe('before<b data-sinwan-id="c0">first</b><i>second</i>');
+  });
+
+  it("supports standalone Match and Portal elements in hydratable output", async () => {
+    expect(
+      await renderNodeToHydratableString(
+        Match({ when: "yes", children: (value) => value }),
+      ),
+    ).toBe("yes");
+    expect(
+      await renderNodeToHydratableString(
+        Match({ when: false, children: "hidden" }),
+      ),
+    ).toBe("");
+    expect(
+      await renderNodeToHydratableString(Portal({ children: "client-only" })),
+    ).toBe("");
+  });
+
+  it("resolves getter attributes and omits non-renderable values", async () => {
+    expect(
+      await renderNodeToHydratableString(
+        el("label", {
+          htmlFor: () => "field<&",
+          title: () => null,
+          extra: Symbol("omitted"),
+        }),
+      ),
+    ).toBe('<label for="field&lt;&amp;"></label>');
+  });
+});
+
+describe("server attribute serialization", () => {
+  it("filters non-renderable values", () => {
+    for (const value of [
+      undefined,
+      null,
+      false,
+      Symbol("x"),
+      1n,
+      NaN,
+      Infinity,
+      {},
+      (value: string) => value,
+    ]) {
+      expect(renderServerAttribute("title", value)).toBe("");
+    }
+  });
+
+  it("serializes class arrays and ignores inherited class/style entries", () => {
+    expect(renderServerAttribute("class", ["one", false, null, "two", 0])).toBe(
+      ' class="one two"',
+    );
+    const classes = { active: true, disabled: false };
+    Object.setPrototypeOf(classes, { inherited: true });
+    expect(renderServerAttribute("class", classes)).toBe(' class="active"');
+    const style = { backgroundColor: "red", "--accent": "blue", hidden: null };
+    Object.setPrototypeOf(style, { inherited: "wrong" });
+    expect(renderServerAttribute("style", style)).toBe(
+      ' style="background-color:red;--accent:blue"',
+    );
+  });
+
+  it("blocks dangerous protocols while preserving safe URLs", () => {
+    const previous = console.warn;
+    const warnings: unknown[][] = [];
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args);
+    };
+    try {
+      for (const url of [
+        " javascript:alert(1)",
+        "VBScript:run",
+        "data:text/html,<b>",
+        "data:image/svg+xml,<svg>",
+      ]) {
+        expect(renderServerAttribute("href", url)).toBe("");
+      }
+      expect(warnings).toHaveLength(4);
+      expect(renderServerAttribute("href", "/safe?a=1&b=2")).toBe(
+        ' href="/safe?a=1&amp;b=2"',
+      );
+      expect(renderServerAttribute("src", "data:image/png;base64,abc")).toBe(
+        ' src="data:image/png;base64,abc"',
+      );
+    } finally {
+      console.warn = previous;
+    }
   });
 });
 

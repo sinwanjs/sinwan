@@ -137,9 +137,6 @@ export function useActionState<S, P>(
             );
           }
 
-          pending.value = false;
-          running.value = false;
-
           // NOTE: React would rethrow from the hook during render to trigger
           // the nearest Error Boundary. Sinwan doesn't have Error Boundaries
           // in the React sense, so we surface the error through Promise
@@ -148,15 +145,10 @@ export function useActionState<S, P>(
         }
       }
     } finally {
-      // Only clear flags if the queue is truly empty. A new item may have
-      // been added during the last await.
-      if (queue.length === 0) {
-        pending.value = false;
-        running.value = false;
-      } else {
-        // New items arrived while we were processing; keep running.
-        queueMicrotask(() => processQueue());
-      }
+      // Items queued during `await` are consumed by the loop above. A later
+      // `dispatchAction` starts a new drain when `running` is false.
+      running.value = false;
+      pending.value = false;
     }
   };
 

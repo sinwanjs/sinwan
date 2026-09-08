@@ -450,6 +450,114 @@ describe("Switch/Match", () => {
     await nextTick();
     expect(container.textContent).toBe("Outer Match");
   });
+
+  it("renders fallback when top-level when prop is falsy", () => {
+    const App = cc(() =>
+      el(Switch, {
+        when: false,
+        fallback: el("p", {}, "gated-fallback"),
+        children: el(Match, { when: true, children: "match" }),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("gated-fallback");
+  });
+
+  it("finds truthy match inside nested Show fallback", () => {
+    const App = cc(() =>
+      el(Switch, {
+        fallback: el("p", {}, "switch-fallback"),
+        children: el(Show, {
+          when: false,
+          fallback: el("p", {}, "show-fallback"),
+          children: "show-content",
+        }),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("show-fallback");
+  });
+
+  it("finds truthy match inside nested Index", () => {
+    const items = signal(["a", "b", "c"]);
+    const App = cc(() =>
+      el(Switch, {
+        fallback: el("p", {}, "switch-fallback"),
+        children: el(Index, {
+          each: items,
+          children: (item: () => string, i: number) =>
+            i === 1 ? el("p", {}, `idx-${item()}`) : null,
+        }),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("idx-b");
+  });
+
+  it("finds truthy match inside nested Key", () => {
+    const App = cc(() =>
+      el(Switch, {
+        fallback: el("p", {}, "switch-fallback"),
+        children: el(Key, { when: "k1", children: el("p", {}, "key-content") }),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("key-content");
+  });
+
+  it("finds truthy match inside nested Dynamic", () => {
+    const Comp = cc(() => el("p", {}, "dynamic-content"));
+    const App = cc(() =>
+      el(Switch, {
+        fallback: el("p", {}, "switch-fallback"),
+        children: el(Dynamic, { component: Comp }),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("dynamic-content");
+  });
+
+  it("finds truthy match inside nested Virtual", () => {
+    const items = signal([1, 2, 3]);
+    const App = cc(() =>
+      el(Switch, {
+        fallback: el("p", {}, "switch-fallback"),
+        children: el(Virtual, {
+          each: items,
+          children: (n: number) => el("p", {}, `v-${n}`),
+        }),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("v-1");
+  });
+
+  it("finds truthy match inside nested Virtual fallback when list is empty", () => {
+    const items: number[] = [];
+    const App = cc(() =>
+      el(Switch, {
+        fallback: el("p", {}, "switch-fallback"),
+        children: el(Virtual, {
+          each: items,
+          fallback: el("p", {}, "virtual-fallback"),
+          children: (n: number) => el("p", {}, `v-${n}`),
+        }),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("virtual-fallback");
+  });
+
+  it("finds truthy match inside nested arrays", () => {
+    const App = cc(() =>
+      el(Switch, {
+        fallback: el("p", {}, "switch-fallback"),
+        children: [[null, el("p", {}, "array-match")]],
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("array-match");
+  });
 });
 
 describe("Index", () => {
@@ -921,5 +1029,192 @@ describe("Virtual", () => {
     expect(rows.length).toBe(8);
     expect(rows[0]!.textContent).toBe("item-2");
     expect(rows[7]!.textContent).toBe("item-9");
+  });
+});
+
+// ─── findTruthyMatch and resolveSwitchContent edge cases ───────────────────
+
+describe("findTruthyMatch edge cases", () => {
+  it("returns undefined for array of nulls", () => {
+    const { findTruthyMatch } = require("../src/component/control-flow.ts");
+    expect(findTruthyMatch([null, null, false])).toBeUndefined();
+  });
+
+  it("continues past empty nested array to find match in sibling", () => {
+    const { findTruthyMatch } = require("../src/component/control-flow.ts");
+    const match = findTruthyMatch([[null, false], "found"]);
+    expect(match).toBe("found");
+  });
+
+  it("finds match in nested Switch", () => {
+    const App = cc(() =>
+      el(Switch, {
+        fallback: el("p", {}, "outer-fallback"),
+        children: el(Switch, {
+          fallback: el("p", {}, "inner-fallback"),
+          children: el(Match, { when: true, children: "inner-match" }),
+        }),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("inner-match");
+  });
+
+  it("returns undefined when Index children are all null", () => {
+    const items = signal(["a", "b", "c"]);
+    const App = cc(() =>
+      el(Switch, {
+        fallback: el("p", {}, "index-fallback"),
+        children: el(Index, {
+          each: items,
+          children: () => null,
+        }),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("index-fallback");
+  });
+
+  it("returns undefined when Dynamic component is falsy", () => {
+    const App = cc(() =>
+      el(Switch, {
+        fallback: el("p", {}, "dynamic-fallback"),
+        children: el(Dynamic, { component: null }),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("dynamic-fallback");
+  });
+
+  it("returns undefined when Virtual list is empty and no fallback", () => {
+    const App = cc(() =>
+      el(Switch, {
+        fallback: el("p", {}, "virtual-fallback"),
+        children: el(Virtual, {
+          each: [] as number[],
+          children: (n: number) => el("p", {}, `v-${n}`),
+        }),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("virtual-fallback");
+  });
+
+  it("returns undefined when Virtual children all return null", () => {
+    const items = signal([1, 2, 3]);
+    const App = cc(() =>
+      el(Switch, {
+        fallback: el("p", {}, "virtual-null-fallback"),
+        children: el(Virtual, {
+          each: items,
+          children: () => null,
+        }),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("virtual-null-fallback");
+  });
+});
+
+describe("resolveSwitchContent direct calls", () => {
+  it("returns fallback when top-level when is falsy", () => {
+    const {
+      resolveSwitchContent,
+      Switch,
+    } = require("../src/component/control-flow.ts");
+    const element = Switch({
+      when: false,
+      fallback: el("p", {}, "gated"),
+      children: el(Match, { when: true, children: "match" }),
+    });
+    const result = resolveSwitchContent(element);
+    expect(result).toBeDefined();
+  });
+
+  it("returns match when top-level when is truthy", () => {
+    const {
+      resolveSwitchContent,
+      Switch,
+    } = require("../src/component/control-flow.ts");
+    const element = Switch({
+      when: true,
+      fallback: el("p", {}, "gated"),
+      children: el(Match, { when: true, children: "match-content" }),
+    });
+    const result = resolveSwitchContent(element);
+    expect(result).toBeDefined();
+  });
+});
+
+describe("Visible with style prop", () => {
+  it("appends display:none to string style when hidden", async () => {
+    const visible = signal(false);
+    const App = cc(() =>
+      el(
+        Visible,
+        { when: visible, style: "color:red" },
+        el("span", {}, "content"),
+      ),
+    );
+    mount(App, container);
+    const panel = container.firstElementChild as HTMLElement;
+    expect(panel.style.display).toBe("none");
+    expect(panel.style.color).toBe("red");
+
+    visible.value = true;
+    await nextTick();
+    expect(panel.style.display).toBe("");
+  });
+
+  it("appends display:none to string style without trailing semicolon", async () => {
+    const visible = signal(false);
+    const App = cc(() =>
+      el(
+        Visible,
+        { when: visible, style: "color:red;" },
+        el("span", {}, "content"),
+      ),
+    );
+    mount(App, container);
+    const panel = container.firstElementChild as HTMLElement;
+    expect(panel.style.display).toBe("none");
+  });
+});
+
+describe("createDynamicElement", () => {
+  it("returns null for non-string non-function tag", () => {
+    const {
+      createDynamicElement,
+    } = require("../src/component/control-flow.ts");
+    const result = createDynamicElement(
+      { tag: "div", props: {}, children: [] } as any,
+      42,
+    );
+    expect(result).toBeNull();
+  });
+
+  it("returns element for string tag", () => {
+    const {
+      createDynamicElement,
+    } = require("../src/component/control-flow.ts");
+    const result = createDynamicElement(
+      { tag: "div", props: { id: "test" }, children: ["hello"] } as any,
+      "span",
+    );
+    expect(result).toBeDefined();
+    expect(result.tag).toBe("span");
+  });
+});
+
+describe("ErrorBoundary direct call", () => {
+  it("creates an element with ERROR_BOUNDARY_TYPE tag", () => {
+    const { ErrorBoundary } = require("../src/component/control-flow.ts");
+    const result = ErrorBoundary({
+      fallback: "caught",
+      children: el("div", {}, "content"),
+    });
+    expect(result).toBeDefined();
+    expect(result.tag).toBeDefined();
+    expect(result.props.fallback).toBe("caught");
   });
 });

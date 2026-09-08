@@ -94,7 +94,8 @@ export function deleteProp(target: object, key: PropertyKey): boolean {
   const sig = sigs.get(key);
   if (sig) {
     sig.value = undefined;
-    sigs.delete(key);
+    // Do NOT delete the signal from the map — future writes to this key
+    // must update the same signal so existing subscribers are notified.
   }
   return result;
 }
@@ -150,14 +151,16 @@ function createArrayMethod(target: any[], methodName: string): Function {
         }
       }
 
-      // Remove signals for indices that no longer exist
+      // Notify subscribers of removed indices, but keep the signals
+      // so future writes to the same index update the same signal.
       for (const key of node.keys()) {
         if (
           typeof key === "string" &&
           /^\d+$/.test(key) &&
           parseInt(key, 10) >= newLength
         ) {
-          node.delete(key);
+          const sig = node.get(key);
+          if (sig) sig.value = undefined;
         }
       }
 
@@ -278,8 +281,11 @@ function syncNode(target: unknown): void {
   // Update existing signals
   for (const [key, sig] of sigs) {
     if (!keys.includes(key as string | symbol)) {
-      // Property was deleted — remove signal
-      sigs.delete(key);
+      // Property was deleted — notify subscribers with undefined.
+      // Keep the signal so future writes notify the same subscribers.
+      if (sig.peek() !== undefined) {
+        sig.value = undefined;
+      }
       continue;
     }
 
@@ -333,11 +339,7 @@ export function reconcileIntoRaw(
     return reconcileArrays(target, source, keyProp, merge);
   }
 
-  if (typeof target === "object" && typeof source === "object") {
-    return reconcileObjects(target, source, keyProp, merge);
-  }
-
-  return source;
+  return reconcileObjects(target, source, keyProp, merge);
 }
 
 function reconcileObjects(

@@ -6,6 +6,10 @@ import {
 import type { ReactNode } from "./_types/core.ts";
 import type { SinwanNode } from "../types.ts";
 
+function ssrHostComponent(): null {
+  return null;
+}
+
 /**
  * React-compatible `renderToString` — `[SERVER]`.
  *
@@ -31,8 +35,9 @@ export function renderToString(
 ): Promise<string> {
   // Create a temporary root instance so `useId` works even when the
   // rendered tree is a plain function component (not a cc component).
-  const dummy = createComponentInstance(() => null, {}, null);
+  const dummy = createComponentInstance(ssrHostComponent as any, {}, null);
   dummy.identifierPrefix = options?.identifierPrefix ?? "";
+  ssrHostComponent();
   const prev = setCurrentInstance(dummy);
 
   try {

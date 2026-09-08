@@ -1,6 +1,6 @@
 import { domOps } from "./dom-ops.ts";
-import { isReactive, effect, resolve } from "../reactivity/index.ts";
-import type { CleanupFn } from "../reactivity/index.ts";
+import { isReactive, effect, resolve, type CleanupFn } from "../reactivity/index.ts";
+import { setActiveEffectScope } from "../reactivity/effect.ts";
 import {
   getCurrentInstance,
   queueUpdatedHooks,
@@ -173,6 +173,27 @@ export function _$createTemplate(
     return { [SINWAN_SERVER_TEMPLATE]: true, def, dynamics };
   }
 
+  const owner = getCurrentInstance();
+  if (owner?._replayingSetup) {
+    return {
+      [SINWAN_TEMPLATE]: true as const,
+      fragment: document.createDocumentFragment(),
+      disposers: [],
+    };
+  }
+
+  const prevScope = setActiveEffectScope(null);
+  try {
+    return createLiveTemplate(def, dynamics);
+  } finally {
+    setActiveEffectScope(prevScope);
+  }
+}
+
+function createLiveTemplate(
+  def: TemplateDef,
+  dynamics: unknown[],
+): SinwanTemplateResult {
   // Reuse the parsed <template> element across renders. Hoisted defs are
   // module-level singletons, so we cache one parsed element per def per
   // document (see `templateCache` doc for the document-keying rationale).

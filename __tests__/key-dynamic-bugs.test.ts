@@ -10,8 +10,11 @@ import { mount } from "../src/renderer/mount.ts";
 import { cc } from "../src/component/create.ts";
 import { onMounted, onUnmounted } from "../src/component/lifecycle.ts";
 import { Key } from "../src/component/control-flow.ts";
-import { useState, useEffect } from "../src/react/_client.ts";
+import { useState } from "../src/react/_client.ts";
 import type { SinwanElement } from "../src/types.ts";
+import { hydrate } from "../src/hydration/hydrate.ts";
+import { renderToHydratableString } from "../src/server/hydration-markers.ts";
+import { _$createTemplate, _$bindText } from "../src/renderer/template.ts";
 
 let container: HTMLElement;
 
@@ -19,6 +22,10 @@ beforeEach(() => {
   const win = new Window({ url: "http://localhost" });
   (globalThis as any).document = win.document;
   (globalThis as any).window = win;
+  (globalThis as any).Element = (win as any).Element;
+  (globalThis as any).Comment = (win as any).Comment;
+  (globalThis as any).Text = (win as any).Text;
+  (globalThis as any).DocumentFragment = (win as any).DocumentFragment;
   (win as any).SyntaxError = SyntaxError;
   container = win.document.createElement("div") as unknown as HTMLElement;
   (win.document.body as unknown as Node).appendChild(
@@ -46,6 +53,7 @@ describe("Key — event preservation on key swap", () => {
     const App = cc(() =>
       el(Key, {
         when: key,
+        cache: true,
         children: (k: string) =>
           el("button", { onClick: () => clicks++ }, `btn-${k}`),
       }),
@@ -83,6 +91,7 @@ describe("Key — React hooks preservation on key swap", () => {
     const App = cc(() =>
       el(Key, {
         when: key,
+        cache: true,
         children: (k: string) => el(Counter, { label: k }),
       }),
     );
@@ -163,6 +172,7 @@ describe("Key — reactivity preservation on key swap", () => {
     const App = cc(() =>
       el(Key, {
         when: key,
+        cache: true,
         children: (k: string) => el(ReactiveChild, { id: k }),
       }),
     );
@@ -297,5 +307,129 @@ describe("Key — cache=false React-style unmount/remount", () => {
     expect(div).toBeTruthy();
     // DOM node is recreated, not the same cached instance
     expect(div).not.toBe(firstA);
+  });
+});
+
+describe("Key — omitted cache remounts (React-style)", () => {
+  it("resets useState when cache is not specified", async () => {
+    const key = signal<"a" | "b">("a");
+
+    const App = cc(() =>
+      el(Key, {
+        when: key,
+        children: (k: string) => el(Counter, { label: k }),
+      }),
+    );
+
+    mount(App, container);
+    expect(container.textContent).toContain("count:0");
+
+    const btn = container.getElementsByTagName(
+      "button",
+    )[0] as HTMLButtonElement;
+    btn.click();
+    await nextTick();
+    expect(container.textContent).toContain("count:1");
+
+    key.value = "b";
+    await nextTick();
+    key.value = "a";
+    await nextTick();
+    expect(container.textContent).toContain("count:0");
+    expect(container.textContent).not.toContain("count:1");
+  });
+
+  it("does not leave both keys in the DOM", async () => {
+    const key = signal("a");
+    const App = cc(() =>
+      el(Key, {
+        when: key,
+        children: (k: string) => el("span", { class: "item" }, k),
+      }),
+    );
+    mount(App, container);
+    expect(container.querySelectorAll(".item").length).toBe(1);
+
+    key.value = "b";
+    await nextTick();
+    expect(container.querySelectorAll(".item").length).toBe(1);
+    expect(container.textContent).toBe("b");
+  });
+});
+
+describe("Key — cache=true compiled template bindings survive hide/show", () => {
+  it("keeps template text bindings live after returning to a key", async () => {
+    const key = signal<"a" | "b">("a");
+    const count = signal(0);
+    const def = {
+      html: "<span class='n'><!--s:0--></span>",
+      slots: [{ path: [0], type: "child" as const }],
+    };
+
+    const Compiled = cc(() =>
+      _$createTemplate(def, [_$bindText(() => `n:${count.value}`)]),
+    );
+
+    const App = cc(() =>
+      el(Key, {
+        when: key,
+        cache: true,
+        children: (k: string) => el(Compiled as any, { id: k }),
+      }),
+    );
+
+    mount(App, container);
+    expect(container.textContent).toContain("n:0");
+
+    key.value = "b";
+    await nextTick();
+    key.value = "a";
+    await nextTick();
+    expect(container.textContent).toContain("n:0");
+
+    count.value = 3;
+    await nextTick();
+    expect(container.textContent).toContain("n:3");
+  });
+
+  it("disposes cached entries when the Key owner unmounts", async () => {
+    const key = signal<"a" | "b">("a");
+    const log: string[] = [];
+    const Child = cc<{ id: string }>(({ id }) => {
+      onUnmounted(() => log.push(`u:${id}`));
+      return el("span", {}, id);
+    });
+    const App = cc(() =>
+      el(Key, {
+        when: key,
+        cache: true,
+        children: (k: string) => el(Child, { id: k }),
+      }),
+    );
+    const app = mount(App, container);
+    key.value = "b";
+    await nextTick();
+    app.unmount();
+    expect(log).toContain("u:a");
+    expect(log).toContain("u:b");
+  });
+});
+
+describe("Key — hydration does not remount until the key changes", () => {
+  it("keeps the hydrated DOM node when cache is omitted", async () => {
+    const key = signal("a");
+    const App = cc(() =>
+      el(Key, {
+        when: key,
+        children: (k: string) => el("span", { id: "k" }, k),
+      }),
+    );
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+    const before = container.querySelector("#k");
+    hydrate(App, container);
+    await nextTick();
+    expect(container.querySelector("#k")).toBe(before);
+    expect(container.textContent).toContain("a");
   });
 });

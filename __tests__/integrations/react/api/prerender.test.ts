@@ -188,6 +188,17 @@ describe("prerender — Aborting", () => {
       prerender(el("div", {}, "app"), { signal: controller.signal }),
     ).rejects.toThrow("aborted");
   });
+
+  it("rejects when the signal aborts after rendering starts", async () => {
+    const controller = new AbortController();
+    const App = () => {
+      controller.abort(new Error("aborted-during"));
+      return el("div", {}, "app");
+    };
+    await expect(
+      prerender(el(App, {}), { signal: controller.signal }),
+    ).rejects.toThrow("aborted-during");
+  });
 });
 
 // ─── Edge cases ───────────────────────────────────────────────────────────

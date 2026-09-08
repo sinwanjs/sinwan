@@ -181,6 +181,19 @@ describe("renderToReadableStream — Errors", () => {
     expect(onErrorError).toBe(originalError);
     expect(rejectError).toBe(originalError);
   });
+
+  it("removes the abort listener when the shell fails", async () => {
+    const controller = new AbortController();
+    const BadApp = () => {
+      throw new Error("shell-with-signal");
+    };
+    await expect(
+      renderToReadableStream(
+        { tag: BadApp, props: { children: [] }, children: [] } as any,
+        { signal: controller.signal },
+      ),
+    ).rejects.toThrow("shell-with-signal");
+  });
 });
 
 // ─── Aborting server rendering ────────────────────────────────────────────

@@ -102,6 +102,60 @@ describe("SSR template serialization (Phase A)", () => {
     expect(html).not.toContain('title=""');
   });
 
+  it("strips false attribute slots and resolves bindings, signals, and getters", async () => {
+    const { _$createTemplate, _$bindAttr } =
+      await import("../src/renderer/template.ts");
+    const { renderToHydratableString } =
+      await import("../src/server/hydration-markers.ts");
+    const { cc } = await import("../src/component/create.ts");
+    const { signal } = await import("../src/reactivity/signal.ts");
+
+    const title = signal("from-signal");
+    const def = {
+      html: '<div hidden="" title="" data-x="" class=""></div>',
+      slots: [
+        { path: [], type: "attr" as const, name: "hidden" },
+        { path: [], type: "attr" as const, name: "title" },
+        { path: [], type: "attr" as const, name: "data-x" },
+        { path: [], type: "attr" as const, name: "class" },
+      ],
+    };
+
+    const App = cc(() =>
+      _$createTemplate(def, [
+        false,
+        title,
+        _$bindAttr("data-x", () => "bound"),
+        () => "from-fn",
+      ]),
+    );
+
+    const html = await renderToHydratableString(App, {});
+    expect(html).not.toContain("hidden=");
+    expect(html).toContain('title="from-signal"');
+    expect(html).toContain('data-x="bound"');
+    expect(html).toContain('class="from-fn"');
+  });
+
+  it("serializes a 0-arity child getter that returns an element", async () => {
+    const { _$createTemplate } = await import("../src/renderer/template.ts");
+    const { renderToHydratableString } =
+      await import("../src/server/hydration-markers.ts");
+    const { cc } = await import("../src/component/create.ts");
+
+    const def = {
+      html: "<div><!--s:0--></div>",
+      slots: [{ path: [0], type: "child" as const }],
+    };
+
+    const App = cc(() =>
+      _$createTemplate(def, [() => ({ tag: "span", props: {}, children: ["n"] })]),
+    );
+
+    const html = await renderToHydratableString(App, {});
+    expect(html).toContain("<span>n</span>");
+  });
+
   it("serializes a template with explicit binding descriptors", async () => {
     const { _$createTemplate, _$bindText } =
       await import("../src/renderer/template.ts");

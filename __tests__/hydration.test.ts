@@ -9,7 +9,7 @@
  * Run with: bun test src/client/hydration/__tests__/hydration.test.ts
  */
 
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Window } from "happy-dom";
 import { signal } from "../src/reactivity/signal.ts";
 import { computed, nextTick } from "../src/reactivity/index.ts";
@@ -23,8 +23,10 @@ import { hydrate } from "../src/hydration/hydrate.ts";
 import { renderToHydratableString } from "../src/server/hydration-markers.ts";
 import { streamHydratablePage, streamPage } from "../src/server/stream.ts";
 import { cc } from "../src/component/create.ts";
+import { useFetch } from "../src/hook/index.ts";
 import { Visible } from "../src/component/control-flow.ts";
 import type { SinwanElement } from "../src/types.ts";
+import { getSinwanData } from "../src/hydration/index.ts";
 import {
   parseTextOpenMarker,
   isTextCloseMarker,
@@ -551,5 +553,104 @@ describe("hydratable streaming", () => {
     expect(html).not.toContain("data-sinwan-id");
     expect(html).not.toContain("data-sinwan-ev");
     expect(html).not.toContain("sinwan-t");
+  });
+});
+
+// ─── getSinwanData ─────────────────────────────────────────
+
+describe("getSinwanData", () => {
+  it("returns empty object when script tag is missing", () => {
+    expect(getSinwanData()).toEqual({});
+  });
+
+  it("returns parsed data when script tag has valid JSON", () => {
+    const script = doc.createElement("script");
+    script.id = "__SINWAN_DATA__";
+    script.type = "application/json";
+    script.textContent = JSON.stringify({ key: "value", nested: { a: 1 } });
+    doc.head.appendChild(script);
+    expect(getSinwanData()).toEqual({ key: "value", nested: { a: 1 } });
+    doc.head.removeChild(script);
+  });
+
+  it("returns empty object when script tag has invalid JSON", () => {
+    const script = doc.createElement("script");
+    script.id = "__SINWAN_DATA__";
+    script.type = "application/json";
+    script.textContent = "{invalid json}";
+    doc.head.appendChild(script);
+    expect(getSinwanData()).toEqual({});
+    doc.head.removeChild(script);
+  });
+
+  it("returns empty object when script tag has empty text content", () => {
+    const script = doc.createElement("script");
+    script.id = "__SINWAN_DATA__";
+    script.type = "application/json";
+    script.textContent = "";
+    doc.head.appendChild(script);
+    expect(getSinwanData()).toEqual({});
+    doc.head.removeChild(script);
+  });
+});
+
+describe("renderToHydratableString SSR fetch re-render", () => {
+  let originalWindow: unknown;
+  let originalDocument: unknown;
+
+  beforeEach(() => {
+    originalWindow = (globalThis as any).window;
+    originalDocument = (globalThis as any).document;
+    delete (globalThis as any).window;
+    delete (globalThis as any).document;
+  });
+
+  afterEach(() => {
+    (globalThis as any).window = originalWindow;
+    (globalThis as any).document = originalDocument;
+  });
+
+  function asFetch(
+    fn: (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => Promise<Response>,
+  ) {
+    return fn as unknown as typeof globalThis.fetch;
+  }
+
+  it("waits for pending fetches and re-renders an element tree", async () => {
+    const fetch = asFetch(async (input) => {
+      expect(String(input)).toBe("https://api.example.com/message");
+      return new Response("hello", { status: 200 });
+    });
+    const App = cc(() => {
+      const fetcher = useFetch("message", {
+        fetch,
+        immediate: true,
+      }).text();
+      return el("p", {}, fetcher.data.value ?? "loading");
+    });
+    const out: { fetchData?: Record<string, unknown> } = {};
+    const html = await renderToHydratableString(App, {}, {
+      baseUrl: "https://api.example.com",
+      out,
+    });
+    expect(html).toContain("hello");
+    expect(out.fetchData).toBeDefined();
+    expect(Object.keys(out.fetchData ?? {}).length).toBeGreaterThan(0);
+  });
+
+  it("re-renders a non-element result after pending fetches", async () => {
+    const fetch = asFetch(async () => new Response("plain", { status: 200 }));
+    const App = cc(() => {
+      const fetcher = useFetch("/plain", {
+        fetch,
+        immediate: true,
+      }).text();
+      return fetcher.data.value ?? "loading";
+    });
+    const html = await renderToHydratableString(App);
+    expect(html).toContain("plain");
   });
 });

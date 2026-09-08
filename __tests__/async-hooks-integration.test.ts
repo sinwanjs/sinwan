@@ -9,9 +9,12 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
 import { signal } from "../src/reactivity/signal.ts";
 import { cc } from "../src/component/create.ts";
-import { mount } from "../src/renderer/mount.ts";
+import { mount, render } from "../src/renderer/mount.ts";
 import { useState } from "../src/react/use-state.ts";
 import { onMounted } from "../src/component/lifecycle.ts";
+import { nextTick } from "../src/reactivity/scheduler.ts";
+import type { SinwanElement, SinwanNode } from "../src/types.ts";
+import type { AppInstance } from "../src/renderer/types.ts";
 
 let win: InstanceType<typeof Window>;
 let doc: Document;
@@ -29,15 +32,15 @@ beforeEach(() => {
 
 // Helper function to create Sinwan elements
 function el(
-  tag: string,
+  tag: SinwanElement["tag"],
   props: Record<string, unknown> = {},
-  ...children: any[]
-): any {
+  ...children: SinwanNode[]
+): SinwanElement {
   const finalProps = { ...props };
   if (children.length > 0 || finalProps.children === undefined) {
     finalProps.children = children;
   }
-  return { tag: tag as any, props: finalProps, children };
+  return { tag, props: finalProps, children };
 }
 
 describe("Sinwan Test App — Async Hooks Integration", () => {
@@ -265,5 +268,232 @@ describe("Sinwan Test App — Async Hooks Integration", () => {
     expect(container.textContent).toContain("Error: API Error");
 
     app.unmount();
+  });
+});
+
+describe("controlled async renderer ownership", () => {
+  it("does not render or attach refs when an async root resolves after unmount", async () => {
+    const pending = Promise.withResolvers<string>();
+    const refs: Array<Element | null> = [];
+    const AsyncRoot = cc(async () => {
+      const text = await pending.promise;
+      return el("p", { ref: (node: Element | null) => refs.push(node) }, text);
+    });
+    const app = mount(AsyncRoot, container);
+    try {
+      app.unmount();
+      pending.resolve("late");
+      await nextTick();
+      expect(container.innerHTML).toBe("");
+      expect(refs).toEqual([]);
+    } finally {
+      pending.resolve("cleanup");
+      await nextTick();
+      app.unmount();
+      container.remove();
+    }
+  });
+
+  it("does not overwrite a replacement root when the previous async mount resolves", async () => {
+    const pending = Promise.withResolvers<string>();
+    const AsyncRoot = cc(async () => el("p", {}, await pending.promise));
+    const previous = mount(AsyncRoot, container);
+    let replacement: AppInstance | undefined;
+    try {
+      replacement = mount(
+        cc(() => el("strong", {}, "current")),
+        container,
+      );
+      const currentNode = container.querySelector("strong");
+      pending.resolve("obsolete");
+      await nextTick();
+      expect(container.textContent).toBe("current");
+      expect(container.querySelector("strong")).toBe(currentNode);
+    } finally {
+      pending.resolve("cleanup");
+      await nextTick();
+      previous.unmount();
+      replacement?.unmount();
+      container.remove();
+    }
+  });
+
+  it("keeps promise siblings in source order when they resolve in reverse order", async () => {
+    const first = Promise.withResolvers<SinwanElement>();
+    const second = Promise.withResolvers<SinwanElement>();
+    const app = render(
+      ["before", first.promise, "between", second.promise, "after"],
+      container,
+    );
+    try {
+      second.resolve(el("b", {}, "second"));
+      await nextTick();
+      expect(container.textContent).toBe("beforebetweensecondafter");
+      const secondNode = container.querySelector("b");
+      first.resolve(el("i", {}, "first"));
+      await nextTick();
+      expect(container.textContent).toBe("beforefirstbetweensecondafter");
+      expect(container.querySelector("b")).toBe(secondNode);
+    } finally {
+      first.resolve(el("i"));
+      second.resolve(el("b"));
+      await nextTick();
+      app.unmount();
+      container.remove();
+    }
+  });
+
+  it("ignores a superseded promise after a newer reactive child has resolved", async () => {
+    const previous = Promise.withResolvers<SinwanElement>();
+    const latest = Promise.withResolvers<SinwanElement>();
+    const useLatest = signal(false);
+    const refs: Array<Element | null> = [];
+    const app = render(
+      () => (useLatest.value ? latest.promise : previous.promise),
+      container,
+    );
+    try {
+      useLatest.value = true;
+      await nextTick();
+      latest.resolve(el("strong", {}, "latest"));
+      await nextTick();
+      const current = container.querySelector("strong");
+      previous.resolve(
+        el("i", { ref: (node: Element | null) => refs.push(node) }, "stale"),
+      );
+      await nextTick();
+      expect(container.textContent).toBe("latest");
+      expect(container.querySelector("strong")).toBe(current);
+      expect(refs).toEqual([]);
+    } finally {
+      previous.resolve(el("i"));
+      latest.resolve(el("strong"));
+      await nextTick();
+      app.unmount();
+      container.remove();
+    }
+  });
+
+  it("defers a nested async component's mounted hook until its DOM exists", async () => {
+    const pending = Promise.withResolvers<string>();
+    const observed: Array<string | null> = [];
+    const AsyncChild = cc(async () => {
+      onMounted(() => {
+        observed.push(container.querySelector("span")?.textContent ?? null);
+      });
+      return el("span", {}, await pending.promise);
+    });
+    const app = mount(
+      cc(() => el("div", {}, el(AsyncChild))),
+      container,
+    );
+    try {
+      expect(observed).toEqual([]);
+      pending.resolve("ready");
+      await nextTick();
+      expect(observed).toEqual(["ready"]);
+    } finally {
+      pending.resolve("cleanup");
+      await nextTick();
+      app.unmount();
+      container.remove();
+    }
+  });
+
+  it("does not set up descendants returned by a nested async component after owner unmount", async () => {
+    const pending = Promise.withResolvers<void>();
+    let childSetups = 0;
+    const Child = cc(() => {
+      childSetups++;
+      return el("span", {}, "late child");
+    });
+    const AsyncChild = cc(async () => {
+      await pending.promise;
+      return el(Child);
+    });
+    const app = mount(
+      cc(() => el("div", {}, el(AsyncChild))),
+      container,
+    );
+    try {
+      app.unmount();
+      pending.resolve();
+      await nextTick();
+      expect(childSetups).toBe(0);
+      expect(container.innerHTML).toBe("");
+    } finally {
+      pending.resolve();
+      await nextTick();
+      app.unmount();
+      container.remove();
+    }
+  });
+
+  it("resolves independent async roots out of order without crossing DOM or hook ownership", async () => {
+    const otherContainer = doc.createElement("div");
+    doc.body.appendChild(otherContainer);
+    const firstPending = Promise.withResolvers<string>();
+    const secondPending = Promise.withResolvers<string>();
+    const mounted: string[] = [];
+    const First = cc(async () => {
+      onMounted(() => {
+        mounted.push(`first:${container.textContent}`);
+      });
+      return el("p", {}, await firstPending.promise);
+    });
+    const Second = cc(async () => {
+      onMounted(() => {
+        mounted.push(`second:${otherContainer.textContent}`);
+      });
+      return el("p", {}, await secondPending.promise);
+    });
+    const first = mount(First, container);
+    let second: AppInstance | undefined;
+    try {
+      second = mount(Second, otherContainer);
+      secondPending.resolve("two");
+      await nextTick();
+      expect(container.textContent).toBe("");
+      expect(otherContainer.textContent).toBe("two");
+      expect(mounted).toEqual(["second:two"]);
+      firstPending.resolve("one");
+      await nextTick();
+      expect(container.textContent).toBe("one");
+      expect(otherContainer.textContent).toBe("two");
+      expect(mounted).toEqual(["second:two", "first:one"]);
+      first.unmount();
+      expect(otherContainer.textContent).toBe("two");
+    } finally {
+      firstPending.resolve("cleanup");
+      secondPending.resolve("cleanup");
+      await nextTick();
+      first.unmount();
+      second?.unmount();
+      container.remove();
+      otherContainer.remove();
+    }
+  });
+
+  it("updates the public app root descriptor after an async component resolves", async () => {
+    const pending = Promise.withResolvers<string>();
+    const app = mount(
+      cc(async () => el("p", {}, await pending.promise)),
+      container,
+    );
+    try {
+      expect(app.root.type).toBe("text");
+      pending.resolve("ready");
+      await nextTick();
+      expect(container.textContent).toBe("ready");
+      expect(app.root.type).toBe("element");
+      if (app.root.type === "element") {
+        expect(app.root.node).toBe(container.querySelector("p") as Element);
+      }
+    } finally {
+      pending.resolve("cleanup");
+      await nextTick();
+      app.unmount();
+      container.remove();
+    }
   });
 });

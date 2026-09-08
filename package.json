@@ -180,7 +180,7 @@
     "build:types": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run typecheck && bun run build && bun run test",
-    "test": "bun test",
+    "test": "bun test --coverage",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [

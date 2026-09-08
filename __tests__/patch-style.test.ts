@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Window } from "happy-dom";
-import { setSingleAttribute } from "../src/renderer/attributes.ts";
+import { setSingleAttribute, applyAttributes } from "../src/renderer/attributes.ts";
 import { signal } from "../src/reactivity/signal.ts";
 import { effect } from "../src/reactivity/index.ts";
 import { nextTick } from "../src/reactivity/index.ts";
@@ -106,5 +106,45 @@ describe("patchStyle", () => {
     expect(el.style.color).toBe("red");
     expect(el.style.backgroundColor).toBe("");
     expect(el.style.border).toBe("");
+  });
+
+  it("clears tracked style props when a falsy style is applied with state", () => {
+    const state: { previousStyleProps: Set<string> } = {
+      previousStyleProps: new Set(["color"]),
+    };
+    setSingleAttribute(el, "style", { color: "red" }, state);
+    setSingleAttribute(el, "style", null, state);
+    expect(el.style.color).toBe("");
+    expect(state.previousStyleProps.size).toBe(0);
+  });
+});
+
+describe("class attributes", () => {
+  it("joins truthy keys from a class object", () => {
+    setSingleAttribute(el, "class", { foo: true, bar: false, baz: 1 });
+    expect(el.getAttribute("class")).toBe("foo baz");
+  });
+
+  it("stringifies non-object class items inside arrays", () => {
+    setSingleAttribute(el, "class", ["item", 42]);
+    expect(el.getAttribute("class")).toBe("item 42");
+  });
+
+  it("binds class arrays that contain reactive values", async () => {
+    const name = signal("on");
+    const { disposers } = applyAttributes(el, { class: [name] });
+    expect(el.getAttribute("class")).toBe("on");
+    name.value = "off";
+    await nextTick();
+    expect(el.getAttribute("class")).toBe("off");
+    if (disposers) {
+      for (const dispose of disposers) dispose();
+    }
+  });
+
+  it("applies static class arrays without a reactive binding", () => {
+    const { disposers } = applyAttributes(el, { class: ["static"] });
+    expect(el.getAttribute("class")).toBe("static");
+    expect(disposers).toBeNull();
   });
 });

@@ -8,7 +8,22 @@ import { signal } from "../src/reactivity/signal.ts";
 import { nextTick } from "../src/reactivity/index.ts";
 import { mount } from "../src/renderer/mount.ts";
 import { renderElementToDOM } from "../src/renderer/render-element.ts";
-import { resetDOMOps, setDOMOps } from "../src/renderer/dom-ops.ts";
+import { domOps, resetDOMOps, setDOMOps } from "../src/renderer/dom-ops.ts";
+import { renderNodeToDOM } from "../src/renderer/render-children.ts";
+import { removeMountedNode, unmountNode } from "../src/renderer/unmount.ts";
+import { HtmlEscapedString } from "../src/jsx/jsx-runtime.ts";
+import {
+  _$createTemplate,
+  _$bindAttr,
+  walkToSlot,
+  isTemplateResult,
+} from "../src/renderer/template.ts";
+import type { TemplateDef } from "../src/renderer/template-protocol.ts";
+import type { MountedComponent } from "../src/renderer/types.ts";
+import {
+  pushSuspenseBoundary,
+  popSuspenseBoundary,
+} from "../src/renderer/suspense-boundary.ts";
 import { cc } from "../src/component/create.ts";
 import { onUpdated } from "../src/component/lifecycle.ts";
 import { Show } from "../src/component/control-flow.ts";
@@ -23,6 +38,10 @@ beforeEach(() => {
   doc = win.document as unknown as Document;
   (globalThis as any).document = doc;
   (globalThis as any).window = win;
+  (globalThis as any).DocumentFragment = (win as any).DocumentFragment;
+  (globalThis as any).Element = (win as any).Element;
+  (globalThis as any).Comment = (win as any).Comment;
+  (globalThis as any).Text = (win as any).Text;
 
   container = doc.createElement("div");
   doc.body.appendChild(container);
@@ -119,6 +138,20 @@ describe("pluggable domOps", () => {
     renderElementToDOM(el("section", {}, "native"), container);
     expect(created).toEqual(["article"]);
   });
+
+  it("uses default setTextContent, parentNode, and nextSibling", () => {
+    const parent = doc.createElement("div");
+    const first = doc.createTextNode("hello");
+    const second = doc.createElement("span");
+    parent.appendChild(first);
+    parent.appendChild(second);
+
+    expect(domOps.parentNode(first)).toBe(parent);
+    expect(domOps.nextSibling(first)).toBe(second);
+
+    domOps.setTextContent(first, "world");
+    expect(first.data).toBe("world");
+  });
 });
 
 describe("onUpdated scheduling", () => {
@@ -162,5 +195,73 @@ describe("onUpdated scheduling", () => {
     await nextTick();
     expect(updates).toBe(3);
     expect(container.textContent).toContain("on");
+  });
+});
+
+describe("template attr slots and walkToSlot", () => {
+  it("binds static, reactive, and descriptor attribute slots", async () => {
+    const title = signal("one");
+    const def: TemplateDef = {
+      html: '<div title="" class="" id=""></div>',
+      slots: [
+        { path: [], type: "attr", name: "title" },
+        { path: [], type: "attr", name: "class" },
+        { path: [], type: "attr", name: "id" },
+      ],
+    };
+
+    const result = _$createTemplate(def, [
+      title,
+      "static-class",
+      _$bindAttr("id", () => "bound-id"),
+    ]);
+    if (!isTemplateResult(result)) {
+      throw new Error("expected a client template result");
+    }
+    container.appendChild(result.fragment);
+    const el = container.querySelector("div")!;
+    expect(el.getAttribute("title")).toBe("one");
+    expect(el.getAttribute("class")).toBe("static-class");
+    expect(el.getAttribute("id")).toBe("bound-id");
+
+    title.value = "two";
+    await nextTick();
+    expect(el.getAttribute("title")).toBe("two");
+
+    for (const dispose of result.disposers) dispose();
+  });
+
+  it("throws when the template fragment is empty", () => {
+    const empty = document.createDocumentFragment();
+    expect(() =>
+      walkToSlot(empty, [0], { html: "", slots: [] }),
+    ).toThrow("template fragment has no children");
+  });
+
+  it("throws when a slot path has no child at the requested index", () => {
+    const def: TemplateDef = { html: "<div></div>", slots: [] };
+    const template = document.createElement("template");
+    template.innerHTML = def.html;
+    expect(() => walkToSlot(template.content, [3], def)).toThrow(
+      "no child at index 3",
+    );
+  });
+});
+
+describe("unmount anonymous component nodes", () => {
+  it("runs disposers when a component node has no instance", () => {
+    let disposed = false;
+    const node: MountedComponent = {
+      type: "component",
+      children: [],
+      disposers: [
+        () => {
+          disposed = true;
+        },
+      ],
+      instance: null,
+    };
+    unmountNode(node);
+    expect(disposed).toBe(true);
   });
 });

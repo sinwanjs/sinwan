@@ -301,6 +301,12 @@ function renderComponentToDOM(
       }
     }
 
+    // Mark async-pending so fireMountedHooks skips this instance until
+    // the promise resolves and the DOM is actually in place.
+    if (result instanceof Promise) {
+      instance.isAsyncPending = true;
+    }
+
     // Render the returned element tree (still under this instance, but with
     // the effect scope cleared so internal bindings go to node.disposers).
     if (result && typeof result === "object" && "tag" in result) {

@@ -460,6 +460,19 @@ describe("memo — Edge cases", () => {
     expect(r3).not.toBe(r4);
   });
 
+  it("treats non-object props as unequal", () => {
+    let calls = 0;
+    const Inner = (props: unknown) => {
+      calls++;
+      return props;
+    };
+    const Memoed = memo(Inner as any);
+    Memoed({ x: 1 } as any);
+    Memoed(null as any);
+    Memoed(null as any);
+    expect(calls).toBe(2);
+  });
+
   it("works when mounted via the renderer", () => {
     let renderCount = 0;
     const Inner = cc((props: { name: string }) => {

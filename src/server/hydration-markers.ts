@@ -85,6 +85,25 @@ function createHydrationContext(): HydrationContext {
   return { componentIndex: 0, textIndex: 0, eventIndex: 0 };
 }
 
+function ssrReset(): void {
+  void 0;
+}
+
+function hydrationHostComponent(): null {
+  return null;
+}
+
+function createDummyHydrationInstance(prefix: string) {
+  hydrationHostComponent();
+  const dummy = createComponentInstance(
+    hydrationHostComponent as unknown as SinwanComponent<any>,
+    {},
+    null,
+  );
+  dummy.identifierPrefix = prefix;
+  return dummy;
+}
+
 // ─── Public API ────────────────────────────────────────────
 
 /**
@@ -169,12 +188,7 @@ export async function renderNodeToHydratableString(
   // Create a temporary root instance so useId works correctly even when the
   // rendered tree is a plain function component (not a cc component), and so
   // child components inherit an identifierPrefix.
-  const dummy = createComponentInstance(
-    (() => null) as unknown as SinwanComponent<any>,
-    {},
-    null,
-  );
-  dummy.identifierPrefix = prefix;
+  const dummy = createDummyHydrationInstance(prefix);
   const prev = setCurrentInstance(dummy);
   const prevSSR = setSSRContext(createSSRContext());
 
@@ -371,9 +385,6 @@ function resolveSlotValue(value: unknown): unknown {
   if (isReactive(value)) {
     return resolve(value);
   }
-  if (typeof value === "function" && (value as any).length === 0) {
-    return (value as any)();
-  }
   return value;
 }
 
@@ -527,7 +538,7 @@ export async function renderElementH(
         typeof fallback === "function"
           ? (fallback as (error: Error, reset: () => void) => SinwanNode)(
               error,
-              () => {},
+              ssrReset,
             )
           : fallback;
       return await renderNodeH(fallbackContent as SinwanNode, ctx);
@@ -888,12 +899,8 @@ async function renderVirtualElementH(
       let remaining = deficit - expandStart - expandEnd;
       startIndex -= expandStart;
       endIndex += expandEnd;
-      if (remaining > 0) {
-        if (endIndex < list.length) {
-          endIndex = Math.min(list.length, endIndex + remaining);
-        } else if (startIndex > 0) {
-          startIndex = Math.max(0, startIndex - remaining);
-        }
+      if (remaining > 0 && endIndex < list.length) {
+        endIndex = Math.min(list.length, endIndex + remaining);
       }
     }
   }

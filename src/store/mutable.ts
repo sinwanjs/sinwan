@@ -44,8 +44,9 @@ export function modifyMutable<T extends object>(
   batch(() => {
     const result = modifier(raw as T);
     if (result !== raw) {
-      // Modifier returned a new object — deep-reconcile it in
-      reconcileIntoRaw(raw, result, null, true);
+      // Modifier returned a new object (e.g. produce) — reconcile it
+      // with merge=false so deletions in the result are honored.
+      reconcileIntoRaw(raw, result, null, false);
     }
     syncStoreFromRaw(raw);
   });

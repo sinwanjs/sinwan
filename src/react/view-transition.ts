@@ -39,6 +39,8 @@ export type ViewTransitionClassValue =
 export interface ViewTransitionProps {
   /** Explicit view-transition-name. Omit to let React generate a unique one. */
   name?: string;
+  /** Wrapper element tag (defaults to "div" when a name is present). */
+  as?: string;
   /** Class for enter animations. */
   enter?: ViewTransitionClassValue;
   /** Class for exit animations. */

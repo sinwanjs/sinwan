@@ -71,6 +71,14 @@ function createHydratableStreamContext(): HydratableStreamContext {
   return { componentIndex: 0, textIndex: 0, eventIndex: 0 };
 }
 
+function ssrReset(): void {
+  void 0;
+}
+
+function hydrationHostComponent(): null {
+  return null;
+}
+
 // Void elements that don't have closing tags
 const VOID_ELEMENTS = new Set([
   "area",
@@ -166,11 +174,12 @@ export function streamHydratableNode(
         // the rendered tree is a plain function component, and so child
         // components inherit an identifierPrefix.
         const dummy = createComponentInstance(
-          (() => null) as unknown as SinwanComponent<any>,
+          hydrationHostComponent as unknown as SinwanComponent<any>,
           {},
           null,
         );
         dummy.identifierPrefix = prefix;
+        hydrationHostComponent();
         const prev = setCurrentInstance(dummy);
         try {
           await streamHydratableNodeToController(
@@ -366,7 +375,7 @@ async function streamElement(
         typeof fallback === "function"
           ? (fallback as (error: Error, reset: () => void) => SinwanNode)(
               error,
-              () => {},
+              ssrReset,
             )
           : fallback;
       await streamNode(fallbackContent as SinwanNode, controller, encoder);
@@ -711,7 +720,7 @@ export async function streamHydratableElement(
         typeof fallback === "function"
           ? (fallback as (error: Error, reset: () => void) => SinwanNode)(
               error,
-              () => {},
+              ssrReset,
             )
           : fallback;
       await streamHydratableNodeToController(
@@ -1037,12 +1046,8 @@ async function streamHydratableVirtualElement(
       let remaining = deficit - expandStart - expandEnd;
       startIndex -= expandStart;
       endIndex += expandEnd;
-      if (remaining > 0) {
-        if (endIndex < list.length) {
-          endIndex = Math.min(list.length, endIndex + remaining);
-        } else if (startIndex > 0) {
-          startIndex = Math.max(0, startIndex - remaining);
-        }
+      if (remaining > 0 && endIndex < list.length) {
+        endIndex = Math.min(list.length, endIndex + remaining);
       }
     }
   }
@@ -1249,12 +1254,8 @@ async function streamVirtualElement(
       let remaining = deficit - expandStart - expandEnd;
       startIndex -= expandStart;
       endIndex += expandEnd;
-      if (remaining > 0) {
-        if (endIndex < list.length) {
-          endIndex = Math.min(list.length, endIndex + remaining);
-        } else if (startIndex > 0) {
-          startIndex = Math.max(0, startIndex - remaining);
-        }
+      if (remaining > 0 && endIndex < list.length) {
+        endIndex = Math.min(list.length, endIndex + remaining);
       }
     }
   }

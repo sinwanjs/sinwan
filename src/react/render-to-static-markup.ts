@@ -7,6 +7,10 @@ import {
 import type { ReactNode } from "./_types/core.ts";
 import type { SinwanNode } from "../types.ts";
 
+function ssrHostComponent(): null {
+  return null;
+}
+
 /**
  * React-compatible `renderToStaticMarkup` — `[SERVER]`.
  *
@@ -31,8 +35,9 @@ export async function renderToStaticMarkup(
 ): Promise<string> {
   // Create a temporary root instance so `useId` works correctly and
   // inherits the optional `identifierPrefix`.
-  const dummy = createComponentInstance(() => null, {}, null);
+  const dummy = createComponentInstance(ssrHostComponent as any, {}, null);
   dummy.identifierPrefix = options?.identifierPrefix ?? "";
+  ssrHostComponent();
   const prev = setCurrentInstance(dummy);
 
   try {

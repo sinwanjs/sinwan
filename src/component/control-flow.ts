@@ -140,9 +140,10 @@ export interface KeyProps<T> {
   when: Reactive<T | null | undefined>;
   /**
    * Whether to cache the subtree when the key changes.
-   * - `true` (default): keep-alive style — state and DOM are preserved
-   *   and reattached when the key switches back.
-   * - `false`: React-style — fully unmount and remount on every key change.
+   * - `false` / omitted: React-style — fully unmount and remount on every
+   *   key change.
+   * - `true`: keep-alive — state and DOM are preserved and reattached when
+   *   the key switches back. Must be set explicitly.
    */
   cache?: boolean;
   /**
