@@ -2,6 +2,19 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
 
+## [1.3.1] — Uncontrolled Form Defaults & Select Attr Slots
+
+Sinwan 1.3.1 applies JSX `defaultValue` / `defaultChecked` as real input IDL properties (including SSR HTML `value` / `checked`) and selects `<option>`s when a compiled template sets `value` or `defaultValue` on a `<select>`.
+
+### Fixed
+
+- **Input `defaultValue` / `defaultChecked` (`attributes.ts`, `attribute-utils.ts`)**: Attr slots and SSR serialized the JSX names. Browsers do not treat `defaultValue` as a content attribute, so hoisted `<input defaultValue="/api/hello" />` showed an empty field. `setSingleAttribute` now sets the `defaultValue` / `defaultChecked` IDL properties. SSR emits `value` / `checked`.
+- **Select `value` / `defaultValue` (`attributes.ts`)**: HTML `value` on `<select>` does not select options. Attr slots now walk `<option>`s (including string arrays for `multiple`) and clear the selection when the value is omitted.
+
+### Internal
+
+- Added regressions in `patch-style.test.ts`, `renderer-1-0.test.ts`, `enhanced-elements.test.ts`, and `server-renderer.test.ts` for input defaults, SSR mapping, and select option selection.
+
 ## [1.3.0] — Key Remount Default, Keep-Alive Opt-In & Runtime Hardening
 
 Sinwan 1.3.0 restores `<Key>` remount semantics when `cache` is omitted, makes keep-alive opt-in, and hardens hydration, compiled templates, stores, and the React-compatible layer. Callers that relied on implicit keep-alive must pass `cache={true}`.

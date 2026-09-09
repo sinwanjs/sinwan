@@ -668,6 +668,13 @@ describe("server rendering contracts", () => {
 });
 
 describe("server attribute serialization", () => {
+  it("renders defaultValue and defaultChecked as HTML value/checked", () => {
+    expect(renderServerAttribute("defaultValue", "/api/hello")).toBe(
+      ' value="/api/hello"',
+    );
+    expect(renderServerAttribute("defaultChecked", true)).toBe(" checked");
+    expect(renderServerAttribute("defaultChecked", false)).toBe("");
+  });
   it("filters non-renderable values", () => {
     for (const value of [
       undefined,

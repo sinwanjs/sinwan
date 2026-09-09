@@ -44,6 +44,9 @@ export function renderServerAttribute(key: string, value: unknown): string {
   // JSX writes the label association attribute as htmlFor; render the
   // standard HTML attribute name.
   if (key === "htmlFor") key = "for";
+  // Uncontrolled form defaults are JSX props; HTML uses value/checked.
+  if (key === "defaultValue") key = "value";
+  if (key === "defaultChecked") key = "checked";
 
   if (value == null || value === false) {
     return "";

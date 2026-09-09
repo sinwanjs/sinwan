@@ -620,6 +620,13 @@ describe("enhanceInput", () => {
     expect(el.props.value).toBe("def");
   });
 
+  it("mounts uncontrolled input with defaultValue visible in the field", () => {
+    const App = () => jsx("input", { name: "endpoint", defaultValue: "/api/hello" });
+    mount(App, container);
+    const input = container.querySelector("input") as HTMLInputElement;
+    expect(input.value).toBe("/api/hello");
+  });
+
   it("passes through checked and readOnly", () => {
     const el = jsx("input", {
       type: "checkbox",

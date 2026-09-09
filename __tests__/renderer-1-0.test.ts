@@ -231,6 +231,48 @@ describe("template attr slots and walkToSlot", () => {
     for (const dispose of result.disposers) dispose();
   });
 
+  it("shows a hoisted input default as the current value", () => {
+    const def: TemplateDef = {
+      html: '<input name="endpoint" value="/api/hello" />',
+      slots: [],
+    };
+    const result = _$createTemplate(def, []);
+    if (!isTemplateResult(result)) {
+      throw new Error("expected a client template result");
+    }
+    container.appendChild(result.fragment);
+    const input = container.querySelector("input") as HTMLInputElement;
+    expect(input.value).toBe("/api/hello");
+  });
+
+  it("applies a defaultValue attr slot as the input value", () => {
+    const def: TemplateDef = {
+      html: '<input value="" />',
+      slots: [{ path: [], type: "attr", name: "defaultValue" }],
+    };
+    const result = _$createTemplate(def, ["/api/hello"]);
+    if (!isTemplateResult(result)) {
+      throw new Error("expected a client template result");
+    }
+    container.appendChild(result.fragment);
+    const input = container.querySelector("input") as HTMLInputElement;
+    expect(input.value).toBe("/api/hello");
+  });
+
+  it("applies a defaultValue attr slot as the selected option", () => {
+    const def: TemplateDef = {
+      html: '<select><option value="a">A</option><option value="b">B</option></select>',
+      slots: [{ path: [], type: "attr", name: "defaultValue" }],
+    };
+    const result = _$createTemplate(def, ["b"]);
+    if (!isTemplateResult(result)) {
+      throw new Error("expected a client template result");
+    }
+    container.appendChild(result.fragment);
+    const select = container.querySelector("select") as HTMLSelectElement;
+    expect(select.value).toBe("b");
+  });
+
   it("throws when the template fragment is empty", () => {
     const empty = document.createDocumentFragment();
     expect(() =>

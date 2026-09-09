@@ -148,3 +148,89 @@ describe("class attributes", () => {
     expect(disposers).toBeNull();
   });
 });
+
+describe("uncontrolled form defaults", () => {
+  it("sets input defaultValue as the visible value", () => {
+    const input = doc.createElement("input") as HTMLInputElement;
+    setSingleAttribute(input, "defaultValue", "/api/hello");
+    expect(input.value).toBe("/api/hello");
+    expect(input.defaultValue).toBe("/api/hello");
+  });
+
+  it("clears defaultValue when the value is omitted", () => {
+    const input = doc.createElement("input") as HTMLInputElement;
+    setSingleAttribute(input, "defaultValue", "keep");
+    setSingleAttribute(input, "defaultValue", false);
+    expect(input.defaultValue).toBe("");
+  });
+
+  it("sets and clears defaultChecked", () => {
+    const input = doc.createElement("input") as HTMLInputElement;
+    input.type = "checkbox";
+    setSingleAttribute(input, "defaultChecked", true);
+    expect(input.defaultChecked).toBe(true);
+    setSingleAttribute(input, "defaultChecked", false);
+    expect(input.defaultChecked).toBe(false);
+  });
+
+  it("selects the matching option for select defaultValue", () => {
+    const select = doc.createElement("select") as HTMLSelectElement;
+    for (const value of ["a", "b", "c"]) {
+      const opt = doc.createElement("option") as HTMLOptionElement;
+      opt.value = value;
+      select.appendChild(opt);
+    }
+    setSingleAttribute(select, "defaultValue", "b");
+    expect(select.value).toBe("b");
+  });
+
+  it("selects multiple options for array defaultValue", () => {
+    const select = doc.createElement("select") as HTMLSelectElement;
+    select.multiple = true;
+    for (const value of ["a", "b", "c"]) {
+      const opt = doc.createElement("option") as HTMLOptionElement;
+      opt.value = value;
+      select.appendChild(opt);
+    }
+    setSingleAttribute(select, "defaultValue", ["a", "c"]);
+    expect(
+      Array.from(select.selectedOptions).map((opt) => opt.value),
+    ).toEqual(["a", "c"]);
+  });
+
+  it("clears a single select when defaultValue is omitted", () => {
+    const select = doc.createElement("select") as HTMLSelectElement;
+    for (const value of ["a", "b"]) {
+      const opt = doc.createElement("option") as HTMLOptionElement;
+      opt.value = value;
+      select.appendChild(opt);
+    }
+    setSingleAttribute(select, "defaultValue", "b");
+    setSingleAttribute(select, "defaultValue", false);
+    expect(select.selectedIndex).toBe(-1);
+  });
+
+  it("clears a multiple select when value is omitted", () => {
+    const select = doc.createElement("select") as HTMLSelectElement;
+    select.multiple = true;
+    for (const value of ["a", "b"]) {
+      const opt = doc.createElement("option") as HTMLOptionElement;
+      opt.value = value;
+      select.appendChild(opt);
+    }
+    setSingleAttribute(select, "value", ["a", "b"]);
+    setSingleAttribute(select, "value", null);
+    expect(select.selectedOptions.length).toBe(0);
+  });
+
+  it("applies a controlled select value", () => {
+    const select = doc.createElement("select") as HTMLSelectElement;
+    for (const value of ["a", "b"]) {
+      const opt = doc.createElement("option") as HTMLOptionElement;
+      opt.value = value;
+      select.appendChild(opt);
+    }
+    setSingleAttribute(select, "value", "b");
+    expect(select.value).toBe("b");
+  });
+});

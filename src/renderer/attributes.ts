@@ -124,6 +124,30 @@ export function applyAttributes(
   return { disposers, hasEventProps };
 }
 
+function applySelectSelection(
+  selectEl: HTMLSelectElement,
+  value: unknown,
+): void {
+  if (value == null || value === false) {
+    if (selectEl.multiple) {
+      for (const opt of selectEl.options) {
+        opt.selected = false;
+      }
+      return;
+    }
+    selectEl.selectedIndex = -1;
+    return;
+  }
+  if (Array.isArray(value)) {
+    const selected = new Set(value.map((item) => String(item)));
+    for (const opt of selectEl.options) {
+      opt.selected = selected.has(opt.value);
+    }
+    return;
+  }
+  selectEl.value = String(value);
+}
+
 /**
  * Set a single attribute/property on a DOM element.
  */
@@ -142,6 +166,33 @@ export function setSingleAttribute(
   // Handle class arrays/objects
   if (key === "class" && typeof value === "object" && value !== null) {
     applyClass(el, value);
+    return;
+  }
+
+  // Uncontrolled form defaults. `defaultValue`/`defaultChecked` are JSX props;
+  // they must be set as IDL properties, not unknown HTML attributes.
+  if (key === "defaultValue") {
+    if (el.tagName === "SELECT") {
+      applySelectSelection(el as HTMLSelectElement, value);
+      return;
+    }
+    domOps.setProperty(
+      el,
+      "defaultValue",
+      value == null || value === false ? "" : String(value),
+    );
+    return;
+  }
+  if (key === "defaultChecked") {
+    domOps.setProperty(
+      el,
+      "defaultChecked",
+      value != null && value !== false,
+    );
+    return;
+  }
+  if (key === "value" && el.tagName === "SELECT") {
+    applySelectSelection(el as HTMLSelectElement, value);
     return;
   }
 
