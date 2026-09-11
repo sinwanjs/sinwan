@@ -2,6 +2,21 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
 
+## [1.3.2] — Compiled `{children}` Node Trees
+
+Sinwan 1.3.2 stops hoisted `_$bindText` child slots from stringifying element trees as `[object Object]` (for example a Menubar with File / Edit / View).
+
+### Fixed
+
+- **`_$bindText` object children (`template.ts`)**: A text binding whose getter returns an object or array is rendered with `renderNodeToDOM` instead of `String(resolved)`. Scalar strings and numbers still update `textContent` in place.
+
+### Internal
+
+- Added regressions in `renderer-1-0.test.ts` for node-tree bindText children and live scalar text updates.
+- `bun test --coverage`: 2980 pass / 0 fail. `template.ts` 100% lines and functions. `bun run typecheck` clean.
+
+---
+
 ## [1.3.1] — Uncontrolled Form Defaults & Select Attr Slots
 
 Sinwan 1.3.1 applies JSX `defaultValue` / `defaultChecked` as real input IDL properties (including SSR HTML `value` / `checked`) and selects `<option>`s when a compiled template sets `value` or `defaultValue` on a `<select>`.

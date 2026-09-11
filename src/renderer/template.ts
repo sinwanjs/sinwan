@@ -237,20 +237,38 @@ function createLiveTemplate(
       const parent = comment.parentNode;
 
       if (isBindingDescriptor(value) && value.type === "text") {
-        const textNode = domOps.createTextNode("");
-        parent.insertBefore(textNode, comment);
-        parent.removeChild(comment);
-        const owner = getCurrentInstance();
-        let initialized = false;
-        const dispose = effect(() => {
-          const resolved = value.getter();
-          textNode.textContent = resolved == null ? "" : String(resolved);
-          if (initialized) {
-            queueUpdatedHooks(owner);
+        const initial = value.getter();
+        if (initial != null && typeof initial === "object") {
+          const mounted = renderNodeToDOM(
+            value.getter as SinwanNode,
+            parent,
+            comment,
+            null,
+          );
+          comment.parentNode?.removeChild(comment);
+          if (
+            mounted &&
+            "dispose" in mounted &&
+            typeof (mounted as any).dispose === "function"
+          ) {
+            disposers.push((mounted as any).dispose);
           }
-          initialized = true;
-        });
-        disposers.push(dispose);
+        } else {
+          const textNode = domOps.createTextNode("");
+          parent.insertBefore(textNode, comment);
+          parent.removeChild(comment);
+          const owner = getCurrentInstance();
+          let initialized = false;
+          const dispose = effect(() => {
+            const resolved = value.getter();
+            textNode.textContent = resolved == null ? "" : String(resolved);
+            if (initialized) {
+              queueUpdatedHooks(owner);
+            }
+            initialized = true;
+          });
+          disposers.push(dispose);
+        }
       } else {
         const mounted = renderNodeToDOM(
           value as SinwanNode,

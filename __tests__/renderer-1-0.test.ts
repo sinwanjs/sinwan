@@ -15,6 +15,7 @@ import { HtmlEscapedString } from "../src/jsx/jsx-runtime.ts";
 import {
   _$createTemplate,
   _$bindAttr,
+  _$bindText,
   walkToSlot,
   isTemplateResult,
 } from "../src/renderer/template.ts";
@@ -287,6 +288,47 @@ describe("template attr slots and walkToSlot", () => {
     expect(() => walkToSlot(template.content, [3], def)).toThrow(
       "no child at index 3",
     );
+  });
+
+  it("renders bindText children that resolve to a node tree", () => {
+    const def: TemplateDef = {
+      html: '<div data-slot="menubar"><!--s:0--></div>',
+      slots: [{ path: [0], type: "child" }],
+    };
+    const menus = [
+      { tag: "button", props: {}, children: ["File"] },
+      { tag: "button", props: {}, children: ["Edit"] },
+      { tag: "button", props: {}, children: ["View"] },
+    ];
+    const result = _$createTemplate(def, [_$bindText(() => menus)]);
+    if (!isTemplateResult(result)) {
+      throw new Error("expected a client template result");
+    }
+    container.appendChild(result.fragment);
+    const root = container.querySelector("[data-slot=menubar]")!;
+    expect(root.textContent).not.toContain("[object Object]");
+    expect([...root.querySelectorAll("button")].map((el) => el.textContent)).toEqual(
+      ["File", "Edit", "View"],
+    );
+    for (const dispose of result.disposers) dispose();
+  });
+
+  it("keeps bindText scalar children as live text", async () => {
+    const label = signal("inspector");
+    const def: TemplateDef = {
+      html: "<p><!--s:0--></p>",
+      slots: [{ path: [0], type: "child" }],
+    };
+    const result = _$createTemplate(def, [_$bindText(() => label.value)]);
+    if (!isTemplateResult(result)) {
+      throw new Error("expected a client template result");
+    }
+    container.appendChild(result.fragment);
+    expect(container.textContent).toBe("inspector");
+    label.value = "console";
+    await nextTick();
+    expect(container.textContent).toBe("console");
+    for (const dispose of result.disposers) dispose();
   });
 });
 
