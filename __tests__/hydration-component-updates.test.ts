@@ -96,10 +96,10 @@ describe("post-hydration update behavior", () => {
     const notEmpty = computed(() => items.value.length > 0);
     const mountLog: string[] = [];
 
-    const Row = cc<{ item: () => string }>(({ item }) => {
-      const initial = item();
+    const Row = cc<{ item: string }>((props) => {
+      const initial = props.item;
       onMounted(() => mountLog.push("mount:" + initial));
-      return el("li", {}, item);
+      return el("li", {}, () => props.item);
     });
 
     const App = cc(() =>
@@ -131,11 +131,11 @@ describe("post-hydration update behavior", () => {
     const mountLog: string[] = [];
     const unmountLog: string[] = [];
 
-    const Row = cc<{ item: () => string }>(({ item }) => {
-      const initial = item();
+    const Row = cc<{ item: string }>((props) => {
+      const initial = props.item;
       onMounted(() => mountLog.push("mount:" + initial));
       onUnmounted(() => unmountLog.push("unmount:" + initial));
-      return el("span", {}, item);
+      return el("span", {}, () => props.item);
     });
 
     const App = cc(() =>

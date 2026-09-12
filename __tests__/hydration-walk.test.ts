@@ -164,11 +164,11 @@ describe("hydrateElement control flow", () => {
     const items = signal(["a", "b"]);
     const mountLog: string[] = [];
 
-    const ListItem = cc<{ item: () => string }>(({ item }) => {
+    const ListItem = cc<{ item: string }>((props) => {
       onMounted(() => {
-        mountLog.push("mount:" + item());
+        mountLog.push("mount:" + props.item);
       });
-      return el("span", {}, item);
+      return el("span", {}, () => props.item);
     });
 
     const App = cc(() =>
@@ -204,15 +204,15 @@ describe("hydrateElement control flow", () => {
     const mountLog: string[] = [];
     const unmountLog: string[] = [];
 
-    const ListItem = cc<{ item: () => string }>(({ item }) => {
-      const initial = item();
+    const ListItem = cc<{ item: string }>((props) => {
+      const initial = props.item;
       onMounted(() => {
         mountLog.push("mount:" + initial);
       });
       onUnmounted(() => {
         unmountLog.push("unmount:" + initial);
       });
-      return el("span", {}, item);
+      return el("span", {}, () => props.item);
     });
 
     const App = cc(() =>
@@ -256,12 +256,12 @@ describe("hydrateElement control flow", () => {
     const callbackLog: number[] = [];
     const mountLog: string[] = [];
 
-    const ListItem = cc<{ item: () => string }>(({ item }) => {
-      const initial = item();
+    const ListItem = cc<{ item: string }>((props) => {
+      const initial = props.item;
       onMounted(() => {
         mountLog.push("mount:" + initial);
       });
-      return el("span", {}, item);
+      return el("span", {}, () => props.item);
     });
 
     const App = cc(() =>

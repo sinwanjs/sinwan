@@ -32,6 +32,13 @@ export {
 
 // Component factories
 export { cc } from "./create.ts";
+export {
+  createLiveProps,
+  createLiveRest,
+  getRawProps,
+  getSpreadProps,
+  isLiveProps,
+} from "./live-props.ts";
 
 // Control flow
 export {

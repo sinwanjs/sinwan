@@ -25,6 +25,13 @@ describe("cc", () => {
     expect(MyComp({ title: "hello" })).toBe("hello");
   });
 
+  it("unwraps zero-arity getter props at the cc boundary", () => {
+    const MyComp = cc<{ title: string }>(({ title }) => title);
+    expect(
+      MyComp({ title: (() => "hello") as unknown as string }),
+    ).toBe("hello");
+  });
+
   it("can be used for page components", () => {
     const Home = cc<{ title: string }>(({ title }) => title);
     expect(Home({ title: "world" })).toBe("world");

@@ -9,6 +9,7 @@ import type {
   SinwanNode,
   PropsWithAutoChildren,
 } from "../types.ts";
+import { createLiveProps } from "./live-props.ts";
 
 /**
  * Create a typed Sinwan component.
@@ -40,7 +41,8 @@ import type {
 export function cc<P extends object = {}, R = SinwanNode>(
   fn: (props: PropsWithAutoChildren<P>) => R,
 ): SinwanComponent<P> {
-  const component: SinwanComponent<P> = (props) => fn(props) as SinwanNode;
+  const component: SinwanComponent<P> = (props) =>
+    fn(createLiveProps(props)) as SinwanNode;
   component._SinwanComponent = true;
   component._displayName = fn.name || "AnonymousComponent";
   return component;

@@ -33,5 +33,10 @@ export function useEffectEvent<A extends any[], R>(
 ): (...args: A) => R {
   const slot = useSlot<{ latest: (...args: A) => R }>(() => ({ latest: fn }));
   slot.latest = fn;
-  return ((...args: A) => slot.latest(...args)) as (...args: A) => R;
+  const wrapped = ((...args: A) => slot.latest(...args)) as (...args: A) => R;
+  Object.defineProperty(wrapped, "length", {
+    value: fn.length,
+    configurable: true,
+  });
+  return wrapped;
 }

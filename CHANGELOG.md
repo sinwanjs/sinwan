@@ -2,6 +2,36 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
 
+## [1.4.0] — Live `cc` Props
+
+Sinwan 1.4.0 makes `cc` props live. App authors keep `value={framework.value}`; the compiler still wraps that as `() => framework.value`. Setup now reads that getter on every access without re-running the component, without VDOM, and without unwrapping Signal objects.
+
+### Added
+
+- **`createLiveProps` (`live-props.ts`)**: `cc` setup receives a Proxy over the raw props bag. Zero-arity function props are invoked (`unwrap`, not `resolve`). `'key' in props` inspects own keys on the raw bag (omitted vs passed). `set` / `defineProperty` / `delete` write through so JSX can inject `children`. `ownKeys` / descriptors enumerate the raw bag.
+- **`createLiveRest` / `getSpreadProps` / `getRawProps` / `isLiveProps`**: Rest destructure hides omitted keys and stays live. JSX `{...props}` spreads the raw bag so native attributes keep getter functions. Wrapping an already-live object is a no-op.
+
+### Changed
+
+- **`cc` setup (`create.ts`)**: `fn(createLiveProps(props))`. `ComponentInstance.props` stays the raw bag (HMR, Activity soft-show, children inject).
+- **`on*` callbacks**: `onclick` / `onValueChange` (DOM events and `on[A-Z]…` names) are never invoked as getters, including zero-arity `onclick={() => …}`. Value props such as `open` still unwrap.
+- **Breaking for `cc` authors**: `typeof props.value === 'function'` no longer detects a getter. Intended. Passing a Signal object remains unsupported.
+
+### Fixed
+
+- **`useEffectEvent` arity (`use-effect-event.ts`)**: The wrapper preserves `fn.length` so a `(...args) =>` event is not treated as a zero-arity getter.
+
+### Internal
+
+- Added `live-props.test.ts` for omitted vs passed vs getter vs plain values, live DOM updates without remount, Signal pass-through, `on*` skip, SSR/hydrate/soft-show/HMR, and rest/spread identity.
+- `bun test`: 2997 pass / 0 fail. `src/component/live-props.ts` 100% lines and functions. `bun run typecheck` clean.
+
+### Planned [1.5.0]
+
+- Add Sinwan Flow — a complete visual flow system inspired by React Flow, featuring node-based editors, edge connections, zoom/pan controls, custom nodes, reactive graph rendering, and full SSR/hydration integration with the Sinwan runtime.
+
+---
+
 ## [1.3.3] — Reactive JSX Attribute Types
 
 Sinwan 1.3.3 types native HTML/SVG attributes as `Reactive<T>` so getters, Signals, and Computeds match the renderer (`isReactive` / `resolve`) without cast helpers. Plain strings, numbers, and booleans still typecheck. Event handlers, `ref`, `children`, and `key` are unchanged.
@@ -70,10 +100,6 @@ Sinwan 1.3.0 restores `<Key>` remount semantics when `cache` is omitted, makes k
 - Expanded regression coverage for `<Key>` (omitted cache remount, keep-alive compiled templates, hydration identity, cache dispose), Fast Refresh (`createRoot` / `hydrateRoot` child slots, primitive roots, swap failure), React adapters (`memo` non-object props, prerender abort, readable-stream abort cleanup, `useDeferredValue` in a transition, `useLayoutEffect` SSR warning), hydration walk, SSR stream/shell/markers, store modifiers, `domOps` defaults, `on()` / scheduler / `signal.valueOf()`, and JSX `jsxIntrinsic`.
 - Removed unreachable SSR/hydration arms (Virtual backward-expand after a `scrollTop = 0` window, `reconcileIntoRaw` object fallback, `resolveSlotValue` 0-arity function, hydration last-resort `insertBefore`, Virtual non-element scroll branch).
 - `bun test --coverage __tests__`: 2965 pass / 0 fail. `bun run typecheck` clean.
-
-### Planned [1.4.0]
-
-- Add Sinwan Flow — a complete visual flow system inspired by React Flow, featuring node-based editors, edge connections, zoom/pan controls, custom nodes, reactive graph rendering, and full SSR/hydration integration with the Sinwan runtime.
 
 ---
 

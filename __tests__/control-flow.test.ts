@@ -183,17 +183,17 @@ describe("For", () => {
 
     const Row = cc<{
       item: Item;
-      index: () => number;
-    }>(({ item, index }) => {
-      onMounted(() => lifecycle.push(`mounted:${item.id}`));
-      onUnmounted(() => lifecycle.push(`unmounted:${item.id}`));
+      index: number;
+    }>((props) => {
+      onMounted(() => lifecycle.push(`mounted:${props.item.id}`));
+      onUnmounted(() => lifecycle.push(`unmounted:${props.item.id}`));
       return el(
         "li",
         {
-          "data-id": item.id,
-          onClick: () => clicked.push(`${item.id}:${index()}`),
+          "data-id": props.item.id,
+          onClick: () => clicked.push(`${props.item.id}:${props.index}`),
         },
-        item.label,
+        props.item.label,
       );
     });
 
@@ -566,13 +566,13 @@ describe("Index", () => {
     const lifecycle: string[] = [];
 
     const Row = cc<{
-      item: () => { label: string };
+      item: { label: string };
       index: number;
-    }>(({ item, index }) => {
-      const label = computed(() => item().label);
-      onMounted(() => lifecycle.push(`mounted:${index}`));
-      onUnmounted(() => lifecycle.push(`unmounted:${index}`));
-      return el("li", { "data-index": index }, label as any);
+    }>((props) => {
+      const label = computed(() => props.item.label);
+      onMounted(() => lifecycle.push(`mounted:${props.index}`));
+      onUnmounted(() => lifecycle.push(`unmounted:${props.index}`));
+      return el("li", { "data-index": props.index }, label as any);
     });
 
     const App = cc(() =>
