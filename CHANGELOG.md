@@ -2,6 +2,26 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
 
+## [1.4.1] — Show/Portal Skip Descendant Remount
+
+Sinwan 1.4.1 keeps `<Show>` and `<Portal>` children mounted when only a descendant signal changes. Presence overlays (Sheet, Dialog, Popover) can stay on the same DOM node through `data-state="closed"` instead of remounting as a new open layer. Pair with **sinwan-compiler 0.3.1** and **sinwan-ui** overlay Presence exit CSS (`overlay-exit-fill-mode.md`).
+
+### Fixed
+
+- **Show child mount (`render-control-flow.ts`)**: `renderShowBlock` wraps child render in `untrack` so only `when` drives remounts. Descendant `open` / `data-state` reads no longer resubscribe the parent effect and clear children.
+- **Portal skip remount (`render-control-flow.ts`)**: `renderPortal` remounts children only when the mount **target** changes. Child mount is `untrack`ed. Unrelated descendant signals update in place.
+
+### Internal
+
+- Regression: `Portal > does not remount children when a descendant signal changes` in `control-flow.test.ts`.
+- Release metadata expects package version 1.4.1 and keeps the 1.4.0 changelog heading.
+
+### Planned [1.5.0]
+
+- Add Sinwan Flow — a complete visual flow system inspired by React Flow, featuring node-based editors, edge connections, zoom/pan controls, custom nodes, reactive graph rendering, and full SSR/hydration integration with the Sinwan runtime.
+
+---
+
 ## [1.4.0] — Live `cc` Props
 
 Sinwan 1.4.0 makes `cc` props live. App authors keep `value={framework.value}`; the compiler still wraps that as `() => framework.value`. Setup now reads that getter on every access without re-running the component, without VDOM, and without unwrapping Signal objects.
@@ -25,10 +45,6 @@ Sinwan 1.4.0 makes `cc` props live. App authors keep `value={framework.value}`; 
 
 - Added `live-props.test.ts` for omitted vs passed vs getter vs plain values, live DOM updates without remount, Signal pass-through, `on*` skip, SSR/hydrate/soft-show/HMR, and rest/spread identity.
 - `bun test`: 2997 pass / 0 fail. `src/component/live-props.ts` 100% lines and functions. `bun run typecheck` clean.
-
-### Planned [1.5.0]
-
-- Add Sinwan Flow — a complete visual flow system inspired by React Flow, featuring node-based editors, edge connections, zoom/pan controls, custom nodes, reactive graph rendering, and full SSR/hydration integration with the Sinwan runtime.
 
 ---
 

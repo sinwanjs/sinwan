@@ -15,7 +15,7 @@ import type {
   MountedReactiveBlock,
 } from "./types.ts";
 import { domOps } from "./dom-ops.ts";
-import { effect, resolve, signal, type Signal } from "../reactivity/index.ts";
+import { effect, resolve, signal, untrack, type Signal } from "../reactivity/index.ts";
 import { renderElementToDOM } from "./render-element.ts";
 import {
   getCurrentInstance,
@@ -199,18 +199,20 @@ function renderShowBlock(
     prevWhen = when;
 
     clearChildren(block);
-    block.children = withOptionalInstance(owner, () => {
-      const content = when
-        ? resolveShowChildren(element, when)
-        : (element.props as any).fallback;
-      return renderBlockContent(
-        content,
-        parent,
-        block.endAnchor,
-        namespace,
-        owner,
-      );
-    });
+    block.children = withOptionalInstance(owner, () =>
+      untrack(() => {
+        const content = when
+          ? resolveShowChildren(element, when)
+          : (element.props as any).fallback;
+        return renderBlockContent(
+          content,
+          parent,
+          block.endAnchor,
+          namespace,
+          owner,
+        );
+      }),
+    );
 
     if (initialized) {
       fireMountedAndQueueUpdated(owner);
@@ -1337,7 +1339,7 @@ function renderPortal(
   let disposeEffect = () => {};
 
   const targetAnchor = domOps.createComment("Sinwan-pa");
-  let lastTarget: Node | null = null;
+  let lastTarget: Node | null | undefined;
 
   const portal: MountedPortal = {
     type: "portal",
@@ -1350,8 +1352,9 @@ function renderPortal(
 
   disposeEffect = effect(() => {
     const target = resolvePortalTarget((element.props as any).mount);
+    const targetChanged = target !== lastTarget;
 
-    if (target !== lastTarget) {
+    if (targetChanged) {
       if (lastTarget) {
         domOps.remove(targetAnchor);
       }
@@ -1360,21 +1363,21 @@ function renderPortal(
       }
       lastTarget = target;
       portal.target = target as Node;
+      clearPortalChildren(portal);
+      if (target) {
+        portal.children = untrack(() =>
+          renderBlockContent(
+            (element.props as any).children ?? element.children,
+            target,
+            targetAnchor,
+            namespace,
+            owner,
+          ),
+        );
+      }
     }
 
-    clearPortalChildren(portal);
-
-    if (target) {
-      portal.children = renderBlockContent(
-        (element.props as any).children ?? element.children,
-        target,
-        targetAnchor,
-        namespace,
-        owner,
-      );
-    }
-
-    if (initialized) {
+    if (initialized && targetChanged) {
       fireMountedAndQueueUpdated(owner);
     }
     initialized = true;

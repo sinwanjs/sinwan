@@ -723,6 +723,41 @@ describe("Portal", () => {
     app.unmount();
     expect(target.textContent).toBe("");
   });
+
+  it("does not remount children when a descendant signal changes", async () => {
+    const target = doc.createElement("div");
+    doc.body.appendChild(target);
+    const label = signal("one");
+    const tick = signal(0);
+
+    const App = cc(() =>
+      el(Portal, {
+        mount: () => {
+          tick.value;
+          return target;
+        },
+        children: el("span", {
+          id: "ported",
+          "data-label": () => label.value,
+        }),
+      }),
+    );
+
+    mount(App, container);
+    const first = target.querySelector("#ported");
+    expect(first).toBeTruthy();
+    expect(first!.getAttribute("data-label")).toBe("one");
+
+    label.value = "two";
+    await nextTick();
+    expect(target.querySelector("#ported")).toBe(first);
+    expect(first!.getAttribute("data-label")).toBe("two");
+
+    tick.value += 1;
+    await nextTick();
+    expect(target.querySelector("#ported")).toBe(first);
+    expect(first!.getAttribute("data-label")).toBe("two");
+  });
 });
 
 describe("Virtual", () => {
