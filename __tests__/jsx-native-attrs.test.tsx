@@ -5,6 +5,7 @@ import type {
   SinwanIntrinsicElements,
   SinwanSVGElements,
 } from "../src/jsx/jsx-types.ts";
+import type { Computed, Signal } from "../src/reactivity/index.ts";
 
 /**
  * Type-level helper: assign a value to `T`'s key `K` and assert the
@@ -166,5 +167,75 @@ describe("SinwanIntrinsicElements native attribute typing", () => {
     expect((el as any).props.role).toBe("navigation");
     expect((el as any).props["aria-label"]).toBe("Main");
     expect((el as any).props.popover).toBe("auto");
+  });
+
+  it("accepts getters, signals, and computeds on non-event attributes", () => {
+    const classSignal: Signal<string> = {
+      value: "x",
+      peek: () => "x",
+      subscribe: () => () => {},
+    };
+    const busy: Computed<boolean> = { value: true, peek: () => true };
+    const disabled = () => true;
+    const label = () => "Main";
+    const dataState = () => (busy.value ? "busy" : undefined);
+    const style = () => "color: red";
+    const inputValue = () => "q";
+    const svgWidth = () => 320;
+    const buttonType = () => "button" as const;
+
+    assertAttr<SinwanIntrinsicElements["div"], "class", Signal<string>>(
+      "class",
+      classSignal,
+    );
+    assertAttr<SinwanIntrinsicElements["div"], "class", () => string>(
+      "class",
+      () => "x",
+    );
+    assertAttr<SinwanIntrinsicElements["button"], "disabled", () => boolean>(
+      "disabled",
+      disabled,
+    );
+    assertAttr<SinwanIntrinsicElements["div"], "aria-busy", Computed<boolean>>(
+      "aria-busy",
+      busy,
+    );
+    assertAttr<SinwanIntrinsicElements["div"], "aria-label", () => string>(
+      "aria-label",
+      label,
+    );
+    assertAttr<
+      SinwanIntrinsicElements["div"],
+      "data-state",
+      () => string | undefined
+    >("data-state", dataState);
+    assertAttr<SinwanIntrinsicElements["div"], "style", () => string>(
+      "style",
+      style,
+    );
+    assertAttr<SinwanIntrinsicElements["input"], "value", () => string>(
+      "value",
+      inputValue,
+    );
+    assertAttr<SinwanIntrinsicElements["textarea"], "value", () => string>(
+      "value",
+      inputValue,
+    );
+    assertAttr<SinwanSVGElements["svg"], "width", () => number>(
+      "width",
+      svgWidth,
+    );
+    assertAttr<
+      SinwanIntrinsicElements["button"],
+      "type",
+      () => "submit" | "reset" | "button"
+    >("type", buttonType);
+  });
+
+  it("keeps event handlers as functions, not Reactive wrappers", () => {
+    type Click = NonNullable<SinwanIntrinsicElements["button"]["onclick"]>;
+    type ClickIsHandler = Click extends (...args: any[]) => any ? true : false;
+    const clickIsHandler: ClickIsHandler = true;
+    expect(clickIsHandler).toBe(true);
   });
 });

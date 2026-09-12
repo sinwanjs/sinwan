@@ -7,7 +7,7 @@
  */
 
 import type { Properties as CSSProperties } from "csstype";
-import type { SinwanNode, SinwanSlots } from "../types.ts";
+import type { Reactive, SinwanNode, SinwanSlots } from "../types.ts";
 
 // ─── Children Type ──────────────────────────────────────────
 
@@ -16,18 +16,40 @@ export type JSXChildren = SinwanNode | SinwanSlots;
 // ─── Native Props Helper ────────────────────────────────────
 
 /**
- * Widen native DOM property types to also accept plain strings.
- * HTML and SVG attributes are strings at the markup level, but the DOM
- * interfaces expose many of them as specialized objects (e.g. SVGAnimatedString,
- * SVGAnimatedLength, number, boolean). This keeps the native type valid while
- * also allowing string attribute values, and leaves function-typed properties
- * (event handlers) unchanged.
+ * Widen native DOM property types to also accept plain strings and numbers.
+ * HTML and SVG attributes are strings (or numbers) at the markup level, but
+ * the DOM interfaces expose many of them as specialized objects (e.g.
+ * SVGAnimatedString, SVGAnimatedLength, boolean). This keeps the native type
+ * valid while also allowing string/number attribute values, and leaves
+ * function-typed properties (event handlers, element methods) unchanged.
  */
-type AllowString<T> = T extends (...args: any[]) => any
+type AllowString<T> = [T] extends [(...args: any[]) => any]
   ? T
-  : T extends string
+  : [T] extends [string]
     ? T
-    : T | string;
+    : T | string | number;
+
+/**
+ * Non-function DOM/JSX attributes accept a plain value, a Signal, a Computed,
+ * or a zero-arity getter — matching `resolve` / `isReactive` at runtime.
+ * Function-typed properties (methods, callbacks) are left unchanged so they
+ * are not confused with reactive getters.
+ */
+type ReactiveDomProp<T> = [T] extends [(...args: any[]) => any]
+  ? T
+  : Reactive<AllowString<T>>;
+
+/**
+ * Wrap a curated attribute interface so every non-function field accepts
+ * `Reactive<T>`. Tuple-wraps the function check so a union that includes a
+ * callback (e.g. `string | ((formData) => void)`) is still made reactive
+ * rather than treated as an event handler.
+ */
+type MakeReactive<T> = {
+  [K in keyof T]: [NonNullable<T[K]>] extends [(...args: any[]) => any]
+    ? T[K]
+    : Reactive<T[K]>;
+};
 
 /**
  * Used to represent DOM API's where users can either pass
@@ -293,24 +315,24 @@ type NativeProps<T extends Element> = {
     "children" | "attributes" | "style" | "classList" | "dataset"
   > as K extends `on${string}` ? K : never]?: SinwanEventHandler<T, T[K]>;
 } & {
-  // Non-event native DOM properties (widened to also accept strings).
+  // Non-event native DOM properties (plain value, Signal, Computed, or getter).
   [K in keyof Omit<
     StripIndex<T>,
     "children" | "attributes" | "style" | "classList" | "dataset"
-  > as K extends `on${string}` ? never : K]?: AllowString<T[K]>;
+  > as K extends `on${string}` ? never : K]?: ReactiveDomProp<T[K]>;
 } & {
   /** Child elements to render inside this element */
   children?: JSXChildren;
   /** Inline styles as a CSSProperties object or CSS string */
-  style?: CSSProperties | string;
+  style?: Reactive<CSSProperties | string>;
   /** CSS class name(s) for the element */
-  class?: string;
+  class?: Reactive<string>;
   /** Callback ref or ref object for accessing the DOM element */
   ref?: ((el: T | null) => void) | { current: T | null } | null;
   /** Unique identifier for list reconciliation */
   key?: string | number;
   /** Custom data attributes */
-  [key: `data-${string}`]: string | number | boolean | undefined;
+  [key: `data-${string}`]: Reactive<string | number | boolean | undefined>;
 };
 
 /**
@@ -321,14 +343,16 @@ type NativeProps<T extends Element> = {
  * `type`, `role`, `aria-*`, `popover`) win over the looser DOM `string` /
  * `boolean` types that `NativeProps` pulls in via `keyof T`. Everything else
  * on `Props` — `children`, `style`, `class`, `ref`, `key`, `data-*`, and all
- * remaining native DOM properties — is preserved unchanged.
+ * remaining native DOM properties — is preserved unchanged. Curated fields
+ * are wrapped with `MakeReactive` so `role`, `aria-*`, `type`, etc. accept
+ * Signals and getters the same way native DOM properties do.
  *
  * This is what gives Sinwan JSX a native, IDE-friendly feel: every element
  * keeps its real DOM typings while gaining the polished attribute unions
  * developers expect from a pro framework.
  */
 type MergeAttrs<P extends object, Attrs extends object> = Omit<P, keyof Attrs> &
-  Attrs;
+  MakeReactive<Attrs>;
 
 // ─── Enhanced Element Props ─────────────────────────────────
 //
@@ -339,9 +363,9 @@ type MergeAttrs<P extends object, Attrs extends object> = Omit<P, keyof Attrs> &
  * Enhanced form element props.
  * @property action - Form action URL or async function handler for form submission
  */
-type FormProps = NativeProps<HTMLFormElement> & {
+type FormProps = Omit<NativeProps<HTMLFormElement>, "action"> & {
   /** Form action URL or async function handler for form submission */
-  action?: string | ((formData: FormData) => void | Promise<void>);
+  action?: Reactive<string> | ((formData: FormData) => void | Promise<void>);
 };
 
 /**
@@ -350,30 +374,30 @@ type FormProps = NativeProps<HTMLFormElement> & {
  * @property defaultChecked - Initial checked state for uncontrolled checkboxes/radios
  * @property formAction - Override form action for this submitter
  */
-type InputProps = NativeProps<HTMLInputElement> & {
+type InputProps = Omit<NativeProps<HTMLInputElement>, "formAction"> & {
   /** Initial value for uncontrolled inputs */
   defaultValue?: string;
   /** Initial checked state for uncontrolled checkboxes/radios */
   defaultChecked?: boolean;
   /** Override form action for this submitter */
-  formAction?: string | ((formData: FormData) => void | Promise<void>);
+  formAction?: Reactive<string> | ((formData: FormData) => void | Promise<void>);
 };
 
 /**
  * Enhanced button element props.
  * @property formAction - Override form action for this submitter
  */
-type ButtonProps = NativeProps<HTMLButtonElement> & {
+type ButtonProps = Omit<NativeProps<HTMLButtonElement>, "formAction" | "type"> & {
   /** Override form action for this submitter */
-  formAction?: string | ((formData: FormData) => void | Promise<void>);
-  type?: "submit" | "reset" | "button" | undefined;
+  formAction?: Reactive<string> | ((formData: FormData) => void | Promise<void>);
+  type?: Reactive<"submit" | "reset" | "button"> | undefined;
 };
 
 /**
  * Enhanced select element props.
  * @property defaultValue - Initial selected value(s) for uncontrolled selects
  */
-type SelectProps = NativeProps<HTMLSelectElement> & {
+type SelectProps = Omit<NativeProps<HTMLSelectElement>, "defaultValue"> & {
   /** Initial selected value(s) for uncontrolled selects */
   defaultValue?: string | string[];
 };
@@ -391,7 +415,7 @@ type TextareaProps = NativeProps<HTMLTextAreaElement> & {
  * Enhanced option element props.
  * @property selected - Disabled; use parent select's value/defaultValue instead
  */
-type OptionProps = NativeProps<HTMLOptionElement> & {
+type OptionProps = Omit<NativeProps<HTMLOptionElement>, "selected"> & {
   /** Disabled; use parent select's value/defaultValue instead */
   selected?: never;
 };
@@ -400,9 +424,9 @@ type OptionProps = NativeProps<HTMLOptionElement> & {
  * Enhanced progress element props.
  * @property value - Current progress value (null for indeterminate)
  */
-type ProgressProps = NativeProps<HTMLProgressElement> & {
+type ProgressProps = Omit<NativeProps<HTMLProgressElement>, "value"> & {
   /** Current progress value (null for indeterminate) */
-  value?: number | null;
+  value?: Reactive<number | null>;
 };
 
 /**
@@ -410,11 +434,11 @@ type ProgressProps = NativeProps<HTMLProgressElement> & {
  * @property precedence - Stylesheet loading priority for head ordering
  * @property disabled - Whether the stylesheet is disabled
  */
-type LinkProps = NativeProps<HTMLLinkElement> & {
+type LinkProps = Omit<NativeProps<HTMLLinkElement>, "disabled"> & {
   /** Stylesheet loading priority for head ordering */
-  precedence?: string;
+  precedence?: Reactive<string>;
   /** Whether the stylesheet is disabled */
-  disabled?: boolean;
+  disabled?: Reactive<boolean>;
 };
 
 /**
@@ -422,11 +446,11 @@ type LinkProps = NativeProps<HTMLLinkElement> & {
  * @property precedence - Stylesheet loading priority for head ordering
  * @property href - Unique identifier for deduplication
  */
-type StyleProps = NativeProps<HTMLStyleElement> & {
+type StyleProps = Omit<NativeProps<HTMLStyleElement>, "href"> & {
   /** Stylesheet loading priority for head ordering */
-  precedence?: string;
+  precedence?: Reactive<string>;
   /** Unique identifier for deduplication */
-  href?: string;
+  href?: Reactive<string>;
 };
 
 /**

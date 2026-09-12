@@ -2,6 +2,21 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
 
+## [1.3.3] — Reactive JSX Attribute Types
+
+Sinwan 1.3.3 types native HTML/SVG attributes as `Reactive<T>` so getters, Signals, and Computeds match the renderer (`isReactive` / `resolve`) without cast helpers. Plain strings, numbers, and booleans still typecheck. Event handlers, `ref`, `children`, and `key` are unchanged.
+
+### Added
+
+- **Reactive JSX attributes (`jsx-types.ts`)**: Non-event native props, `class`, `style`, `data-*`, ARIA, and curated overlays (`role`, `popover`, `type`, …) accept `Reactive<T>` (`T | Signal<T> | Computed<T> | (() => T)`). `AllowString` / `ReactiveDomProp` / `MakeReactive` use tuple checks so `boolean` and callback unions do not distribute incorrectly. Enhanced extras that would collapse (`formAction`, `action`, `type`, progress `value`, link `disabled`, option `selected`) are `Omit`ted from native props and re-added as `Reactive` (or `never` for option `selected`). `on*` handlers stay `SinwanEventHandler`; they are not wrapped as `Reactive`.
+
+### Internal
+
+- Added regressions in `jsx-native-attrs.test.tsx` for getters, Signals, and Computeds on `class`, `disabled`, `aria-*`, `data-*`, `style`, input/textarea `value`, SVG `width`, and button `type`, plus a check that `onclick` remains a function type.
+- `bun test --coverage`: 2982 pass / 0 fail. `src/types.ts` 100% lines and functions. `bun run typecheck` clean.
+
+---
+
 ## [1.3.2] — Compiled `{children}` Node Trees
 
 Sinwan 1.3.2 stops hoisted `_$bindText` child slots from stringifying element trees as `[object Object]` (for example a Menubar with File / Edit / View).
