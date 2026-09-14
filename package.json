@@ -1,6 +1,6 @@
 {
   "name": "sinwan",
-  "version": "1.4.1",
+  "version": "1.5.1",
   "description": "A fast reactive UI library for JSX, fine-grained reactivity, SSR, and hydration.",
   "author": "Mohammed Ben Cheikh",
   "license": "MIT",
@@ -206,9 +206,9 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "happy-dom": "^20.14.3"
+    "happy-dom": "^20.14.5"
   },
   "peerDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": ">=5.0.0 <8.0.0"
   }
 }

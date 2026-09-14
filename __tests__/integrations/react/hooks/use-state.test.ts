@@ -61,6 +61,22 @@ function simulateRenders<T>(renders: { setup: () => T }[]): T[] {
 // ─── Reference ──────────────────────────────────────────────────────────────
 
 describe("useState — Reference", () => {
+  it("exposes current values through explicit coercion methods", () => {
+    const App = cc(() => {
+      const [value, setValue] = useState(12);
+      expect(value.valueOf()).toBe(12);
+      expect(value.toString()).toBe("12");
+      setValue(24);
+      expect(value.valueOf()).toBe(24);
+      expect(value.toString()).toBe("24");
+      expect(String(value)).toBe("24");
+      expect(Number(value)).toBe(24);
+      return el("div");
+    });
+    const app = mount(App, container);
+    app.unmount();
+  });
+
   it("accepts an initial state value", () => {
     const App = cc(() => {
       useState(0);

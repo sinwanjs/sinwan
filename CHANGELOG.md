@@ -2,6 +2,48 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
 
+## [1.5.1] — Reactive Child Untrack + Virtual Props Resolve
+
+Sinwan 1.5.1 re-applies the `renderReactiveNodeToDOM` `untrack` fix that was documented as fixed in 1.4.1 but absent from the loaded `dist/`, and fixes `<Virtual>` crashing when the compiler wraps numeric props as zero-arity getters. Pair with **sinwan-compiler 0.4.0** (`@sinwan-pure` JSDoc annotation).
+
+### Fixed
+
+- **Reactive child mount untrack (`render-children.ts`)**: `renderReactiveNodeToDOM` tracks the reactive source, then `untrack`s while mounting the resolved tree (same pattern as Show/Portal). The `resolve(reactive)` call stays inside `withInstance` so async re-runs preserve the owner for child component injection; only `renderNodeToDOM` is untracked. This was documented as fixed in 1.4.1 but absent from the loaded `dist/` — re-applied 2026-09-14 after Resizable panel setup re-created panels in an infinite loop because `registerPanel` reads/writes `panels.value` during child setup, subscribing the reactive-block effect to itself.
+- **Virtual props resolve (`render-control-flow.ts`)**: `renderVirtualBlock` now calls `resolve()` on `itemHeight`, `containerHeight`, `overscan`, and `minRendered` before use. Previously, when the compiler wrapped these props as zero-arity getters (e.g. `itemHeight={() => _$unwrap(props).itemHeight}`), the runtime used the function object as a number, producing `RangeError: Array length must be a positive integer of safe magnitude`.
+
+### Internal
+
+- Regression: `sinwan/__tests__/control-flow.test.ts` — reactive child mount does not resubscribe parent effect.
+- Regression: `sinwan-ui/__tests__/data-table.test.tsx` — Virtual windows body rows with compiler-wrapped props.
+- `bun test`: 3,019 pass / 0 fail. All `sinwan/src/` files at 100% line coverage. `bun run typecheck` clean.
+
+### Planned [1.5.x]
+
+- Add Sinwan Flow — a complete visual flow system inspired by React Flow, featuring node-based editors, edge connections, zoom/pan controls, custom nodes, reactive graph rendering, and full SSR/hydration integration with the Sinwan runtime.
+
+---
+
+## [1.5.0] — Derived Local Hydration
+
+Sinwan 1.5.0 adds hydration support for plain zero-arity getter attributes so compiler-promoted derived locals (`derivedLocals: true`, **sinwan-compiler 0.3.2**) update attributes reactively after hydration. Pair with **sinwan-compiler 0.3.2**.
+
+### Added
+
+- **Plain getter attribute hydration (`hydration/walk.ts`)**: `hydrateAttributes` now recognizes plain zero-arity functions (not only signals, computeds, explicit binding descriptors, or React state getter markers) as reactive attribute sources and attaches an effect using `resolve(value)`. Previously, a plain getter attribute stayed at its server-rendered value after hydration while signal-backed text updated correctly.
+
+### Internal
+
+- Hydration regression: text, class, style, and boolean attribute updates after hydration; SSR DOM nodes are not replaced; event handlers and nonzero-arity callbacks are not invoked during hydration.
+- Runtime integration: 9 tests covering the compiler-generated late-panel chain across all eight client/hydration × hoist × explicit-binding combinations, including late registration, collapse changes, a button click, panel replacement, and cleanup.
+- Coverage expansion: `control-flow.test.ts` (list index accessors, `Virtual` SSR/scroll/hydration), `event-bus.test.ts` (namespace unsubscribe, manual `once` unsubscribe), `hmr/effect-disposal.test.ts` (Activity resume re-registration of effects and imperative handles), `integrations/react/hooks/use-state.test.ts` (additional reference/edge paths).
+- `bun test`: 3,019 pass / 0 fail. All `sinwan/src/` files at 100% line coverage. `bun run typecheck` clean.
+
+### Planned [1.5.x]
+
+- Add Sinwan Flow — a complete visual flow system inspired by React Flow, featuring node-based editors, edge connections, zoom/pan controls, custom nodes, reactive graph rendering, and full SSR/hydration integration with the Sinwan runtime.
+
+---
+
 ## [1.4.1] — Show/Portal Skip Descendant Remount
 
 Sinwan 1.4.1 keeps `<Show>` and `<Portal>` children mounted when only a descendant signal changes. Presence overlays (Sheet, Dialog, Popover) can stay on the same DOM node through `data-state="closed"` instead of remounting as a new open layer. Pair with **sinwan-compiler 0.3.1** and **sinwan-ui** overlay Presence exit CSS (`overlay-exit-fill-mode.md`).
@@ -15,10 +57,6 @@ Sinwan 1.4.1 keeps `<Show>` and `<Portal>` children mounted when only a descenda
 
 - Regression: `Portal > does not remount children when a descendant signal changes` in `control-flow.test.ts`.
 - Release metadata expects package version 1.4.1 and keeps the 1.4.0 changelog heading.
-
-### Planned [1.5.0]
-
-- Add Sinwan Flow — a complete visual flow system inspired by React Flow, featuring node-based editors, edge connections, zoom/pan controls, custom nodes, reactive graph rendering, and full SSR/hydration integration with the Sinwan runtime.
 
 ---
 

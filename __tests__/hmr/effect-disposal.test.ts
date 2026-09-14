@@ -28,7 +28,12 @@ import { useState } from "../../src/react/use-state.ts";
 import { signal } from "../../src/reactivity/signal.ts";
 import { effect, getActiveEffectScope } from "../../src/reactivity/effect.ts";
 import { nextTick } from "../../src/reactivity/scheduler.ts";
-import { Activity, useEffect } from "../../src/react/_client.ts";
+import {
+  Activity,
+  useEffect,
+  useImperativeHandle,
+} from "../../src/react/_client.ts";
+import { jsx } from "../../src/jsx/jsx-runtime.ts";
 import type { SinwanElement } from "../../src/types.ts";
 
 let container: HTMLElement;
@@ -58,6 +63,41 @@ async function tick() {
 }
 
 describe("HMR effect disposal — effect() in component body", () => {
+  it("re-registers no-dependency effects and imperative handles after Activity resumes", async () => {
+    const mode = signal<"visible" | "hidden">("visible");
+    const events: string[] = [];
+    const ref: { current: { active: boolean } | null } = { current: null };
+    const Child = cc(() => {
+      useEffect(() => {
+        events.push("setup");
+        return () => {
+          events.push("cleanup");
+        };
+      });
+      useImperativeHandle(ref, () => ({ active: true }));
+      return jsx("span", { children: "child" });
+    });
+    const App = cc(() => Activity({ mode, children: jsx(Child, {}) }));
+    const app = mount(App, container);
+    try {
+      await tick();
+      expect(events).toEqual(["setup"]);
+      expect(ref.current?.active).toBe(true);
+      mode.value = "hidden";
+      await tick();
+      expect(events).toEqual(["setup", "cleanup"]);
+      expect(ref.current).toBeNull();
+      mode.value = "visible";
+      await tick();
+      expect(events).toEqual(["setup", "cleanup", "setup"]);
+      expect(ref.current?.active).toBe(true);
+    } finally {
+      app.unmount();
+    }
+    expect(events).toEqual(["setup", "cleanup", "setup", "cleanup"]);
+    expect(ref.current).toBeNull();
+  });
+
   it("does not duplicate effect runs after a hot-swap (the reported bug)", async () => {
     const logs: number[] = [];
     let setCount!: (v: number) => void;

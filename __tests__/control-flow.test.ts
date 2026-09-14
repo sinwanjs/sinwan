@@ -24,6 +24,11 @@ import {
   Virtual,
 } from "../src/component/control-flow.ts";
 import type { SinwanElement } from "../src/types.ts";
+import { jsx } from "../src/jsx/jsx-runtime.ts";
+import { hydrate } from "../src/hydration/hydrate.ts";
+import { renderToString } from "../src/server/renderer.ts";
+import { renderToHydratableString } from "../src/server/hydration-markers.ts";
+import { streamPage, streamHydratablePage } from "../src/server/stream.ts";
 
 let win: InstanceType<typeof Window>;
 let doc: Document;
@@ -56,6 +61,122 @@ function byTag(parent: Node, tag: string): HTMLElement[] {
     (parent as HTMLElement).getElementsByTagName(tag),
   ) as unknown as HTMLElement[];
 }
+
+describe("list index accessor contracts", () => {
+  it("keeps index accessors current through append, replace, and keyed reconciliation", async () => {
+    const items = signal([
+      { id: 1, label: "one" },
+      { id: 2, label: "two" },
+    ]);
+    const indices = new Map<number, () => number>();
+    const App = cc(() =>
+      For({
+        each: items,
+        key: (item) => item.id,
+        children: (item, index) => {
+          indices.set(item.id, index);
+          return jsx("span", { children: `${index()}:${item.label}` });
+        },
+      }),
+    );
+    const app = mount(App, container);
+    try {
+      expect(container.textContent).toBe("0:one1:two");
+      items.value = [...items.value, { id: 3, label: "three" }];
+      await nextTick();
+      expect(indices.get(3)!()).toBe(2);
+      items.value = [
+        { id: 4, label: "four" },
+        items.value[2]!,
+        items.value[0]!,
+      ];
+      await nextTick();
+      expect(indices.get(4)!()).toBe(0);
+      expect(indices.get(3)!()).toBe(1);
+      expect(indices.get(1)!()).toBe(2);
+      items.value = [
+        { id: 4, label: "FOUR" },
+        items.value[1]!,
+        items.value[2]!,
+      ];
+      await nextTick();
+      expect(container.textContent).toContain("0:FOUR");
+    } finally {
+      app.unmount();
+    }
+  });
+
+  for (const virtual of [false, true]) {
+    it(`exposes nested ${virtual ? "Virtual" : "For"} indices to Switch predicates`, () => {
+      const props = {
+        each: ["zero", "one"],
+        children: (item: string, index: () => number) =>
+          Match({ when: index() === 1, children: item }),
+      };
+      const App = cc(() =>
+        Switch({
+          children: virtual
+            ? Virtual({ ...props, itemHeight: 10, containerHeight: 10 })
+            : For(props),
+        }),
+      );
+      const app = mount(App, container);
+      expect(container.textContent).toBe("one");
+      app.unmount();
+    });
+  }
+
+  it("renders Virtual indices through all server serializers", async () => {
+    const App = cc(() =>
+      Virtual({
+        each: ["zero", "one", "two"],
+        itemHeight: 10,
+        containerHeight: 20,
+        overscan: 0,
+        children: (item, index) =>
+          jsx("span", { children: `${index()}:${item}` }),
+      }),
+    );
+    const results = [
+      await renderToString(App({})),
+      await renderToHydratableString(App),
+      await new Response(streamPage(App, {})).text(),
+      await new Response(streamHydratablePage(App)).text(),
+    ];
+    for (const html of results) {
+      expect(html).toContain("0:zero");
+      expect(html).toContain("1:one");
+      expect(html).not.toContain("2:two");
+    }
+  });
+
+  for (const hydration of [false, true]) {
+    it(`reads Virtual indices during initial rendering and scrolling, hydration=${hydration}`, async () => {
+      const App = cc(() =>
+        Virtual({
+          each: ["zero", "one", "two", "three"],
+          itemHeight: 10,
+          containerHeight: 20,
+          overscan: 0,
+          children: (item, index) =>
+            jsx("span", { children: `${index()}:${item}` }),
+        }),
+      );
+      if (hydration) container.innerHTML = await renderToHydratableString(App);
+      const app = hydration ? hydrate(App, container) : mount(App, container);
+      try {
+        expect(container.textContent).toBe("0:zero1:one");
+        const viewport = container.querySelector("div")!;
+        viewport.scrollTop = 20;
+        viewport.dispatchEvent(new (win as any).Event("scroll") as Event);
+        await nextTick();
+        expect(container.textContent).toBe("2:two3:three");
+      } finally {
+        app.unmount();
+      }
+    });
+  }
+});
 
 describe("Show", () => {
   it("swaps truthy and fallback branches reactively", async () => {

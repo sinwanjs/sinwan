@@ -734,6 +734,74 @@ describe("hydrateComponent edge cases", () => {
 
 // ─── React-compatible state getters (useState / useReducer) ─────────────────
 
+describe("plain getter attribute hydration", () => {
+  it("updates text, class, style and boolean attributes without replacing SSR nodes", async () => {
+    const count = signal(0);
+    let updates = 0;
+    const App = cc(() => {
+      onUpdated(() => {
+        updates++;
+      });
+      return jsxs("button", {
+        "data-count": () => String(count.value),
+        class: () => (count.value ? "active" : "idle"),
+        style: () =>
+          count.value ? { color: "red" } : { color: "blue", opacity: "0.5" },
+        disabled: () => count.value === 0,
+        children: () => String(count.value),
+      });
+    });
+    container.innerHTML = await renderToHydratableString(App);
+    const button = container.querySelector("button")!;
+    const app = hydrate(App, container);
+    try {
+      expect(button.getAttribute("data-count")).toBe("0");
+      expect(button.hasAttribute("disabled")).toBe(true);
+      count.value = 1;
+      await nextTick();
+      expect(container.querySelector("button")).toBe(button);
+      expect(button.getAttribute("data-count")).toBe("1");
+      expect(button.className).toBe("active");
+      expect(button.style.color).toBe("red");
+      expect(button.style.opacity).toBe("");
+      expect(button.hasAttribute("disabled")).toBe(false);
+      expect(button.textContent).toBe("1");
+      expect(updates).toBeGreaterThan(0);
+    } finally {
+      app.unmount();
+    }
+    count.value = 2;
+    await nextTick();
+    expect(button.getAttribute("data-count")).toBe("1");
+  });
+
+  it("does not invoke event handlers or nonzero-arity callback attributes during hydration", async () => {
+    let calls = 0;
+    const callback = (value: string) => {
+      calls++;
+      return value;
+    };
+    const App = cc(() =>
+      jsxs("button", {
+        onclick: () => {
+          calls++;
+        },
+        "data-callback": callback,
+        children: "click",
+      }),
+    );
+    container.innerHTML = await renderToHydratableString(App);
+    const app = hydrate(App, container);
+    try {
+      expect(calls).toBe(0);
+      container.querySelector("button")!.click();
+      expect(calls).toBe(1);
+    } finally {
+      app.unmount();
+    }
+  });
+});
+
 describe("React-compatible state getters", () => {
   const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
 
@@ -2082,11 +2150,7 @@ describe("hydrateSuspense remaining error paths", () => {
       throw new Error("suspense-initial-boom");
     });
     const App = cc(() =>
-      el(
-        Suspense,
-        { fallback: el("p", {}, "loading") },
-        el(Throwing),
-      ),
+      el(Suspense, { fallback: el("p", {}, "loading") }, el(Throwing)),
     );
     container.innerHTML = "<p>loading</p>";
     const app = hydrate(App, container);
@@ -2134,11 +2198,8 @@ describe("makeReactiveBlock remaining branches", () => {
     const visible = signal(true);
     let explode = false;
     const App = cc(() =>
-      el(
-        Show,
-        { when: visible, fallback: "hidden" },
-        () =>
-          explode ? explodingElement("show-boom") : el("span", {}, "visible"),
+      el(Show, { when: visible, fallback: "hidden" }, () =>
+        explode ? explodingElement("show-boom") : el("span", {}, "visible"),
       ),
     );
     const html = await renderToHydratableString(App);
@@ -2185,7 +2246,11 @@ describe("makeReactiveBlock remaining branches", () => {
         Switch,
         {},
         el(Match, { when: () => state.value === "a" }, "A"),
-        el(Match, { when: () => state.value === "b" }, explodingElement("switch-boom")),
+        el(
+          Match,
+          { when: () => state.value === "b" },
+          explodingElement("switch-boom"),
+        ),
       ),
     );
     const html = await renderToHydratableString(App);

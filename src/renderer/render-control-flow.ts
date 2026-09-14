@@ -15,7 +15,13 @@ import type {
   MountedReactiveBlock,
 } from "./types.ts";
 import { domOps } from "./dom-ops.ts";
-import { effect, resolve, signal, untrack, type Signal } from "../reactivity/index.ts";
+import {
+  effect,
+  resolve,
+  signal,
+  untrack,
+  type Signal,
+} from "../reactivity/index.ts";
 import { renderElementToDOM } from "./render-element.ts";
 import {
   getCurrentInstance,
@@ -309,10 +315,10 @@ function renderVirtualBlock<T>(
     children?: (item: T, index: () => number) => SinwanNode;
   };
 
-  const itemHeight = props.itemHeight;
-  const containerHeight = props.containerHeight;
-  const overscan = props.overscan ?? 3;
-  const minRendered = props.minRendered ?? 0;
+  const itemHeight = resolve(props.itemHeight) as number;
+  const containerHeight = resolve(props.containerHeight) as number;
+  const overscan = (resolve(props.overscan) as number | undefined) ?? 3;
+  const minRendered = (resolve(props.minRendered) as number | undefined) ?? 0;
 
   const container = domOps.createElement("div") as HTMLElement;
   container.style.overflow = "auto";

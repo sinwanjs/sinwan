@@ -18,6 +18,7 @@ import {
   isReactive,
   resolve,
   effect,
+  untrack,
   type Signal,
   type Computed,
 } from "../reactivity/index.ts";
@@ -289,14 +290,17 @@ function renderReactiveNodeToDOM(
       removeMountedNode(mountedContent);
     }
 
-    // 2. Resolve and render new content
-    const render = () =>
-      renderNodeToDOM(
-        resolve(reactive) as SinwanNode,
-        parent,
-        endAnchor,
-        namespace,
+    // 2. Resolve (tracked) and render (untracked) inside withInstance so
+    //    async re-runs preserve the correct owner for child component
+    //    injection. Rendering is untracked to prevent setup-time signal
+    //    reads (e.g. parent signal mutated by registration) from
+    //    subscribing this block and causing a self-triggering loop.
+    const render = () => {
+      const resolved = resolve(reactive) as SinwanNode;
+      return untrack(() =>
+        renderNodeToDOM(resolved, parent, endAnchor, namespace),
       );
+    };
     mountedContent = owner ? withInstance(owner, render) : render();
     block.children = [mountedContent];
 

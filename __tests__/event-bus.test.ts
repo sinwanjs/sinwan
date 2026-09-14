@@ -19,6 +19,19 @@ import {
 } from "../src/event/ssr-context.ts";
 
 describe("SinwanEventBus", () => {
+  it("unsubscribes namespace listeners through the returned cleanup", () => {
+    const bus = new SinwanEventBus();
+    const calls: unknown[][] = [];
+    const unsubscribe = bus.onNamespace("user:*", (...args) => {
+      calls.push(args);
+    });
+    bus.emit("user:login", 1);
+    unsubscribe();
+    unsubscribe();
+    bus.emit("user:logout", 2);
+    expect(calls).toEqual([["user:login", 1]]);
+  });
+
   it("should subscribe and emit events", () => {
     const bus = new SinwanEventBus();
     const calls: unknown[] = [];
@@ -155,6 +168,16 @@ describe("SinwanEventBus", () => {
     unsubscribe();
     bus.emit("user:logout");
     expect(calls).toEqual(["user:login"]);
+  });
+
+  it("should support manual unsubscribe from once listeners", () => {
+    const bus = new SinwanEventBus();
+    const calls: unknown[] = [];
+
+    const unsubscribe = bus.once("test", (data) => calls.push(data));
+    unsubscribe();
+    bus.emit("test", "first");
+    expect(calls).toEqual([]);
   });
 });
 

@@ -49,7 +49,11 @@ import {
   type SinwanServerTemplateResult,
 } from "../renderer/template.ts";
 import { applyRef, renderElementToDOM } from "../renderer/render-element.ts";
-import { removeMountedNode, getMountedDomNodes, unmountNode } from "../renderer/unmount.ts";
+import {
+  removeMountedNode,
+  getMountedDomNodes,
+  unmountNode,
+} from "../renderer/unmount.ts";
 import type {
   MountedElement,
   MountedReactiveBlock,
@@ -822,12 +826,18 @@ function hydrateAttributes(
     )
       continue;
 
-    if (isSignal(value) || isComputed(value)) {
+    if (
+      isSignal(value) ||
+      isComputed(value) ||
+      (typeof value === "function" &&
+        value.length === 0 &&
+        !(STATE_GETTER_MARKER in value))
+    ) {
       // Reactive attribute — needs an effect
       const state = { previousStyleProps: new Set<string>() };
       let initialized = false;
       const dispose = effect(() => {
-        setSingleAttribute(el, key, (value as any).value, state);
+        setSingleAttribute(el, key, resolve(value), state);
         if (initialized) {
           queueUpdatedHooks(owner);
         }
