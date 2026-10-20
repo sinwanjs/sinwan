@@ -81,10 +81,14 @@ jobs:
 
       - name: Verify dist
         run: |
-          test -f dist/component.js
+          test -f dist/component.development.js
+          test -f dist/component.production.min.js
           test -f dist/component.d.ts
+          test -f dist/control-flow.development.js
+          test -f dist/control-flow.production.min.js
           test -f dist/esm/package.json
-          test -f dist/cjs/package.json
+          test ! -e dist/cjs
+          test ! -e dist/component.js
           echo "dist verified"
 
       - name: Upload build artifacts
