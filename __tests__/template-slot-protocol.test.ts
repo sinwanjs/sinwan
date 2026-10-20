@@ -10,7 +10,7 @@ import { cc } from "../src/component/create.ts";
 import { mount } from "../src/renderer/mount.ts";
 import { provide, inject } from "../src/component/provide-inject.ts";
 import { getCurrentInstance } from "../src/component/instance.ts";
-import type { SinwanNode } from "../src/types.ts";
+import type { SinwanElement, SinwanNode } from "../src/types.ts";
 import { signal } from "../src/reactivity/signal.ts";
 import { nextTick } from "../src/reactivity/index.ts";
 import type { TemplateDef } from "../src/renderer/template-protocol.ts";
@@ -327,7 +327,7 @@ describe("TemplateSlotProtocol + _$createTemplate", () => {
   });
 
   it("renders reactive object children through parent-fill slots", async () => {
-    const node = signal({ tag: "em", props: {}, children: ["x"] } as const);
+    const node = signal<SinwanElement>({ tag: "em", props: {}, children: ["x"] });
     const def: TemplateDef = {
       html: "<div><!--s:0--></div>",
       slots: [{ path: [0], type: "child" }],

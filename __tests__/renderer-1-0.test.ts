@@ -68,6 +68,28 @@ afterEach(() => {
   resetDOMOps();
 });
 
+function isDispatchableEvent(value: unknown): value is Event {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    typeof value.type === "string" &&
+    "bubbles" in value &&
+    typeof value.bubbles === "boolean" &&
+    "stopPropagation" in value &&
+    typeof value.stopPropagation === "function" &&
+    "currentTarget" in value
+  );
+}
+
+function windowEvent(type: string, init: { bubbles: boolean }): Event {
+  const event: unknown = new win.Event(type, init);
+  if (!isDispatchableEvent(event)) {
+    throw new Error(`expected a ${type} event`);
+  }
+  return event;
+}
+
 function el(
   tag: string | Function,
   props: Record<string, unknown> = {},
@@ -475,17 +497,17 @@ describe("template event delegation", () => {
     expect((buttons[0] as any).$$click).toBeTypeOf("function");
     expect((buttons[1] as any).$$click).toBeTypeOf("function");
 
-    buttons[0]!.dispatchEvent(new win.Event("click", { bubbles: true }));
-    buttons[1]!.dispatchEvent(new win.Event("click", { bubbles: true }));
+    buttons[0]!.dispatchEvent(windowEvent("click", { bubbles: true }));
+    buttons[1]!.dispatchEvent(windowEvent("click", { bubbles: true }));
     expect(clicks).toEqual(["a", "b"]);
     // Reading currentTarget exercises the delegated getter
-    const probe = new win.Event("click", { bubbles: true });
-    let current: EventTarget | null = null;
+    const probe = windowEvent("click", { bubbles: true });
+    const seen: { current: EventTarget | null } = { current: null };
     (buttons[0] as any).$$click = (e: Event) => {
-      current = e.currentTarget;
+      seen.current = e.currentTarget;
     };
     buttons[0]!.dispatchEvent(probe);
-    expect(current).toBe(buttons[0]);
+    expect(seen.current).toBe(buttons[0]);
 
     for (const dispose of a.disposers) dispose();
     for (const dispose of b.disposers) dispose();
@@ -519,7 +541,7 @@ describe("template event delegation", () => {
       doc,
     );
 
-    inner.dispatchEvent(new win.Event("click", { bubbles: true }));
+    inner.dispatchEvent(windowEvent("click", { bubbles: true }));
     expect(order).toEqual(["inner"]);
 
     disposeInner();
@@ -547,7 +569,7 @@ describe("template event delegation", () => {
       doc,
     );
 
-    button.dispatchEvent(new win.Event("click", { bubbles: true }));
+    button.dispatchEvent(windowEvent("click", { bubbles: true }));
     expect(clicks).toEqual(["button"]);
     dispose();
   });
@@ -562,7 +584,7 @@ describe("template event delegation", () => {
       clicked++;
     }, doc);
     expect((el as any).$$click).toBeTypeOf("function");
-    el.dispatchEvent(new win.Event("click", { bubbles: true }));
+    el.dispatchEvent(windowEvent("click", { bubbles: true }));
     expect(clicked).toBe(1);
     dispose();
     expect((el as any).$$click).toBeUndefined();
@@ -579,7 +601,7 @@ describe("template event delegation", () => {
     );
     expect(cleanups).toHaveLength(1);
     expect((el as any).$$click).toBeTypeOf("function");
-    el.dispatchEvent(new win.Event("click", { bubbles: true }));
+    el.dispatchEvent(windowEvent("click", { bubbles: true }));
     expect(clicked).toBe(2);
     for (const c of cleanups!) c();
 
@@ -607,14 +629,14 @@ describe("template event delegation", () => {
     // Direct bind — no $$mouseenter property (unlike click delegation).
     expect((el as any).$$mouseenter).toBeUndefined();
     // Entering the child still delivers native mouseenter to the parent.
-    el.dispatchEvent(new win.Event("mouseenter", { bubbles: false }));
+    el.dispatchEvent(windowEvent("mouseenter", { bubbles: false }));
     expect(entered).toBe(1);
-    child.dispatchEvent(new win.Event("mouseenter", { bubbles: false }));
+    child.dispatchEvent(windowEvent("mouseenter", { bubbles: false }));
     // Synthetic mouseenter on the child does not retarget to the parent;
     // native geometry entry does. Direct listener is on `el` only.
     expect(entered).toBe(1);
     dispose();
-    el.dispatchEvent(new win.Event("mouseenter", { bubbles: false }));
+    el.dispatchEvent(windowEvent("mouseenter", { bubbles: false }));
     expect(entered).toBe(1);
   });
 
@@ -630,8 +652,8 @@ describe("template event delegation", () => {
       blurs++;
     }, doc);
     expect((el as any).$$focus).toBeUndefined();
-    el.dispatchEvent(new win.Event("focus", { bubbles: false }));
-    el.dispatchEvent(new win.Event("blur", { bubbles: false }));
+    el.dispatchEvent(windowEvent("focus", { bubbles: false }));
+    el.dispatchEvent(windowEvent("blur", { bubbles: false }));
     expect(focuses).toBe(1);
     expect(blurs).toBe(1);
     d1();
