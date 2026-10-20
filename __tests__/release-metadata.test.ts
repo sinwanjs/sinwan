@@ -11,9 +11,9 @@ describe("release metadata", () => {
   /**
    * Publishes package version 2.0.0
    */
-  it("publishes package version 2.0.0", async () => {
+  it("publishes package version 2.0.1", async () => {
     const pkg = await Bun.file(join(root, "package.json")).json();
-    expect(pkg.version).toBe("2.0.0");
+    expect(pkg.version).toBe("2.0.1");
     expect(pkg.exports["./renderer"]).toBeDefined();
     expect(pkg.exports["./control-flow"]).toBeDefined();
   });
@@ -23,6 +23,7 @@ describe("release metadata", () => {
    */
   it("uses a 1.5.1 changelog entry without removed patch entries", async () => {
     const changelog = await Bun.file(join(root, "CHANGELOG.md")).text();
+    expect(changelog).toContain("## [2.0.1]");
     expect(changelog).toContain("## [2.0.0]");
     expect(changelog).toContain("## [1.5.1]");
     expect(changelog).toContain("## [1.5.0]");

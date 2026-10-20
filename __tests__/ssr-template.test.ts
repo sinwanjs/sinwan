@@ -205,6 +205,39 @@ describe("SSR template serialization (Phase A)", () => {
     expect(html).not.toContain('title=""');
   });
 
+  it("inserts class and event attributes when the placeholder was omitted", async () => {
+    const { _$createTemplate } = await import("../src/renderer/template.ts");
+    const { renderToHydratableString } =
+      await import("../src/server/hydration-markers.ts");
+    const { cc } = await import("../src/component/create.ts");
+
+    const def = {
+      html: "<div><button>Go</button></div>",
+      slots: [
+        { path: [], type: "attr" as const, name: "class" },
+        { path: [0], type: "event" as const, name: "onClick" },
+      ],
+    };
+
+    const App = cc(() => {
+      return _$createTemplate(def, ["card", () => {}]);
+    });
+
+    const html = await renderToHydratableString(App, {});
+    expect(html).toContain('class="card"');
+    expect(html).toContain('data-sinwan-ev="click:0"');
+    expect(html).toContain("<button");
+
+    const missing = {
+      html: "<!-- only -->",
+      slots: [{ path: [0], type: "attr" as const, name: "class" }],
+    };
+    const Miss = cc(() => _$createTemplate(missing, ["nope"]));
+    const missed = await renderToHydratableString(Miss, {});
+    expect(missed).toContain("<!-- only -->");
+    expect(missed).not.toContain('class="nope"');
+  });
+
   it("strips false attribute slots and resolves bindings, signals, and getters", async () => {
     const { _$createTemplate, _$bindAttr } =
       await import("../src/renderer/template.ts");

@@ -2,6 +2,14 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.0.1] — SSR Fills Omitted Class and Event Slots
+
+Sinwan 2.0.1 fills hoisted `class` and `on*` slots when the template HTML has no empty placeholder. Pair with **sinwan-compiler 1.0.0**, which omits ` class=""` and ` onclick=""` from hoisted markup.
+
+### Fixed
+
+- **Omitted attr and event placeholders (`server/hydration-markers.ts`)**: `renderServerTemplate` still replaces a ` name=""` placeholder when it is present. When `class` or `on*` was left out of the HTML, the rendered attribute or `data-sinwan-ev` marker is inserted into the opening tag at `slot.path`. A missing element path leaves the HTML unchanged.
+
 ## [2.0.0] — ESM-only Runtime, Tree-shaken Control Flow, and List Identity `by`
 
 Sinwan 2.0.0 is a breaking release of the local work after 1.5.1. The package ships as ESM only, drops `sinwan/store`, and renames list identity on `<For>` and `<Virtual>` from `key` to `by`. Control-flow primitives register themselves so unused ones can be tree-shaken, and the renderer, lists, events, and dependency tracking are rebuilt around the keyed-list paint path.

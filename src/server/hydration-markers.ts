@@ -347,10 +347,12 @@ async function renderServerTemplate(
       // "" for null/false). Replace the ` name=""` placeholder with it.
       const rendered = renderServerAttribute(slot.name, resolved);
       const placeholder = ` ${slot.name}=""`;
-      if (rendered) {
-        html = html.replace(placeholder, rendered);
-      } else {
-        html = html.replace(placeholder, "");
+      if (html.includes(placeholder)) {
+        html = rendered
+          ? html.replace(placeholder, rendered)
+          : html.replace(placeholder, "");
+      } else if (rendered) {
+        html = insertAttributeAtPath(html, slot.path ?? [], rendered);
       }
     } else if (slot.type === "event" && slot.name) {
       const eventName = slot.name.startsWith("on")
@@ -358,7 +360,9 @@ async function renderServerTemplate(
         : slot.name;
       const placeholder = ` ${slot.name}=""`;
       const replacement = ` ${adapter.eventAttr}="${eventName}:${ctx.eventIndex++}"`;
-      html = html.replace(placeholder, replacement);
+      html = html.includes(placeholder)
+        ? html.replace(placeholder, replacement)
+        : insertAttributeAtPath(html, slot.path ?? [], replacement);
     } else if (slot.type === "ref") {
       // Refs are client-only — no SSR output
       continue;
@@ -383,6 +387,31 @@ async function renderServerTemplate(
   }
 
   return html;
+}
+
+/**
+ * Insert an attribute into the opening tag at `path` when the compiler omitted
+ * the ` name=""` placeholder (`class` and `on*` slots).
+ */
+function insertAttributeAtPath(
+  html: string,
+  path: number[],
+  attr: string,
+): string {
+  const root = findRootElementRange(html);
+  if (!root) return html;
+  let range: SsrElemRange = root;
+  for (let d = 0; d < path.length; d++) {
+    const kids = listSsrChildNodes(html, range.openEnd, range.closeStart);
+    const child = kids[path[d]!];
+    if (!child || child.kind !== "element") return html;
+    range = child;
+  }
+  let insertAt = range.openEnd;
+  if (html[insertAt - 1] === ">") {
+    insertAt -= html[insertAt - 2] === "/" ? 2 : 1;
+  }
+  return html.slice(0, insertAt) + attr + html.slice(insertAt);
 }
 
 /** Void elements that never carry child content (compiler HTML only). */
