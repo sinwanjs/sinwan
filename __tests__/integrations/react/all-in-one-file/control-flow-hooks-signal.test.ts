@@ -122,7 +122,7 @@ describe("Key + Switch + For + Match + useState + useEffect + signal", () => {
                     el("h2", {}, "User List"),
                     el(For, {
                       each: items,
-                      key: (item: { id: number }) => item.id,
+                      by: (item: { id: number }) => item.id,
                       fallback: el("p", {}, "No users"),
                       children: (item: { id: number; name: string }) =>
                         el(ListItem, { item }),

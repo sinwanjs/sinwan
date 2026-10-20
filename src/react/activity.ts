@@ -1,10 +1,13 @@
 import type { ReactNode } from "./_types/core.ts";
-import type { SinwanElement } from "../types.ts";
-import { ACTIVITY_TYPE } from "../component/control-flow.ts";
+import type { SinwanElement, SinwanNode } from "../types.ts";
+import {
+  Activity as createActivityElement,
+  type ActivityMode,
+} from "../control-flow/components/activity/client.ts";
 import { REACT_ACTIVITY_TYPE } from "./_internal/symbols.ts";
 import type { Signal } from "../reactivity/signal.ts";
 
-export type ActivityMode = "visible" | "hidden";
+export type { ActivityMode };
 
 export interface ActivityProps {
   mode?: ActivityMode | Signal<ActivityMode>;
@@ -37,15 +40,11 @@ export interface ActivityProps {
  * ```
  */
 export function Activity(props: ActivityProps): SinwanElement {
-  return {
-    tag: ACTIVITY_TYPE,
-    props: {
-      mode: props.mode ?? "visible",
-      as: props.as,
-      children: props.children,
-    },
-    children: [],
-  };
+  return createActivityElement({
+    mode: props.mode ?? "visible",
+    as: props.as,
+    children: props.children as SinwanNode,
+  });
 }
 
 (Activity as unknown as { $$typeof: symbol }).$$typeof = REACT_ACTIVITY_TYPE;

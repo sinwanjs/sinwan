@@ -256,7 +256,7 @@ describe("post-hydration update behavior", () => {
     const App = cc(() =>
       el(
         For,
-        { each: items, key: (it: { id: number }) => it.id },
+        { each: items, by: (it: { id: number }) => it.id },
         (it: { id: number; name: string }) => el(Row, { name: it.name }),
       ),
     );
@@ -294,7 +294,7 @@ describe("post-hydration update behavior", () => {
     const App = cc(() =>
       el(
         For,
-        { each: items, key: (it: { id: number }) => it.id },
+        { each: items, by: (it: { id: number }) => it.id },
         (it: { id: number; name: string }) => el(Row, { name: it.name }),
       ),
     );

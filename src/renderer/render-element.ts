@@ -16,33 +16,11 @@ import { bindEvents } from "./events.ts";
 import { renderChildrenToDOM, renderNodeToDOM } from "./render-children.ts";
 import { Fragment } from "../jsx/jsx-runtime.ts";
 import {
-  Dynamic,
-  ErrorBoundary,
-  For,
-  Index,
-  Key,
-  Portal,
-  Switch,
-  Visible,
-  Virtual,
-  isDynamicElement,
-  isErrorBoundaryElement,
-  isForElement,
-  isIndexElement,
-  isKeyElement,
-  isPortalElement,
-  isShowElement,
-  isSuspenseElement,
-  isSwitchElement,
-  isActivityElement,
-  isViewTransitionElement,
-  isVirtualElement,
-  Show,
-} from "../component/control-flow.ts";
-import {
-  renderControlFlowToDOM,
-  hasActiveErrorBoundary,
-} from "./render-control-flow.ts";
+  expandRegisteredFactory,
+  isControlFlowElement,
+} from "../control-flow/registry.ts";
+import { hasActiveErrorBoundary } from "../control-flow/components/error-boundary/stack.ts";
+import { renderControlFlowToDOM } from "./render-control-flow.ts";
 import {
   createComponentInstance,
   getCurrentInstance,
@@ -52,8 +30,11 @@ import {
   restoreEffectScope,
   type ComponentInstance,
 } from "../component/instance.ts";
+import { applyRef } from "./apply-ref.ts";
 import { getActiveSuspenseBoundary } from "./suspense-boundary.ts";
 import { resolveLatestComponent } from "../hmr/component-registry.ts";
+
+export { applyRef } from "./apply-ref.ts";
 
 // Void elements — no children, self-closing
 const VOID_ELEMENTS = new Set([
@@ -108,44 +89,16 @@ export function renderElementToDOM(
   if (typeof tag === "function") {
     // Built-in control-flow wrappers should belong to the current owner,
     // not create their own component instance.
-    if (
-      tag === Show ||
-      tag === For ||
-      tag === Switch ||
-      tag === Index ||
-      tag === Key ||
-      tag === Dynamic ||
-      tag === Portal ||
-      tag === Visible ||
-      tag === ErrorBoundary ||
-      tag === Virtual
-    ) {
-      return renderElementToDOM(
-        (tag as Function)(props),
-        parent,
-        anchor,
-        namespace,
-      );
+    const expanded = expandRegisteredFactory(element);
+    if (expanded) {
+      return renderElementToDOM(expanded, parent, anchor, namespace);
     }
 
     return renderComponentToDOM(tag, props, parent, anchor, namespace);
   }
 
-  // Built-in control-flow elements (symbol tags)
-  if (
-    isShowElement(element) ||
-    isForElement(element) ||
-    isSwitchElement(element) ||
-    isIndexElement(element) ||
-    isKeyElement(element) ||
-    isDynamicElement(element) ||
-    isPortalElement(element) ||
-    isSuspenseElement(element) ||
-    isActivityElement(element) ||
-    isViewTransitionElement(element) ||
-    isErrorBoundaryElement(element) ||
-    isVirtualElement(element)
-  ) {
+  // Built-in control-flow elements (symbol tags registered by their client module)
+  if (isControlFlowElement(element)) {
     return renderControlFlowToDOM(element, parent, anchor, namespace);
   }
 
@@ -415,31 +368,4 @@ function getChildNamespace(
     return null;
   }
   return namespace;
-}
-
-type RefValue =
-  | ((el: Element | null) => void)
-  | { current: Element | null }
-  | null
-  | undefined;
-
-export function applyRef(el: Element, ref: unknown): CleanupFn | null {
-  const value = ref as RefValue;
-  if (!value) {
-    return null;
-  }
-
-  if (typeof value === "function") {
-    value(el);
-    return () => value(null);
-  }
-
-  if (typeof value === "object" && "current" in value) {
-    value.current = el;
-    return () => {
-      value.current = null;
-    };
-  }
-
-  return null;
 }

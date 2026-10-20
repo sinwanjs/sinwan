@@ -672,6 +672,42 @@ describe("hydrateControlFlow fallbacks", () => {
     expect(container.textContent).not.toContain("no-match");
     app.unmount();
   });
+
+  it("hydrates standalone Match when true", async () => {
+    const App = cc(() =>
+      Match({ when: true, children: (v: boolean) => `ok-${v}` }),
+    );
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+    const app = hydrate(App, container);
+    expect(container.textContent).toContain("ok-true");
+    app.unmount();
+  });
+
+  it("hydrates standalone Match when false as empty", async () => {
+    const App = cc(() => Match({ when: false, children: "hidden" }));
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+    const app = hydrate(App, container);
+    expect(container.textContent).not.toContain("hidden");
+    app.unmount();
+  });
+
+  it("toggles standalone Match after hydration", async () => {
+    const when = signal(true);
+    const App = cc(() => Match({ when, children: "visible" }));
+    const html = await renderToHydratableString(App);
+    container.innerHTML = html;
+    const app = hydrate(App, container);
+    expect(container.textContent).toContain("visible");
+    when.value = false;
+    await nextTick();
+    expect(container.textContent).not.toContain("visible");
+    when.value = true;
+    await nextTick();
+    expect(container.textContent).toContain("visible");
+    app.unmount();
+  });
 });
 
 describe("applyRef edge cases", () => {
@@ -1043,7 +1079,7 @@ describe("hydrated virtual list scrolling", () => {
     const App = cc(() =>
       Virtual({
         each: items,
-        key: (item) => item.id,
+        by: (item) => item.id,
         itemHeight: 20,
         containerHeight: 40,
         overscan: 0,

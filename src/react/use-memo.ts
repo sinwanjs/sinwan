@@ -1,5 +1,5 @@
 import { useSlot, STATE_GETTER_MARKER } from "./_internal/bridge.ts";
-import type { GetterDependencyList } from "./_types/hooks.ts";
+import type { GetterDependencyList, StateGetter } from "./_types/hooks.ts";
 
 interface MemoSlot<T> {
   deps: GetterDependencyList | undefined;
@@ -41,9 +41,17 @@ export function useMemo<T>(factory: () => T, deps?: GetterDependencyList): T {
   return slot.value;
 }
 
+type StateGetterWithSignal = StateGetter & {
+  __signal__?: unknown;
+};
+
+function isStateGetter(value: unknown): value is StateGetterWithSignal {
+  return typeof value === "function" && STATE_GETTER_MARKER in value;
+}
+
 export function depsAreEqual(
-  a: GetterDependencyList,
-  b: GetterDependencyList,
+  a: readonly unknown[],
+  b: readonly unknown[],
 ): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -51,13 +59,8 @@ export function depsAreEqual(
     const depB = b[i];
 
     // For state getters, compare by underlying signal reference instead of function reference
-    if (
-      typeof depA === "function" &&
-      typeof depB === "function" &&
-      (depA as any)[STATE_GETTER_MARKER] &&
-      (depB as any)[STATE_GETTER_MARKER]
-    ) {
-      if (!Object.is((depA as any).__signal__, (depB as any).__signal__)) {
+    if (isStateGetter(depA) && isStateGetter(depB)) {
+      if (!Object.is(depA.__signal__, depB.__signal__)) {
         return false;
       }
     } else if (!Object.is(depA, depB)) {

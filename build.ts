@@ -1,5 +1,5 @@
 /**
- * Sinwan build script — produces dual development / production bundles
+ * Sinwan build script — ESM development / production bundles
  * (React-style: `*.development.js` + `*.production.min.js`) plus full
  * TypeScript declarations.
  *
@@ -35,38 +35,42 @@ await rm(DIST, { recursive: true, force: true });
 console.log("📝  emitting type declarations");
 await $`bunx tsc -p tsconfig.build.json`.cwd(ROOT);
 
-// ─── 3. Build JS bundles (cjs/esm × dev/prod) ───────────────
-// NOTE: Bun.build reads `sideEffects: false` from package.json and
-// over-tree-shakes during our own build, dropping re-exported symbols.
-// We strip that flag from package.json on disk, run the bundling in
-// FRESH child processes (so they read the modified file), then restore.
+// ─── 3. Build ESM bundles (dev + prod) ───────────────────────
+// NOTE: Bun.build may over-tree-shake with sideEffects set; strip during
+// bundling in fresh child processes, then restore.
 const ORIGINAL_PKG = await Bun.file(PKG_PATH).text();
 const pkg = JSON.parse(ORIGINAL_PKG);
 delete pkg.sideEffects;
 await Bun.write(PKG_PATH, JSON.stringify(pkg, null, 2) + "\n");
 
 try {
-  const matrix = [
-    ["esm", "development"],
-    ["esm", "production"],
-    ["cjs", "development"],
-    ["cjs", "production"],
-  ] as const;
-
-  for (const [format, mode] of matrix) {
-    console.log(`📦  bundling ${format} (${mode})`);
+  for (const mode of ["development", "production"] as const) {
+    console.log(`📦  bundling esm (${mode})`);
     await run(
-      ["bun", "run", BUNDLE_SCRIPT, format, mode],
-      `bundle ${format}/${mode}`,
+      ["bun", "run", BUNDLE_SCRIPT, "esm", mode],
+      `bundle esm/${mode}`,
     );
   }
 } finally {
-  // Always restore the original package.json (with sideEffects flag).
   await Bun.write(PKG_PATH, ORIGINAL_PKG);
 }
 
-// ─── 4. React-style entry shims ─────────────────────────────
+// ─── 4. Thin control-flow index (tree-shakeable per-primitive re-exports) ─
+console.log("🧩  writing thin control-flow index");
+await run(
+  ["bun", "run", `${ROOT}/scripts/write-control-flow-index.ts`],
+  "write-control-flow-index",
+);
+
+// ─── 5. Thin renderer index (core vs web split) ─────────────
+console.log("🧩  writing thin renderer index");
+await run(
+  ["bun", "run", `${ROOT}/scripts/write-renderer-index.ts`],
+  "write-renderer-index",
+);
+
+// ─── 6. ESM entry shims ─────────────────────────────────────
 console.log("🔗  writing entry shims");
 await run(["bun", "run", SHIMS_SCRIPT], "make-shims");
 
-console.log("✅  build complete → dist/");
+console.log("✅  build complete → dist/ (ESM only)");

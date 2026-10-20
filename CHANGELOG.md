@@ -1,6 +1,45 @@
 # Changelog
 
-All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/) for the 1.x line.
+All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
+
+## [2.0.0] — ESM-only Runtime, Tree-shaken Control Flow, and List Identity `by`
+
+Sinwan 2.0.0 is a breaking release of the local work after 1.5.1. The package ships as ESM only, drops `sinwan/store`, and renames list identity on `<For>` and `<Virtual>` from `key` to `by`. Control-flow primitives register themselves so unused ones can be tree-shaken, and the renderer, lists, events, and dependency tracking are rebuilt around the keyed-list paint path.
+
+### Breaking
+
+- **ESM-only package (`package.json`, `build.ts`)**: `"type": "module"`. `require("sinwan/…")` and the `dist/cjs` builds are removed. Each export resolves `import.development` and `import.production` to `dist/<entry>.development.js` and `dist/<entry>.production.min.js`.
+- **`sinwan/store` removed**: `createStore`, `createMutable`, `modifyMutable`, `produce`, `reconcile`, and store `unwrap` are no longer exported.
+- **Control flow moves to `sinwan/control-flow`**: `Show`, `For`, `Index`, `Switch`, `Match`, `Key`, `Dynamic`, `Portal`, `ErrorBoundary`, `Visible`, and `Virtual` (and their prop types) are exported from `sinwan/control-flow`. `sinwan/component` exports components, lifecycle, provide/inject, and islands only. Change `import { cc, For } from "sinwan/component"` to `import { cc } from "sinwan/component"` plus `import { For } from "sinwan/control-flow"`.
+- **List identity is `by` (`For`, `Virtual`)**: The row identity prop is `by={(item, index) => …}`. JSX `key` is still a separate factory argument and the transform still strips it. `<For>` and `<Virtual>` read `by`, so list identity no longer collides with `IntrinsicAttributes.key`.
+
+### Added
+
+- **`sinwan/renderer/web`**: Hoist and template helpers (`_$createTemplate`, `_$bindText`, `_$bindAttr`, `_$bindStyle`, `_$bindClass`) ship on their own entry. `sinwan/renderer` stays the mount and render entry.
+- **`createSelector` (`reactivity/selector.ts`)**: Solid-compatible keyed predicate. Subscribers for a key re-run only when that key’s selected state flips.
+- **`effect(fn, { fixed: true })`**: Re-runs still track. Unsubscribe and resubscribe are skipped only when the dependency list is unchanged, and the run is isolated from an outer effect. Scalar text slots use this for stable single-dependency updates.
+- **Control-flow registry (`control-flow/registry.ts`)**: Each primitive registers its client renderer on import. The renderer dispatches through the registry and does not statically import every primitive.
+
+### Changed
+
+- **Control-flow modules**: `Show`, `For`, `Index`, `Switch`, `Match`, `Key`, `Dynamic`, `Portal`, `ErrorBoundary`, `Suspense`, `Activity`, `Visible`, `ViewTransition`, and `Virtual` each live in `client` / `ssr` / `hydrate` modules under `src/control-flow/components/`. `sinwan/control-flow` exports `Show`, `For`, `Index`, `Switch`, `Match`, `Key`, `Dynamic`, `Portal`, `ErrorBoundary`, `Visible`, and `Virtual` as thin per-primitive re-exports, so an app that imports only `For` bundles only `For`. `Suspense`, `Activity`, and `ViewTransition` stay on `sinwan/react`. Shared mount, clear, and soft-show helpers live in `src/control-flow/shared/`. SSR imports the factory module, not the client renderers.
+- **Document-delegated events (`renderer/events.ts`)**: Bubbling `on*` props use one document capture listener per event type (`$$click` and the same prefix for other bubbling events). `mouseenter`, `mouseleave`, `focus`, and `blur` stay on the element, because document capture cannot see them when the pointer hits a child.
+- **Dense dependency subscribers (`reactivity/effect.ts`)**: `Dep.subscribers` and the per-run dependency buffer are arrays. `trigger` snapshots the list before notify. An empty subscriber list can run `onEmpty` so `createSelector` can drop unused keys.
+- **Template slot resolvers (`renderer/template.ts`)**: Each template definition compiles its slot walkers once. Clones use those resolvers instead of walking the slot path on every `_$createTemplate` call.
+- **`<For>` / `<Index>` DOM updates**: Appends go through one `DocumentFragment`. Clears delete the row range in one operation. A row with a single DOM root moves as that root. In-order placement uses prefix, suffix, and a two-node swap before falling back to a right-to-left move. A portal that mounts inside an existing row is detected on the next reconcile; later reconciles sync portal order. Clearing those rows removes the portal target anchors.
+
+### Fixed
+
+- **Fragment parent after `<For>` mount**: Inserting a mounted `<Show>` (or other block) after a `DocumentFragment` insert uses the live parent, so nested groups stay in place when a list row is mounted.
+- **`streamPage` Activity and ViewTransition**: The non-hydratable stream renders `<Activity>` wrappers and `<ViewTransition>` content. Named transitions emit the view-transition wrapper; unnamed transitions emit their children.
+
+### Internal
+
+- Production bundles redirect `hmr/component-registry.ts` to the no-op stub (`hmr/component-registry.prod-stub.ts`). Development keeps the live registry.
+- Hydration walk, SSR renderer, and SSR stream call the per-primitive hydrate and SSR modules instead of one control-flow file.
+- Regressions cover the control-flow registry, `<For>` portal sync, the production HMR stub, list reconcile, template resolvers, delegated events, and `createSelector`.
+
+---
 
 ## [1.5.1] — Reactive Child Untrack + Virtual Props Resolve
 
@@ -16,10 +55,6 @@ Sinwan 1.5.1 re-applies the `renderReactiveNodeToDOM` `untrack` fix that was doc
 - Regression: `sinwan/__tests__/control-flow.test.ts` — reactive child mount does not resubscribe parent effect.
 - Regression: `sinwan-ui/__tests__/data-table.test.tsx` — Virtual windows body rows with compiler-wrapped props.
 - `bun test`: 3,019 pass / 0 fail. All `sinwan/src/` files at 100% line coverage. `bun run typecheck` clean.
-
-### Planned [1.5.x]
-
-- Add Sinwan Flow — a complete visual flow system inspired by React Flow, featuring node-based editors, edge connections, zoom/pan controls, custom nodes, reactive graph rendering, and full SSR/hydration integration with the Sinwan runtime.
 
 ---
 
@@ -37,10 +72,6 @@ Sinwan 1.5.0 adds hydration support for plain zero-arity getter attributes so co
 - Runtime integration: 9 tests covering the compiler-generated late-panel chain across all eight client/hydration × hoist × explicit-binding combinations, including late registration, collapse changes, a button click, panel replacement, and cleanup.
 - Coverage expansion: `control-flow.test.ts` (list index accessors, `Virtual` SSR/scroll/hydration), `event-bus.test.ts` (namespace unsubscribe, manual `once` unsubscribe), `hmr/effect-disposal.test.ts` (Activity resume re-registration of effects and imperative handles), `integrations/react/hooks/use-state.test.ts` (additional reference/edge paths).
 - `bun test`: 3,019 pass / 0 fail. All `sinwan/src/` files at 100% line coverage. `bun run typecheck` clean.
-
-### Planned [1.5.x]
-
-- Add Sinwan Flow — a complete visual flow system inspired by React Flow, featuring node-based editors, edge connections, zoom/pan controls, custom nodes, reactive graph rendering, and full SSR/hydration integration with the Sinwan runtime.
 
 ---
 

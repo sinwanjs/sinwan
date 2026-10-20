@@ -306,6 +306,84 @@ describe("renderNodeToDOM", () => {
     expect(container.textContent).toContain("text-child");
   });
 
+  it("mounts a multi-element template fragment with and without an anchor", () => {
+    const fragment = doc.createDocumentFragment();
+    const a = doc.createElement("span");
+    a.textContent = "a";
+    const b = doc.createElement("span");
+    b.textContent = "b";
+    fragment.appendChild(a);
+    fragment.appendChild(b);
+    const templateResult = {
+      [SINWAN_TEMPLATE]: true,
+      fragment,
+      disposers: [],
+    };
+    const mounted = renderNodeToDOM(templateResult as any, container);
+    expect(mounted.type).toBe("fragment");
+    expect(container.textContent).toBe("ab");
+    if (mounted.type === "fragment") {
+      expect(mounted.children.length).toBe(2);
+      expect(mounted.anchor).toBeNull();
+    }
+
+    const fragment2 = doc.createDocumentFragment();
+    const c = doc.createElement("em");
+    c.textContent = "c";
+    const d = doc.createElement("strong");
+    d.textContent = "d";
+    fragment2.appendChild(c);
+    fragment2.appendChild(d);
+    const anchor = doc.createComment("end");
+    container.appendChild(anchor);
+    const mounted2 = renderNodeToDOM(
+      { [SINWAN_TEMPLATE]: true, fragment: fragment2, disposers: [] } as any,
+      container,
+      anchor,
+    );
+    expect(mounted2.type).toBe("fragment");
+    expect(container.textContent).toBe("abcd");
+  });
+
+  it("mounts an empty template with a sinwan-t positioning marker", () => {
+    const fragment = doc.createDocumentFragment();
+    const mounted = renderNodeToDOM(
+      { [SINWAN_TEMPLATE]: true, fragment, disposers: [] } as any,
+      container,
+    );
+    expect(mounted.type).toBe("fragment");
+    expect(
+      [...container.childNodes].some(
+        (n) => n.nodeType === 8 && (n as Comment).data === "sinwan-t",
+      ),
+    ).toBe(true);
+  });
+
+  it("mounts a single-element template without a sinwan-t marker", () => {
+    const fragment = doc.createDocumentFragment();
+    const tr = doc.createElement("tr");
+    tr.appendChild(doc.createTextNode("row"));
+    fragment.appendChild(tr);
+    const dispose = () => {};
+    const templateResult = {
+      [SINWAN_TEMPLATE]: true,
+      fragment,
+      disposers: [dispose],
+    };
+    const mounted = renderNodeToDOM(templateResult as any, container);
+    expect(mounted.type).toBe("element");
+    expect(container.childNodes.length).toBe(1);
+    expect(container.firstChild).toBe(tr);
+    expect(
+      [...container.childNodes].some(
+        (n) => n.nodeType === 8 && (n as Comment).data === "sinwan-t",
+      ),
+    ).toBe(false);
+    if (mounted.type === "element") {
+      expect(mounted.attrDisposers).toEqual([dispose]);
+    }
+  });
+
   it("resolves async promise inside a component instance (withInstance path)", async () => {
     const AsyncChild = cc(() =>
       el("div", {}, Promise.resolve("async-child-text") as any),

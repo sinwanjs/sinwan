@@ -156,28 +156,26 @@ describe("Template result hydration", () => {
     for (const dispose of result.disposers) dispose();
   });
 
-  it("updates child DOM when a mutable prop changes", async () => {
+  it("updates child DOM when a reactive prop signal changes", async () => {
     const { _$createTemplate } = await import("../src/renderer/template.ts");
     const { cc } = await import("../src/component/create.ts");
-    const { createMutable } = await import("../src/store/index.ts");
-    const { nextTick } = await import("../src/reactivity/index.ts");
+    const { nextTick, signal } = await import("../src/reactivity/index.ts");
     const { renderNodeToDOM } =
       await import("../src/renderer/render-children.ts");
 
-    let state: { user: { name: string } } = { user: { name: "" } };
+    const name = signal("Ada");
 
     const childDef: TemplateDef = {
       html: "<p><!--s:0--></p>",
       slots: [{ path: [0], type: "child" }],
     };
 
-    const Child = cc((props: { user: { name: string } }) => {
-      return _$createTemplate(childDef, [() => props.user.name]);
+    const Child = cc((props: { name: typeof name }) => {
+      return _$createTemplate(childDef, [() => props.name.value]);
     });
 
     const Parent = cc(() => {
-      state = createMutable({ user: { name: "Ada" } }) as typeof state;
-      return Child({ user: state.user });
+      return Child({ name });
     });
 
     const node = Parent({});
@@ -185,7 +183,7 @@ describe("Template result hydration", () => {
 
     expect(container.textContent).toContain("Ada");
 
-    (state as any).user.name = "Bob";
+    name.value = "Bob";
     await nextTick();
 
     expect(container.textContent).toContain("Bob");

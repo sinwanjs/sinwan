@@ -106,7 +106,7 @@ export type {
   ReducerAction,
   EffectCallback,
   GetterDependencyList,
-  Getter,
+  StateGetter,
   TransitionFunction,
   TransitionStartFunction,
   OptimisticReducer,
@@ -114,3 +114,4 @@ export type {
   FormStatus,
   UseTitleOptions,
 } from "./_types/hooks.ts";
+export { STATE_GETTER_MARKER } from "./_types/hooks.ts";

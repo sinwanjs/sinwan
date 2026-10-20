@@ -72,7 +72,7 @@ describe("list index accessor contracts", () => {
     const App = cc(() =>
       For({
         each: items,
-        key: (item) => item.id,
+        by: (item) => item.id,
         children: (item, index) => {
           indices.set(item.id, index);
           return jsx("span", { children: `${index()}:${item.label}` });
@@ -324,7 +324,7 @@ describe("For", () => {
         {},
         el(For, {
           each: items,
-          key: (item: Item) => item.id,
+          by: (item: Item) => item.id,
           children: (item: Item, index: () => number) => ({
             tag: Row,
             props: { item, index },
@@ -388,7 +388,7 @@ describe("For", () => {
         {},
         el(For, {
           each: items,
-          key: (item: Item) => item.id,
+          by: (item: Item) => item.id,
           children: (item: Item) => el(Row, { item }),
         }),
       ),
@@ -424,7 +424,7 @@ describe("For", () => {
         {},
         el(For, {
           each: items,
-          key: (item: Item) => item.id,
+          by: (item: Item) => item.id,
           children: (item: Item) =>
             el("li", { "data-id": item.id }, item.label),
         }),
@@ -458,7 +458,7 @@ describe("For", () => {
           when: isEmpty,
           fallback: el(For, {
             each: items,
-            key: (item: Item) => item.id,
+            by: (item: Item) => item.id,
             children: (item: Item) =>
               el("li", { "data-id": item.id }, item.label),
           }),
@@ -492,6 +492,167 @@ describe("For", () => {
     await nextTick();
     expect(container.textContent).toBe("No todos yet!");
     expect(byTag(container, "li").length).toBe(1);
+  });
+
+  it("restores nested Show groups after For fragment mount (sidebar filter)", async () => {
+    type Item = { id: string; label: string; group: string };
+    const query = signal("");
+    const catalog: Item[] = [
+      { id: "a1", label: "Alpha", group: "A" },
+      { id: "a2", label: "Amber", group: "A" },
+      { id: "b1", label: "Beta", group: "B" },
+    ];
+    const groups = ["A", "B"] as const;
+
+    function itemsFor(group: string): Item[] {
+      const needle = query.value.trim().toLowerCase();
+      return catalog.filter(
+        (item) =>
+          item.group === group &&
+          (needle.length === 0 || item.label.toLowerCase().includes(needle)),
+      );
+    }
+
+    const App = cc(() =>
+      el(
+        "nav",
+        {},
+        el(For, {
+          each: () => [...groups],
+          children: (group: string) =>
+            el(Show, {
+              when: () => itemsFor(group).length > 0,
+              children: el(
+                "section",
+                { "data-group": group },
+                el(For, {
+                  each: () => itemsFor(group),
+                  by: (item: Item) => item.id,
+                  children: (item: Item) =>
+                    el("a", { "data-id": item.id }, item.label),
+                }),
+              ),
+            }),
+        }),
+      ),
+    );
+
+    mount(App, container);
+    expect(
+      [...container.querySelectorAll("a")].map((n) => n.textContent),
+    ).toEqual(["Alpha", "Amber", "Beta"]);
+
+    query.value = "zz";
+    await nextTick();
+    expect(container.querySelectorAll("a").length).toBe(0);
+    expect(container.querySelectorAll("section").length).toBe(0);
+
+    query.value = "";
+    await nextTick();
+    expect(
+      [...container.querySelectorAll("a")].map((n) => n.textContent),
+    ).toEqual(["Alpha", "Amber", "Beta"]);
+    expect(
+      [...container.querySelectorAll("section")].map((n) =>
+        n.getAttribute("data-group"),
+      ),
+    ).toEqual(["A", "B"]);
+
+    query.value = "Beta";
+    await nextTick();
+    expect(
+      [...container.querySelectorAll("a")].map((n) => n.textContent),
+    ).toEqual(["Beta"]);
+    expect(container.querySelectorAll("section").length).toBe(1);
+
+    query.value = "";
+    await nextTick();
+    expect(
+      [...container.querySelectorAll("a")].map((n) => n.textContent),
+    ).toEqual(["Alpha", "Amber", "Beta"]);
+  });
+
+  it("keeps a replaced tail in list order", async () => {
+    const items = signal([1, 2, 3]);
+    const App = cc(() =>
+      el(For, {
+        each: items,
+        children: (item: number) => el("span", {}, String(item)),
+      }),
+    );
+    mount(App, container);
+    expect(byTag(container, "span").map((node) => node.textContent)).toEqual([
+      "1",
+      "2",
+      "3",
+    ]);
+
+    items.value = [1, 4, 5];
+    await nextTick();
+    expect(byTag(container, "span").map((node) => node.textContent)).toEqual([
+      "1",
+      "4",
+      "5",
+    ]);
+
+    items.value = [1, 2, 3, 4];
+    await nextTick();
+    items.value = [1, 8, 9, 4];
+    await nextTick();
+    expect(byTag(container, "span").map((node) => node.textContent)).toEqual([
+      "1",
+      "8",
+      "9",
+      "4",
+    ]);
+  });
+
+  it("updates a computed row after the list fragment is attached", async () => {
+    const items = signal([1]);
+    const label = signal(0);
+    const App = cc(() =>
+      el(For, {
+        each: items,
+        children: (item: number) =>
+          computed(() => el("span", {}, `${item}:${label.value}`)),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("1:0");
+
+    label.value = 4;
+    await nextTick();
+    expect(container.textContent).toBe("1:4");
+
+    items.value = [1, 2];
+    await nextTick();
+    expect(byTag(container, "span").map((node) => node.textContent)).toEqual([
+      "1:4",
+      "2:4",
+    ]);
+    label.value = 7;
+    await nextTick();
+    expect(byTag(container, "span").map((node) => node.textContent)).toEqual([
+      "1:7",
+      "2:7",
+    ]);
+  });
+
+  it("inserts a promised row after the list fragment is attached", async () => {
+    const items = signal([1, 2]);
+    const App = cc(() =>
+      el(For, {
+        each: items,
+        children: (item: number) =>
+          Promise.resolve(el("span", {}, String(item))),
+      }),
+    );
+    mount(App, container);
+    await nextTick();
+    expect(byTag(container, "span").map((node) => node.textContent)).toEqual([
+      "1",
+      "2",
+    ]);
   });
 });
 
@@ -734,6 +895,23 @@ describe("Index", () => {
       "unmounted:0",
       "unmounted:1",
     ]);
+  });
+
+  it("updates a computed row after the index fragment is attached", async () => {
+    const items = signal(["a"]);
+    const n = signal(0);
+    const App = cc(() =>
+      el(Index, {
+        each: items,
+        children: (item: () => string) =>
+          computed(() => el("span", {}, `${item()}:${n.value}`)),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("a:0");
+    n.value = 3;
+    await nextTick();
+    expect(container.textContent).toBe("a:3");
   });
 });
 
@@ -1037,7 +1215,7 @@ describe("Virtual", () => {
     const App = cc(() =>
       el(Virtual, {
         each: items,
-        key: (item: Item) => item.id,
+        by: (item: Item) => item.id,
         itemHeight: 50,
         containerHeight: 200,
         overscan: 2,
@@ -1240,6 +1418,20 @@ describe("findTruthyMatch edge cases", () => {
     );
     mount(App, container);
     expect(container.textContent).toBe("dynamic-fallback");
+  });
+
+  it("returns undefined when Dynamic expands to a falsy Match", () => {
+    // cc components have arity > 0 so resolve() keeps the function identity
+    // (zero-arity arrows are invoked by resolve and never reach createDynamicElement).
+    const Comp = cc(() => Match({ when: false, children: "no" }));
+    const App = cc(() =>
+      el(Switch, {
+        fallback: el("p", {}, "dynamic-match-fallback"),
+        children: el(Dynamic, { component: Comp }),
+      }),
+    );
+    mount(App, container);
+    expect(container.textContent).toBe("dynamic-match-fallback");
   });
 
   it("returns undefined when Virtual list is empty and no fallback", () => {

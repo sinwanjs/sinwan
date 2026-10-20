@@ -35,12 +35,12 @@ import {
   isTemplateResult,
   isBindingDescriptor,
   type SinwanTemplateResult,
-} from "./template.ts";
+} from "./template-identity.ts";
 import { getActiveSuspenseBoundary } from "./suspense-boundary.ts";
-import {
-  FUNCTION_MARKER_OPEN,
-  FUNCTION_MARKER_CLOSE,
-} from "../hydration/markers.ts";
+
+/** Client reactive-function anchors (inlined to avoid importing hydration). */
+const FUNCTION_MARKER_OPEN = "sinwan-r";
+const FUNCTION_MARKER_CLOSE = "/sinwan-r";
 
 type PromiseRecord =
   | { status: "pending"; promise: PromiseLike<unknown> }
@@ -48,6 +48,9 @@ type PromiseRecord =
   | { status: "rejected"; reason: unknown };
 
 const promiseRecords = new WeakMap<PromiseLike<unknown>, PromiseRecord>();
+
+/** Shared empty child list for leaf mounted elements (never mutated). */
+const EMPTY_MOUNTED_CHILDREN: MountedNode[] = [];
 
 /**
  * Render a single SinwanNode to DOM and append to parent.
@@ -159,11 +162,14 @@ export function renderNodeToDOM(
       if (mounted.disposed) return;
       // Clear async-pending flag so fireMountedHooks will fire for this instance.
       if (owner) owner.isAsyncPending = false;
+      // For/Index mount rows into a DocumentFragment, then move it. Anchors
+      // follow the move; the closed-over parent stays the empty fragment.
+      const liveParent = hostOf(parent, endAnchor);
       const resolvedNode = owner
         ? withInstance(owner, () =>
-            renderNodeToDOM(resolved, parent, endAnchor, namespace),
+            renderNodeToDOM(resolved, liveParent, endAnchor, namespace),
           )
-        : renderNodeToDOM(resolved, parent, endAnchor, namespace);
+        : renderNodeToDOM(resolved, liveParent, endAnchor, namespace);
       mounted.children = [resolvedNode];
       domOps.remove(placeholder);
       if (owner) fireMountedHooks(owner);
@@ -187,27 +193,59 @@ function renderTemplateResultToDOM(
   parent: Node,
   anchor: Node | null,
 ): MountedNode {
-  const anchorComment = domOps.createComment("sinwan-t");
-  insertNode(parent, anchorComment, anchor);
+  const fragment = result.fragment;
+  const host = hostOf(parent, anchor);
+  const first = fragment.firstChild;
+
+  // Fast path: single element root (For rows) — one append, one MountedElement.
+  if (first instanceof Element && first.nextSibling === null) {
+    if (anchor) {
+      host.insertBefore(first, anchor);
+    } else {
+      host.appendChild(first);
+    }
+    return {
+      type: "element",
+      node: first,
+      children: EMPTY_MOUNTED_CHILDREN,
+      eventCleanups: null,
+      attrDisposers: result.disposers.length > 0 ? result.disposers : null,
+      refCleanup: null,
+    };
+  }
 
   const children: MountedNode[] = [];
-  const fragment = result.fragment;
-  // Move all child nodes from fragment into parent (fragment is empty after this)
+  // Move remaining child nodes from the template fragment into the live parent.
+  // Skip the historical `sinwan-t` marker when the template has content —
+  // For-row templates are a single `<tr>`, and 10k marker comments doubled
+  // tbody DOM size (and layout/paint cost) for no positioning benefit.
   while (fragment.firstChild) {
     const child = fragment.firstChild;
-    parent.insertBefore(child, anchor);
+    if (anchor) {
+      host.insertBefore(child, anchor);
+    } else {
+      host.appendChild(child);
+    }
     if (child instanceof Element) {
       children.push({
         type: "element",
         node: child,
-        children: [],
+        children: EMPTY_MOUNTED_CHILDREN,
         eventCleanups: null,
         attrDisposers: null,
         refCleanup: null,
       });
     } else {
-      children.push({ type: "text", node: child as any });
+      children.push({ type: "text", node: child as Text });
     }
+  }
+
+  // Empty templates still need a slot marker so For/Show can position later
+  // inserts. Non-empty multi-root templates use their DOM children.
+  let anchorComment: Comment | null = null;
+  if (children.length === 0) {
+    anchorComment = domOps.createComment("sinwan-t");
+    insertNode(parent, anchorComment, anchor);
   }
 
   return {
@@ -216,6 +254,10 @@ function renderTemplateResultToDOM(
     anchor: anchorComment,
     disposers: result.disposers,
   };
+}
+
+function hostOf(parent: Node, anchor: Node | null): Node {
+  return anchor?.parentNode ?? parent;
 }
 
 /**
@@ -297,8 +339,15 @@ function renderReactiveNodeToDOM(
     //    subscribing this block and causing a self-triggering loop.
     const render = () => {
       const resolved = resolve(reactive) as SinwanNode;
+      // Re-read the live parent. A For/Index fragment mount moves these
+      // anchors out of the fragment before the next update.
       return untrack(() =>
-        renderNodeToDOM(resolved, parent, endAnchor, namespace),
+        renderNodeToDOM(
+          resolved,
+          hostOf(parent, endAnchor),
+          endAnchor,
+          namespace,
+        ),
       );
     };
     mountedContent = owner ? withInstance(owner, render) : render();

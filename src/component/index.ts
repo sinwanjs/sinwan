@@ -1,8 +1,10 @@
 /**
  * SinwanJS Component Runtime — Public API
+ *
+ * Components, lifecycle, provide/inject, and islands. Control-flow primitives
+ * (`Show`, `For`, …) are exported from `sinwan/control-flow`.
  */
 
-// Instance management
 export {
   getCurrentInstance,
   setCurrentInstance,
@@ -14,11 +16,12 @@ export {
   fireHydratedHooks,
   queueUpdatedHooks,
   handleComponentError,
+  softHideInstance,
+  softShowInstance,
 } from "./instance.ts";
 
 export type { ComponentInstance } from "./instance.ts";
 
-// Lifecycle hooks
 export {
   onMounted,
   onUnmounted,
@@ -30,7 +33,6 @@ export {
   onError,
 } from "./lifecycle.ts";
 
-// Component factories
 export { cc } from "./create.ts";
 export {
   createLiveProps,
@@ -40,40 +42,9 @@ export {
   isLiveProps,
 } from "./live-props.ts";
 
-// Control flow
-export {
-  Show,
-  For,
-  Switch,
-  Match,
-  Index,
-  Key,
-  Dynamic,
-  Visible,
-  Portal,
-  ErrorBoundary,
-  Virtual,
-} from "./control-flow.ts";
-export type {
-  ShowProps,
-  ForProps,
-  SwitchProps,
-  MatchProps,
-  IndexProps,
-  KeyProps,
-  DynamicProps,
-  DynamicTag,
-  VisibleProps,
-  PortalProps,
-  ErrorBoundaryProps,
-  VirtualProps,
-} from "./control-flow.ts";
-
-// Dependency injection
 export { provide, inject } from "./provide-inject.ts";
 export type { InjectionKey } from "./provide-inject.ts";
 
-// Islands (partial hydration)
 export {
   island,
   isIslandElement,
@@ -83,8 +54,5 @@ export {
 } from "./island.ts";
 export type { IslandOptions, IslandMeta } from "./island.ts";
 
-// Escaper
 export * from "../common/escaper.ts";
-
-// Core types
 export * from "../types.ts";

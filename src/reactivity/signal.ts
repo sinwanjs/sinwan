@@ -83,7 +83,7 @@ const SIGNAL_BRAND = Symbol.for("Sinwan:signal");
 class SignalImpl<T> implements Signal<T>, Dep {
   [SIGNAL_BRAND] = true;
 
-  subscribers = new Set<import("./effect.ts").ReactiveEffect>();
+  subscribers: import("./effect.ts").ReactiveEffect[] = [];
   private _value: T;
   private _manualSubs = new Set<(value: T) => void>();
 

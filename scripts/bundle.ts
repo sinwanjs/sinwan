@@ -1,18 +1,19 @@
 /**
- * Internal: bundle one (format, mode) combination.
+ * Internal: bundle one ESM mode combination.
  * Invoked by build.ts in a fresh Bun subprocess so it sees the
  * temporarily-stripped `sideEffects` flag in package.json.
  *
- *   bun run scripts/bundle.ts <format> <mode>
+ *   bun run scripts/bundle.ts esm <mode>
  *
- *   format = "esm" | "cjs"
- *   mode   = "development" | "production"
+ *   mode = "development" | "production"
  */
+
+import { hmrProdPlugin } from "./hmr-prod-plugin.ts";
 
 const [, , formatArg, modeArg] = process.argv;
 
-if (formatArg !== "esm" && formatArg !== "cjs") {
-  console.error(`Invalid format: ${formatArg}`);
+if (formatArg !== "esm") {
+  console.error(`Invalid format: ${formatArg} (ESM-only build; use "esm")`);
   process.exit(1);
 }
 if (modeArg !== "development" && modeArg !== "production") {
@@ -20,17 +21,36 @@ if (modeArg !== "development" && modeArg !== "production") {
   process.exit(1);
 }
 
-const format = formatArg as "esm" | "cjs";
 const mode = modeArg as "development" | "production";
 const isProd = mode === "production";
 const suffix = isProd ? "production.min" : "development";
 
 const ROOT = `${import.meta.dir}/..`;
 const SRC = `${ROOT}/src`;
-const OUTDIR = `${ROOT}/dist/${format}`;
+const OUTDIR = `${ROOT}/dist/esm`;
+
+const CONTROL_FLOW_CLIENTS = [
+  "activity",
+  "dynamic",
+  "error-boundary",
+  "for",
+  "index",
+  "key",
+  "match",
+  "portal",
+  "show",
+  "suspense",
+  "switch",
+  "view-transition",
+  "virtual",
+  "visible",
+].map(
+  (name) => `${SRC}/control-flow/components/${name}/client.ts`,
+);
 
 const ENTRYPOINTS = [
   `${SRC}/component/index.ts`,
+  ...CONTROL_FLOW_CLIENTS,
   `${SRC}/event/index.ts`,
   `${SRC}/hook/index.ts`,
   `${SRC}/hydration/index.ts`,
@@ -38,22 +58,22 @@ const ENTRYPOINTS = [
   `${SRC}/jsx/jsx-runtime.ts`,
   `${SRC}/jsx/jsx-dev-runtime.ts`,
   `${SRC}/reactivity/index.ts`,
-  `${SRC}/renderer/index.ts`,
+  `${SRC}/renderer/core.ts`,
+  `${SRC}/renderer/web.ts`,
   `${SRC}/server/index.ts`,
-  `${SRC}/store/index.ts`,
 ];
 
 const result = await Bun.build({
   entrypoints: ENTRYPOINTS,
   root: SRC,
   outdir: OUTDIR,
-  target: format === "cjs" ? "node" : "bun",
-  format,
-  splitting: format === "esm",
+  target: "browser",
+  format: "esm",
+  splitting: true,
   packages: "external",
-  // sourcemap: isProd ? "external" : "linked",
+  plugins: isProd ? [hmrProdPlugin] : [],
   minify: isProd
-    ? { whitespace: true, syntax: true, identifiers: format === "cjs" }
+    ? { whitespace: true, syntax: true, identifiers: false }
     : false,
   define: {
     "process.env.NODE_ENV": JSON.stringify(mode),
@@ -67,7 +87,7 @@ const result = await Bun.build({
 });
 
 if (!result.success) {
-  console.error(`❌  bundle ${format}/${mode} failed:`);
+  console.error(`❌  bundle esm/${mode} failed:`);
   for (const log of result.logs) console.error(log);
   process.exit(1);
 }

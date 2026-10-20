@@ -33,7 +33,7 @@ const COMPUTED_BRAND = Symbol.for("Sinwan:computed");
 class ComputedImpl<T> implements Computed<T>, Dep {
   [COMPUTED_BRAND] = true;
 
-  subscribers = new Set<ReactiveEffect>();
+  subscribers: ReactiveEffect[] = [];
 
   _value!: T;
   _dirty = true;

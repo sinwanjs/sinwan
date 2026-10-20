@@ -11,6 +11,8 @@ export type Listener = (...args: unknown[]) => void;
  * Core event bus implementation with namespace support.
  */
 export class SinwanEventBus {
+  constructor() {}
+
   private events = new Map<string, Set<Listener>>();
   private wildcardListeners = new Map<string, Set<Listener>>();
 

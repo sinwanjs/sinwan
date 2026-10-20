@@ -1,6 +1,6 @@
 import type { ReactNode } from "./_types/core.ts";
 import type { SinwanElement, SinwanNode } from "../types.ts";
-import { Portal } from "../component/control-flow.ts";
+import { Portal } from "../control-flow/components/portal/client.ts";
 
 /**
  * React-compatible `createPortal(children, container, key?)` — `[CLIENT]`.

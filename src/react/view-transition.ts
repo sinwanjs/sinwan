@@ -1,6 +1,9 @@
 import type { ReactNode } from "./_types/core.ts";
 import type { SinwanElement } from "../types.ts";
-import { VIEW_TRANSITION_TYPE } from "../component/control-flow.ts";
+import {
+  ViewTransition as createViewTransitionElement,
+  type ViewTransitionProps as CoreViewTransitionProps,
+} from "../control-flow/components/view-transition/client.ts";
 import { isServer } from "./_internal/is-server.ts";
 import { REACT_VIEW_TRANSITION_TYPE } from "./_internal/symbols.ts";
 
@@ -97,11 +100,7 @@ export interface ViewTransitionProps {
  * ```
  */
 export function ViewTransition(props: ViewTransitionProps): SinwanElement {
-  return {
-    tag: VIEW_TRANSITION_TYPE,
-    props: props as unknown as Record<string, unknown>,
-    children: [],
-  };
+  return createViewTransitionElement(props as CoreViewTransitionProps);
 }
 (ViewTransition as unknown as { $$typeof: symbol }).$$typeof =
   REACT_VIEW_TRANSITION_TYPE;

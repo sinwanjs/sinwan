@@ -1,0 +1,13 @@
+export const SHOW_TYPE = Symbol.for("Sinwan.Show");
+export const FOR_TYPE = Symbol.for("Sinwan.For");
+export const SWITCH_TYPE = Symbol.for("Sinwan.Switch");
+export const MATCH_TYPE = Symbol.for("Sinwan.Match");
+export const INDEX_TYPE = Symbol.for("Sinwan.Index");
+export const KEY_TYPE = Symbol.for("Sinwan.Key");
+export const DYNAMIC_TYPE = Symbol.for("Sinwan.Dynamic");
+export const PORTAL_TYPE = Symbol.for("Sinwan.Portal");
+export const SUSPENSE_TYPE = Symbol.for("Sinwan.Suspense");
+export const ACTIVITY_TYPE = Symbol.for("Sinwan.Activity");
+export const VIEW_TRANSITION_TYPE = Symbol.for("Sinwan.ViewTransition");
+export const ERROR_BOUNDARY_TYPE = Symbol.for("Sinwan.ErrorBoundary");
+export const VIRTUAL_TYPE = Symbol.for("Sinwan.Virtual");

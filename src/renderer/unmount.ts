@@ -20,6 +20,39 @@ export function getMountedDomNodes(node: MountedNode): Node[] {
   return out;
 }
 
+/**
+ * Single movable DOM root for common list rows (element / text / single-child
+ * template fragment). Returns null for multi-root, portal, or reactive-block
+ * trees so callers fall back to `getMountedDomNodes`.
+ */
+export function getMountedDomRoot(node: MountedNode): Node | null {
+  switch (node.type) {
+    case "text":
+    case "reactive-text":
+      return node.node;
+    case "element":
+      return node.node;
+    case "fragment": {
+      // Single element child (template row or simple fragment), no fragment anchor.
+      if (
+        !node.anchor &&
+        node.children.length === 1 &&
+        node.children[0]!.type === "element"
+      ) {
+        return node.children[0]!.node;
+      }
+      return null;
+    }
+    case "component":
+      if (node.children.length === 1) {
+        return getMountedDomRoot(node.children[0]!);
+      }
+      return null;
+    default:
+      return null;
+  }
+}
+
 function collectDomNodes(node: MountedNode, out: Node[]): void {
   switch (node.type) {
     case "text":
@@ -135,6 +168,9 @@ export function unmountNode(node: MountedNode): void {
         removeMountedNode(child);
       }
       node.children = [];
+      if (node.targetAnchor && node.targetAnchor.parentNode) {
+        domOps.remove(node.targetAnchor);
+      }
       break;
   }
 }

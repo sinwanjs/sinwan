@@ -10,7 +10,11 @@ import { mount } from "../src/renderer/mount.ts";
 import { renderElementToDOM } from "../src/renderer/render-element.ts";
 import { domOps, resetDOMOps, setDOMOps } from "../src/renderer/dom-ops.ts";
 import { renderNodeToDOM } from "../src/renderer/render-children.ts";
-import { removeMountedNode, unmountNode } from "../src/renderer/unmount.ts";
+import {
+  removeMountedNode,
+  unmountNode,
+  getMountedDomRoot,
+} from "../src/renderer/unmount.ts";
 import { HtmlEscapedString } from "../src/jsx/jsx-runtime.ts";
 import {
   _$createTemplate,
@@ -19,6 +23,15 @@ import {
   walkToSlot,
   isTemplateResult,
 } from "../src/renderer/template.ts";
+import {
+  bindDelegatedEvent,
+  ensureDelegated,
+  bindEvent,
+  bindEvents,
+  isEventProp,
+  toEventName,
+  __resetDelegatedEventsForTests,
+} from "../src/renderer/events.ts";
 import type { TemplateDef } from "../src/renderer/template-protocol.ts";
 import type { MountedComponent } from "../src/renderer/types.ts";
 import {
@@ -29,6 +42,8 @@ import { cc } from "../src/component/create.ts";
 import { onUpdated } from "../src/component/lifecycle.ts";
 import { Show } from "../src/component/control-flow.ts";
 import type { SinwanElement } from "../src/types.ts";
+import { setSingleAttribute } from "../src/renderer/attributes.ts";
+import { assignClassName } from "../src/renderer/set-attribute.ts";
 
 let win: InstanceType<typeof Window>;
 let doc: Document;
@@ -276,9 +291,9 @@ describe("template attr slots and walkToSlot", () => {
 
   it("throws when the template fragment is empty", () => {
     const empty = document.createDocumentFragment();
-    expect(() =>
-      walkToSlot(empty, [0], { html: "", slots: [] }),
-    ).toThrow("template fragment has no children");
+    expect(() => walkToSlot(empty, [0], { html: "", slots: [] })).toThrow(
+      "template fragment has no children",
+    );
   });
 
   it("throws when a slot path has no child at the requested index", () => {
@@ -288,6 +303,113 @@ describe("template attr slots and walkToSlot", () => {
     expect(() => walkToSlot(template.content, [3], def)).toThrow(
       "no child at index 3",
     );
+  });
+
+  it("walks to a later sibling via nextSibling when path index > 0", () => {
+    const def: TemplateDef = {
+      html: "<div><span>a</span><span>b</span></div>",
+      slots: [],
+    };
+    const template = document.createElement("template");
+    template.innerHTML = def.html;
+    const node = walkToSlot(template.content, [1], def);
+    expect(node.textContent).toBe("b");
+  });
+
+  it("resolves a single DOM root for element and fragment rows", () => {
+    const elNode = document.createElement("tr");
+    expect(
+      getMountedDomRoot({
+        type: "element",
+        node: elNode,
+        children: [],
+        eventCleanups: null,
+        attrDisposers: null,
+        refCleanup: null,
+      })!.nodeName,
+    ).toBe("TR");
+
+    const text = document.createTextNode("x");
+    expect(getMountedDomRoot({ type: "text", node: text })).toBe(text);
+
+    expect(
+      getMountedDomRoot({
+        type: "fragment",
+        children: [
+          {
+            type: "element",
+            node: elNode,
+            children: [],
+            eventCleanups: null,
+            attrDisposers: null,
+            refCleanup: null,
+          },
+        ],
+      }),
+    ).toBe(elNode);
+
+    expect(
+      getMountedDomRoot({
+        type: "fragment",
+        children: [
+          { type: "text", node: text },
+          {
+            type: "element",
+            node: elNode,
+            children: [],
+            eventCleanups: null,
+            attrDisposers: null,
+            refCleanup: null,
+          },
+        ],
+      }),
+    ).toBeNull();
+
+    expect(
+      getMountedDomRoot({
+        type: "component",
+        children: [
+          {
+            type: "element",
+            node: elNode,
+            children: [],
+            eventCleanups: null,
+            attrDisposers: null,
+            refCleanup: null,
+          },
+        ],
+        disposers: [],
+        instance: null,
+      }),
+    ).toBe(elNode);
+
+    expect(
+      getMountedDomRoot({
+        type: "component",
+        children: [
+          { type: "text", node: text },
+          {
+            type: "element",
+            node: elNode,
+            children: [],
+            eventCleanups: null,
+            attrDisposers: null,
+            refCleanup: null,
+          },
+        ],
+        disposers: [],
+        instance: null,
+      }),
+    ).toBeNull();
+
+    expect(
+      getMountedDomRoot({
+        type: "portal",
+        children: [],
+        target: document.body,
+        anchor: document.createComment("p"),
+      } as any),
+    ).toBeNull();
   });
 
   it("renders bindText children that resolve to a node tree", () => {
@@ -307,9 +429,9 @@ describe("template attr slots and walkToSlot", () => {
     container.appendChild(result.fragment);
     const root = container.querySelector("[data-slot=menubar]")!;
     expect(root.textContent).not.toContain("[object Object]");
-    expect([...root.querySelectorAll("button")].map((el) => el.textContent)).toEqual(
-      ["File", "Edit", "View"],
-    );
+    expect(
+      [...root.querySelectorAll("button")].map((el) => el.textContent),
+    ).toEqual(["File", "Edit", "View"]);
     for (const dispose of result.disposers) dispose();
   });
 
@@ -329,6 +451,308 @@ describe("template attr slots and walkToSlot", () => {
     await nextTick();
     expect(container.textContent).toBe("console");
     for (const dispose of result.disposers) dispose();
+  });
+});
+
+describe("template event delegation", () => {
+  it("registers one document click listener and fires row handlers", () => {
+    const clicks: string[] = [];
+    const def: TemplateDef = {
+      html: '<button type="button"></button>',
+      slots: [{ path: [], type: "event", name: "onclick" }],
+    };
+
+    const a = _$createTemplate(def, [() => clicks.push("a")]);
+    const b = _$createTemplate(def, [() => clicks.push("b")]);
+    if (!isTemplateResult(a) || !isTemplateResult(b)) {
+      throw new Error("expected client template results");
+    }
+    container.appendChild(a.fragment);
+    container.appendChild(b.fragment);
+
+    const buttons = [...container.querySelectorAll("button")];
+    expect(buttons).toHaveLength(2);
+    expect((buttons[0] as any).$$click).toBeTypeOf("function");
+    expect((buttons[1] as any).$$click).toBeTypeOf("function");
+
+    buttons[0]!.dispatchEvent(new win.Event("click", { bubbles: true }));
+    buttons[1]!.dispatchEvent(new win.Event("click", { bubbles: true }));
+    expect(clicks).toEqual(["a", "b"]);
+    // Reading currentTarget exercises the delegated getter
+    const probe = new win.Event("click", { bubbles: true });
+    let current: EventTarget | null = null;
+    (buttons[0] as any).$$click = (e: Event) => {
+      current = e.currentTarget;
+    };
+    buttons[0]!.dispatchEvent(probe);
+    expect(current).toBe(buttons[0]);
+
+    for (const dispose of a.disposers) dispose();
+    for (const dispose of b.disposers) dispose();
+    expect((buttons[0] as any).$$click).toBeUndefined();
+  });
+
+  it("stops walking when a handler cancels the bubble", () => {
+    const order: string[] = [];
+    const outer = doc.createElement("div");
+    const inner = doc.createElement("button");
+    outer.appendChild(inner);
+    container.appendChild(outer);
+
+    __resetDelegatedEventsForTests();
+    ensureDelegated("click", doc);
+    const disposeOuter = bindDelegatedEvent(
+      outer,
+      "click",
+      () => {
+        order.push("outer");
+      },
+      doc,
+    );
+    const disposeInner = bindDelegatedEvent(
+      inner,
+      "click",
+      (e) => {
+        order.push("inner");
+        e.stopPropagation();
+      },
+      doc,
+    );
+
+    inner.dispatchEvent(new win.Event("click", { bubbles: true }));
+    expect(order).toEqual(["inner"]);
+
+    disposeInner();
+    disposeOuter();
+  });
+
+  it("fires delegated handlers when an ancestor stopPropagation on bubble", () => {
+    const clicks: string[] = [];
+    const panel = doc.createElement("div");
+    const button = doc.createElement("button");
+    panel.appendChild(button);
+    container.appendChild(panel);
+
+    __resetDelegatedEventsForTests();
+    ensureDelegated("click", doc);
+    panel.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+    const dispose = bindDelegatedEvent(
+      button,
+      "click",
+      () => {
+        clicks.push("button");
+      },
+      doc,
+    );
+
+    button.dispatchEvent(new win.Event("click", { bubbles: true }));
+    expect(clicks).toEqual(["button"]);
+    dispose();
+  });
+
+  it("binds events through the shared delegated model", () => {
+    expect(isEventProp("onclick")).toBe(true);
+    expect(toEventName("onclick")).toBe("click");
+    const el = doc.createElement("button");
+    container.appendChild(el);
+    let clicked = 0;
+    const dispose = bindEvent(el, "click", () => {
+      clicked++;
+    }, doc);
+    expect((el as any).$$click).toBeTypeOf("function");
+    el.dispatchEvent(new win.Event("click", { bubbles: true }));
+    expect(clicked).toBe(1);
+    dispose();
+    expect((el as any).$$click).toBeUndefined();
+
+    const cleanups = bindEvents(
+      el,
+      {
+        onclick: () => {
+          clicked++;
+        },
+        id: "x",
+      },
+      doc,
+    );
+    expect(cleanups).toHaveLength(1);
+    expect((el as any).$$click).toBeTypeOf("function");
+    el.dispatchEvent(new win.Event("click", { bubbles: true }));
+    expect(clicked).toBe(2);
+    for (const c of cleanups!) c();
+
+    el.setAttribute("class", "danger");
+    setSingleAttribute(el, "class", "");
+    expect(el.hasAttribute("class")).toBe(false);
+    setSingleAttribute(el, "class", false);
+    expect(el.hasAttribute("class")).toBe(false);
+  });
+
+  it("binds mouseenter directly so child hit targets still fire", () => {
+    const el = doc.createElement("div");
+    const child = doc.createElement("span");
+    el.appendChild(child);
+    container.appendChild(el);
+    let entered = 0;
+    const dispose = bindEvent(
+      el,
+      "mouseenter",
+      () => {
+        entered++;
+      },
+      doc,
+    );
+    // Direct bind — no $$mouseenter property (unlike click delegation).
+    expect((el as any).$$mouseenter).toBeUndefined();
+    // Entering the child still delivers native mouseenter to the parent.
+    el.dispatchEvent(new win.Event("mouseenter", { bubbles: false }));
+    expect(entered).toBe(1);
+    child.dispatchEvent(new win.Event("mouseenter", { bubbles: false }));
+    // Synthetic mouseenter on the child does not retarget to the parent;
+    // native geometry entry does. Direct listener is on `el` only.
+    expect(entered).toBe(1);
+    dispose();
+    el.dispatchEvent(new win.Event("mouseenter", { bubbles: false }));
+    expect(entered).toBe(1);
+  });
+
+  it("binds focus and blur directly (not document-delegated)", () => {
+    const el = doc.createElement("button");
+    container.appendChild(el);
+    let focuses = 0;
+    let blurs = 0;
+    const d1 = bindEvent(el, "focus", () => {
+      focuses++;
+    }, doc);
+    const d2 = bindEvent(el, "blur", () => {
+      blurs++;
+    }, doc);
+    expect((el as any).$$focus).toBeUndefined();
+    el.dispatchEvent(new win.Event("focus", { bubbles: false }));
+    el.dispatchEvent(new win.Event("blur", { bubbles: false }));
+    expect(focuses).toBe(1);
+    expect(blurs).toBe(1);
+    d1();
+    d2();
+  });
+
+  it("skips $$click delete when the element is already detached", () => {
+    const el = doc.createElement("button");
+    container.appendChild(el);
+    const dispose = bindDelegatedEvent(el, "click", () => {}, doc);
+    expect((el as any).$$click).toBeTypeOf("function");
+    el.remove();
+    dispose();
+    // Detached: cleanup no-ops so Range bulk clear stays cheap.
+    expect((el as any).$$click).toBeTypeOf("function");
+  });
+
+  it("binds reactive function children as textContent without sinwan-r anchors", async () => {
+    const label = signal("alpha");
+    const def: TemplateDef = {
+      html: "<a><!--s:0--></a>",
+      slots: [{ path: [0], type: "child" }],
+    };
+    const result = _$createTemplate(def, [() => label.value]);
+    if (!isTemplateResult(result)) {
+      throw new Error("expected a client template result");
+    }
+    container.appendChild(result.fragment);
+    const a = container.querySelector("a")!;
+    expect(a.childNodes.length).toBe(1);
+    expect(a.firstChild?.nodeType).toBe(doc.TEXT_NODE);
+    expect(a.textContent).toBe("alpha");
+    expect(a.innerHTML).not.toContain("sinwan-r");
+
+    label.value = "beta";
+    await nextTick();
+    expect(a.textContent).toBe("beta");
+    for (const dispose of result.disposers) dispose();
+  });
+
+  it("updates a text slot when a conditional getter switches signals", async () => {
+    const flag = signal(true);
+    const left = signal("left");
+    const right = signal("right");
+    const def: TemplateDef = {
+      html: "<a><!--s:0--></a>",
+      slots: [{ path: [0], type: "child" }],
+    };
+    const result = _$createTemplate(def, [
+      () => (flag.value ? left.value : right.value),
+    ]);
+    if (!isTemplateResult(result)) {
+      throw new Error("expected a client template result");
+    }
+    container.appendChild(result.fragment);
+    const a = container.querySelector("a")!;
+    expect(a.textContent).toBe("left");
+
+    flag.value = false;
+    await nextTick();
+    expect(a.textContent).toBe("right");
+    right.value = "RIGHT";
+    await nextTick();
+    expect(a.textContent).toBe("RIGHT");
+    left.value = "LEFT";
+    await nextTick();
+    expect(a.textContent).toBe("RIGHT");
+    for (const dispose of result.disposers) dispose();
+  });
+
+  it("sets SVG class through the attribute when className is not a string", () => {
+    const el = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+    Object.defineProperty(el, "className", {
+      configurable: true,
+      get() {
+        return { baseVal: "" };
+      },
+      set() {
+        throw new TypeError("className is readonly");
+      },
+    });
+    assignClassName(el, "icon");
+    expect(el.getAttribute("class")).toBe("icon");
+    assignClassName(el, "icon");
+    expect(el.getAttribute("class")).toBe("icon");
+    assignClassName(el, "");
+    expect(el.hasAttribute("class")).toBe(false);
+    assignClassName(el, "");
+    expect(el.hasAttribute("class")).toBe(false);
+
+    const html = doc.createElement("div");
+    assignClassName(html, "row");
+    expect(html.className).toBe("row");
+    assignClassName(html, "row");
+    expect(html.className).toBe("row");
+  });
+
+  it("skips no-op class clears on template class slots", () => {
+    const selected = signal(false);
+    const def: TemplateDef = {
+      html: '<tr class=""></tr>',
+      slots: [{ path: [], type: "attr", name: "class" }],
+    };
+    const result = _$createTemplate(def, [
+      () => (selected.value ? "danger" : false),
+    ]);
+    if (!isTemplateResult(result)) {
+      throw new Error("expected a client template result");
+    }
+    container.appendChild(result.fragment);
+    const tr = container.querySelector("tr")!;
+    expect(tr.className).toBe("");
+    selected.value = true;
+    return nextTick().then(() => {
+      expect(tr.className).toBe("danger");
+      selected.value = false;
+      return nextTick().then(() => {
+        expect(tr.className).toBe("");
+        for (const dispose of result.disposers) dispose();
+      });
+    });
   });
 });
 

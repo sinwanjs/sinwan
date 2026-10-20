@@ -129,6 +129,124 @@ describe("effect", () => {
     expect(log).toEqual([0, 1, 2]);
   });
 
+  it("fixed effects track a dependency read on a later run", async () => {
+    const flag = signal(true);
+    const a = signal("a");
+    const b = signal("b");
+    const log: string[] = [];
+    const dispose = effect(
+      () => {
+        log.push(flag.value ? a.value : b.value);
+      },
+      { fixed: true },
+    );
+    try {
+      expect(log).toEqual(["a"]);
+      flag.value = false;
+      await nextTick();
+      expect(log).toEqual(["a", "b"]);
+      b.value = "B";
+      await nextTick();
+      expect(log).toEqual(["a", "b", "B"]);
+      a.value = "A";
+      await nextTick();
+      expect(log).toEqual(["a", "b", "B"]);
+
+      const only = signal(1);
+      const extra = signal(2);
+      const useExtra = signal(false);
+      const sums: number[] = [];
+      const disposeSums = effect(
+        () => {
+          const base = only.value;
+          sums.push(useExtra.value ? base + extra.value : base);
+        },
+        { fixed: true },
+      );
+      useExtra.value = true;
+      await nextTick();
+      extra.value = 5;
+      await nextTick();
+      expect(sums).toEqual([1, 3, 6]);
+      disposeSums();
+    } finally {
+      dispose();
+    }
+  });
+
+  it("isolates fixed effect reads from an outer effect inside batch", async () => {
+    const secret = signal(0);
+    const tick = signal(0);
+    const fixedLog: number[] = [];
+    const outerLog: number[] = [];
+    effect(
+      () => {
+        fixedLog.push(secret.value);
+      },
+      { fixed: true },
+    );
+    effect(() => {
+      const next = tick.value;
+      outerLog.push(next);
+      batch(() => {
+        secret.value = next + 1;
+      });
+    });
+
+    expect(outerLog).toEqual([0]);
+    expect(fixedLog.at(-1)).toBe(1);
+
+    secret.value = 5;
+    await nextTick();
+    expect(outerLog).toEqual([0]);
+    expect(fixedLog.at(-1)).toBe(5);
+
+    tick.value = 2;
+    await nextTick();
+    expect(outerLog).toEqual([0, 2]);
+    expect(fixedLog.at(-1)).toBe(3);
+  });
+
+  it("fixed effects skip retrack after the first run", async () => {
+    const count = signal(0);
+    const log: number[] = [];
+    effect(
+      () => {
+        log.push(count.value);
+      },
+      { fixed: true },
+    );
+    expect(log).toEqual([0]);
+
+    count.value = 1;
+    await nextTick();
+    expect(log).toEqual([0, 1]);
+
+    count.value = 2;
+    await nextTick();
+    expect(log).toEqual([0, 1, 2]);
+  });
+
+  it("fixed effects run prior cleanup on re-run", async () => {
+    const count = signal(0);
+    const cleanups: number[] = [];
+    effect(
+      () => {
+        const v = count.value;
+        return () => {
+          cleanups.push(v);
+        };
+      },
+      { fixed: true },
+    );
+    count.value = 1;
+    await nextTick();
+    expect(cleanups).toEqual([0]);
+    count.value = 2;
+    await nextTick();
+    expect(cleanups).toEqual([0, 1]);
+  });
+
   it("exposes the currently active effect", () => {
     expect(getActiveEffect()).toBeNull();
     let inner: ReturnType<typeof getActiveEffect> = null;
@@ -1067,5 +1185,120 @@ describe("reactive failure-mode contracts", () => {
       disposeEnd();
       await nextTick();
     }
+  });
+});
+
+describe("createSelector", () => {
+  it("returns true only for the selected key", async () => {
+    const { createSelector } = await import("../src/reactivity/selector.ts");
+    const selected = signal<number | null>(null);
+    const isSelected = createSelector(() => selected.value);
+
+    expect(isSelected(1)).toBe(false);
+    expect(isSelected(2)).toBe(false);
+
+    selected.value = 1;
+    await nextTick();
+    expect(isSelected(1)).toBe(true);
+    expect(isSelected(2)).toBe(false);
+  });
+
+  it("re-runs only subscribers whose key equality flipped", async () => {
+    const { createSelector } = await import("../src/reactivity/selector.ts");
+    const selected = signal(0);
+    const isSelected = createSelector(() => selected.value);
+    const runs = new Map<number, number>();
+
+    for (let i = 0; i < 5; i++) {
+      const key = i;
+      runs.set(key, 0);
+      effect(() => {
+        isSelected(key);
+        runs.set(key, (runs.get(key) ?? 0) + 1);
+      });
+    }
+
+    await nextTick();
+    for (let i = 0; i < 5; i++) expect(runs.get(i)).toBe(1);
+
+    selected.value = 3;
+    await nextTick();
+
+    // key 0: true→false, key 3: false→true — only those two re-run
+    expect(runs.get(0)).toBe(2);
+    expect(runs.get(1)).toBe(1);
+    expect(runs.get(2)).toBe(1);
+    expect(runs.get(3)).toBe(2);
+    expect(runs.get(4)).toBe(1);
+  });
+
+  it("supports a custom equals and skips notify when the source is unchanged", async () => {
+    const { createSelector } = await import("../src/reactivity/selector.ts");
+    const selected = signal({ id: 1 });
+    let equalsCalls = 0;
+    const isSelected = createSelector(
+      () => selected.value,
+      (key, current) => {
+        equalsCalls++;
+        return key.id === current.id;
+      },
+    );
+
+    expect(isSelected({ id: 1 })).toBe(true);
+    expect(isSelected({ id: 2 })).toBe(false);
+
+    const before = equalsCalls;
+    selected.value = selected.value; // Object.is — no notify
+    await nextTick();
+    expect(equalsCalls).toBe(before);
+
+    selected.value = { id: 2 };
+    await nextTick();
+    expect(isSelected({ id: 2 })).toBe(true);
+  });
+
+  it("does not keep Map entries for reads outside an effect", async () => {
+    const { createSelector } = await import("../src/reactivity/selector.ts");
+    const selected = signal("a");
+    const seen: string[] = [];
+    const isSelected = createSelector(
+      () => selected.value,
+      (key, current) => {
+        seen.push(String(key));
+        return Object.is(key, current);
+      },
+    );
+
+    expect(isSelected("ghost")).toBe(false);
+    seen.length = 0;
+    selected.value = "b";
+    await nextTick();
+    expect(seen).not.toContain("ghost");
+
+    const runs: number[] = [];
+    effect(() => {
+      runs.push(isSelected("b") ? 1 : 0);
+    });
+    await nextTick();
+    selected.value = "c";
+    await nextTick();
+    expect(runs).toEqual([1, 0]);
+    expect(seen).not.toContain("ghost");
+  });
+
+  it("removes Map entries when the last key subscriber disposes", async () => {
+    const { createSelector } = await import("../src/reactivity/selector.ts");
+    const selected = signal(0);
+    const isSelected = createSelector(() => selected.value);
+    const dispose = effect(() => {
+      isSelected(1);
+    });
+    expect(isSelected(1)).toBe(false);
+    dispose();
+    // After dispose, selecting 1 then 2 should only walk live keys — entry 1
+    // was removed so a fresh isSelected(1) recreates the dep.
+    selected.value = 1;
+    await nextTick();
+    expect(isSelected(1)).toBe(true);
   });
 });

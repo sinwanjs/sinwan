@@ -807,7 +807,7 @@ describe("Renderer — Stress Tests (Massive Scale)", () => {
         {},
         el(For, {
           each: data,
-          key: (i: any) => i,
+          by: (i: any) => i,
           children: (i: any) => el("span", {}, i),
         }),
         " - ",

@@ -13,7 +13,7 @@ export { computed, isComputed } from "./computed.ts";
 export type { Computed } from "./computed.ts";
 
 export { effect, untrack } from "./effect.ts";
-export type { CleanupFn, EffectFn } from "./effect.ts";
+export type { CleanupFn, EffectFn, EffectOptions } from "./effect.ts";
 export { setActiveEffectScope, getActiveEffectScope } from "./effect.ts";
 export type { EffectScope } from "./effect.ts";
 
@@ -21,6 +21,9 @@ export type { EffectScope } from "./effect.ts";
 export { on } from "./on.ts";
 export { observable } from "./observable.ts";
 export type { Observer, Subscription, Observable } from "./observable.ts";
+
+// Keyed selection (Solid-compatible)
+export { createSelector } from "./selector.ts";
 
 // Batching & scheduling
 export { batch } from "./batch.ts";

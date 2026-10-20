@@ -20,7 +20,13 @@ import {
   type Signal,
 } from "../../reactivity/signal.ts";
 import type { Computed } from "../../reactivity/computed.ts";
-import { GetterDependencyList } from "../_client.ts";
+import {
+  STATE_GETTER_MARKER,
+  type GetterDependencyList,
+  type StateGetter,
+} from "../_types/hooks.ts";
+
+export { STATE_GETTER_MARKER, type StateGetter };
 
 // ─── Hook slot storage on the component instance ───────────
 
@@ -110,20 +116,6 @@ export function applyUpdate<T>(prev: T, action: T | ((prev: T) => T)): T {
 }
 
 /**
- * Marker symbol used by `resolveDeps` to identify state getters that
- * should be called (dereferenced) during dependency comparison.
- */
-export const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
-
-/**
- * Type representing a state getter function created by `createStateGetter`.
- * This is a function that has the `STATE_GETTER_MARKER` symbol attached.
- */
-export type StateGetter<T> = (() => T) & {
-  [STATE_GETTER_MARKER]: true;
-};
-
-/**
  * Create a reactive getter for a signal that behaves like the underlying
  * value in arithmetic and string contexts while remaining reactive in
  * the Sinwan renderer (functions are treated as reactive nodes).
@@ -131,18 +123,22 @@ export type StateGetter<T> = (() => T) & {
 export function createStateGetter<T>(
   sig: Signal<T> | Computed<T>,
 ): StateGetter<T> {
-  const getter = () => sig.value;
-  (getter as any)[STATE_GETTER_MARKER] = true;
-  // Store the signal reference for dependency comparison
-  (getter as any).__signal__ = sig;
-  getter.valueOf = () => sig.value as any;
+  const getter = (() => sig.value) as StateGetter<T> & {
+    __signal__: Signal<T> | Computed<T>;
+    valueOf: () => T;
+    toString: () => string;
+    [Symbol.toPrimitive]: (hint: string) => string | number;
+  };
+  getter[STATE_GETTER_MARKER] = true;
+  getter.__signal__ = sig;
+  getter.valueOf = () => sig.value;
   getter.toString = () => String(sig.value);
-  (getter as any)[Symbol.toPrimitive] = (hint: string) => {
+  getter[Symbol.toPrimitive] = (hint: string) => {
     const val = sig.value;
     if (hint === "string") return String(val);
     return Number(val);
   };
-  return getter as StateGetter<T>;
+  return getter;
 }
 
 /**
@@ -152,7 +148,7 @@ export function createStateGetter<T>(
  */
 export function resolveDeps(
   deps: GetterDependencyList | undefined,
-): any[] | undefined {
+): unknown[] | undefined {
   if (deps === undefined) return undefined;
 
   const len = deps.length;
@@ -160,7 +156,7 @@ export function resolveDeps(
   for (let i = 0; i < len; i++) {
     const d = deps[i];
     resolved[i] =
-      typeof d === "function" && (d as any)[STATE_GETTER_MARKER] ? d() : d;
+      typeof d === "function" && STATE_GETTER_MARKER in d ? d() : d;
   }
   return resolved;
 }

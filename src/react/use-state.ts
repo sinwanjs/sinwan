@@ -2,9 +2,12 @@ import {
   useSignalSlot,
   applyUpdate,
   createStateGetter,
-  type StateGetter,
 } from "./_internal/bridge.ts";
-import type { Dispatch, SetStateAction } from "./_types/hooks.ts";
+import type {
+  Dispatch,
+  SetStateAction,
+  StateGetter,
+} from "./_types/hooks.ts";
 
 /**
  * React-compatible `useState` — `[CLIENT]`.

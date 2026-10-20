@@ -22,11 +22,26 @@ export type ReducerAction<R extends Reducer<any, any>> =
 export type EffectCallback = () => void | (() => void | undefined);
 
 /**
- * Dependency list that only accepts state getters (functions with STATE_GETTER_MARKER).
- * This prevents the common mistake of passing called values like `count()` instead of the getter `count`.
+ * Branding key for getters created by `createStateGetter` / `useState` /
+ * `useReducer` / … Same identity as `Symbol.for("sinwan.state_getter")`.
  */
-export type GetterDependencyList = readonly Getter[];
-export type Getter = () => any;
+export const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
+
+/**
+ * Reactive state getter returned by React-compatible hooks.
+ * Call it for the value (`count()`); pass the function itself in deps /
+ * JSX so Sinwan can track it.
+ */
+export type StateGetter<T = unknown> = (() => T) & {
+  [STATE_GETTER_MARKER]: true;
+};
+
+/**
+ * React-style dependency list. Prefer branded {@link StateGetter}s from
+ * hooks when tracking hook state; plain values (props, primitives) are
+ * also allowed for React compatibility.
+ */
+export type GetterDependencyList = readonly unknown[];
 
 // ─── use() — React 19 ──────────────────────────────────────
 

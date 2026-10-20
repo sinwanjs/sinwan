@@ -24,7 +24,6 @@ import {
   Key,
   Portal,
   Switch,
-  Visible,
   Show,
   Virtual,
   isDynamicElement,
@@ -40,13 +39,22 @@ import {
   isActivityElement,
   isSuspenseElement,
   isViewTransitionElement,
-  resolveKeyChildren,
-  resolveMatchChildren,
-  resolveShowChildren,
-  resolveSwitchContent,
-  createDynamicElement,
-  normalizeContent,
-} from "../component/control-flow.ts";
+} from "../control-flow/identity.ts";
+import { Visible } from "../control-flow/components/visible/factory.ts";
+import { renderActivityElement } from "../control-flow/components/activity/ssr.ts";
+import { renderDynamicElement } from "../control-flow/components/dynamic/ssr.ts";
+import { renderErrorBoundaryNode } from "../control-flow/components/error-boundary/ssr.ts";
+import { resolveForRenderNodes } from "../control-flow/components/for/ssr.ts";
+import { resolveIndexRenderNodes } from "../control-flow/components/index/ssr.ts";
+import { resolveKeyRenderNode } from "../control-flow/components/key/ssr.ts";
+import { resolveMatchRenderNode } from "../control-flow/components/match/ssr.ts";
+import { renderPortalElement } from "../control-flow/components/portal/ssr.ts";
+import { resolveShowRenderNode } from "../control-flow/components/show/ssr.ts";
+import { resolveSuspenseRenderNode } from "../control-flow/components/suspense/ssr.ts";
+import { resolveSwitchRenderNode } from "../control-flow/components/switch/ssr.ts";
+import { resolveViewTransitionRenderNode } from "../control-flow/components/view-transition/ssr.ts";
+import { renderVirtualHtml } from "../control-flow/components/virtual/ssr.ts";
+import { resolveVisibleRenderNode } from "../control-flow/components/visible/ssr.ts";
 import {
   ISLAND_TAG,
   ISLAND_ATTR,
@@ -233,107 +241,74 @@ export async function renderElement(element: SinwanElement): Promise<string> {
   }
 
   if (tag === Visible) {
-    return renderElement((tag as Function)(props));
+    return renderElement(resolveVisibleRenderNode(element));
   }
 
   if (isShowElement(element)) {
-    const when = resolve(props.when);
-    const content = when
-      ? resolveShowChildren(element, when)
-      : (props.fallback as SinwanNode);
-    return renderToString(content);
+    return renderToString(resolveShowRenderNode(element));
   }
 
   if (isForElement(element)) {
-    return renderForElement(element);
+    const nodes = resolveForRenderNodes(element);
+    if (nodes.length === 0) return "";
+    const rendered = await Promise.all(nodes.map((node) => renderToString(node)));
+    let output = "";
+    for (let i = 0; i < rendered.length; i++) {
+      output += rendered[i];
+    }
+    return output;
   }
 
   if (isSwitchElement(element)) {
-    return renderToString(resolveSwitchContent(element));
+    return renderToString(resolveSwitchRenderNode(element));
   }
 
   if (isMatchElement(element)) {
-    const when = resolve(props.when);
-    return renderToString(when ? resolveMatchChildren(element, when) : null);
+    return renderToString(resolveMatchRenderNode(element));
   }
 
   if (isIndexElement(element)) {
-    return renderIndexElement(element);
+    const nodes = resolveIndexRenderNodes(element);
+    if (nodes.length === 0) return "";
+    const rendered = await Promise.all(nodes.map((node) => renderToString(node)));
+    let output = "";
+    for (let i = 0; i < rendered.length; i++) {
+      output += rendered[i];
+    }
+    return output;
   }
 
   if (isKeyElement(element)) {
-    const key = resolve(props.when);
-    return renderToString(resolveKeyChildren(element, key));
+    return renderToString(resolveKeyRenderNode(element));
   }
 
   if (isDynamicElement(element)) {
-    const tag = resolve(props.component);
-    const dynamic = createDynamicElement(element, tag);
+    const dynamic = renderDynamicElement(element);
     return dynamic ? renderElement(dynamic) : "";
   }
 
   if (isPortalElement(element)) {
-    return "";
+    return renderPortalElement(element);
   }
 
   if (isErrorBoundaryElement(element)) {
-    try {
-      return await renderToString(props.children as SinwanNode);
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      const fallback = props.fallback;
-      const fallbackContent =
-        typeof fallback === "function"
-          ? (fallback as (error: Error, reset: () => void) => SinwanNode)(
-              error,
-              ssrReset,
-            )
-          : fallback;
-      return renderToString(fallbackContent as SinwanNode);
-    }
+    return await renderErrorBoundaryNode(element, ssrReset, renderToString);
   }
 
   if (isVirtualElement(element)) {
-    return renderVirtualElement(element);
+    return renderVirtualHtml(element, renderToString);
   }
 
   if (isSuspenseElement(element)) {
-    return renderToString((props as any).children as SinwanNode);
+    return renderToString(resolveSuspenseRenderNode(element));
   }
 
   if (isViewTransitionElement(element)) {
-    const name = props.name;
-    const viewChildren = (props as any).children as SinwanNode;
-    if (!name) {
-      return renderToString(viewChildren);
-    }
-    const wrapperTag = (props as any).as ?? "div";
-    const wrapperElement: SinwanElement = {
-      tag: wrapperTag,
-      props: {
-        style: { viewTransitionName: name },
-        children: viewChildren,
-      },
-      children: normalizeContent(viewChildren),
-    };
-    return renderElement(wrapperElement);
+    return renderToString(resolveViewTransitionRenderNode(element));
   }
 
   if (isActivityElement(element)) {
-    const mode = resolve(props.mode) ?? "visible";
-    const activityChildren = (props as any).children as SinwanNode;
-    const tag = (element.props as any).as ?? "div";
-    const hidden = mode === "hidden";
-
-    return renderElement({
-      tag,
-      props: {
-        "data-sinwan-activity": hidden ? "hidden" : "visible",
-        ...(hidden ? { hidden: true } : {}),
-        children: activityChildren,
-      },
-      children: normalizeContent(activityChildren),
-    });
+    return renderElement(renderActivityElement(element));
   }
 
   // Handle functional components
@@ -452,143 +427,7 @@ export function isSlots(children: unknown): children is SinwanSlots {
   );
 }
 
-async function renderForElement(element: SinwanElement): Promise<string> {
-  const props = element.props as {
-    each?: unknown;
-    fallback?: SinwanNode;
-    children?: (item: unknown, index: () => number) => SinwanNode;
-  };
-  const each = resolve(props.each);
-  if (!Array.isArray(each) || typeof props.children !== "function") {
-    return props.fallback ? renderToString(props.fallback) : "";
-  }
 
-  if (each.length === 0) {
-    return props.fallback ? renderToString(props.fallback) : "";
-  }
-
-  // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
-  const promises: Promise<string>[] = [];
-  for (let i = 0; i < each.length; i++) {
-    const index = i;
-    promises.push(renderToString(props.children!(each[i], () => index)));
-  }
-  const rendered = await Promise.all(promises);
-  let output = "";
-  for (let i = 0; i < rendered.length; i++) {
-    output += rendered[i];
-  }
-  return output;
-}
-
-async function renderIndexElement(element: SinwanElement): Promise<string> {
-  const props = element.props as {
-    each?: unknown;
-    fallback?: SinwanNode;
-    children?: (item: () => unknown, index: number) => SinwanNode;
-  };
-  const each = resolve(props.each);
-  if (!Array.isArray(each) || typeof props.children !== "function") {
-    return props.fallback ? renderToString(props.fallback) : "";
-  }
-
-  if (each.length === 0) {
-    return props.fallback ? renderToString(props.fallback) : "";
-  }
-
-  // replace map/Promise.all with for loop to avoid creating an intermediate array (critical for large lists)
-  const promises: Promise<string>[] = [];
-  for (let i = 0; i < each.length; i++) {
-    const item = each[i];
-    promises.push(renderToString(props.children!(() => item, i)));
-  }
-  const rendered = await Promise.all(promises);
-  let output = "";
-  for (let i = 0; i < rendered.length; i++) {
-    output += rendered[i];
-  }
-  return output;
-}
-
-async function renderVirtualElement(element: SinwanElement): Promise<string> {
-  const props = element.props as {
-    each?: unknown;
-    key?: (item: unknown, index: number) => string | number | symbol;
-    itemHeight: number;
-    containerHeight: number;
-    overscan?: number;
-    minRendered?: number;
-    fallback?: SinwanNode;
-    children?: (item: unknown, index: () => number) => SinwanNode;
-  };
-
-  const items = resolve(props.each);
-  const list = Array.isArray(items) ? items : [];
-
-  if (list.length === 0) {
-    return props.fallback ? renderToString(props.fallback) : "";
-  }
-
-  const itemHeight = props.itemHeight;
-  const containerHeight = props.containerHeight;
-  const overscan = props.overscan ?? 3;
-  const minRendered = props.minRendered ?? 0;
-
-  // Compute initial visible window at scrollTop=0
-  let startIndex = 0;
-  let endIndex = Math.ceil(containerHeight / itemHeight);
-  startIndex = Math.max(0, startIndex - overscan);
-  endIndex = Math.min(list.length, endIndex + overscan);
-
-  if (minRendered > 0) {
-    const visibleCount = endIndex - startIndex;
-    if (visibleCount < minRendered) {
-      const deficit = minRendered - visibleCount;
-      const expandStart = Math.min(startIndex, Math.floor(deficit / 2));
-      const expandEnd = Math.min(
-        list.length - endIndex,
-        Math.ceil(deficit / 2),
-      );
-      let remaining = deficit - expandStart - expandEnd;
-      startIndex -= expandStart;
-      endIndex += expandEnd;
-      if (remaining > 0 && endIndex < list.length) {
-        endIndex = Math.min(list.length, endIndex + remaining);
-      }
-    }
-  }
-
-  const totalHeight = list.length * itemHeight;
-  const renderChild = props.children;
-
-  let itemsHtml = "";
-  if (typeof renderChild === "function") {
-    const promises: Promise<string>[] = [];
-    for (let i = startIndex; i < endIndex; i++) {
-      const index = i;
-      const top = i * itemHeight;
-      // Wrap each item in a div with absolute positioning at the correct top
-      const itemPromise = renderToString(
-        renderChild(list[i], () => index),
-      ).then(
-        (html) =>
-          `<div style="position:absolute;top:${top}px;left:0;right:0">${html}</div>`,
-      );
-      promises.push(itemPromise);
-    }
-    const results = await Promise.all(promises);
-    for (let i = 0; i < results.length; i++) {
-      itemsHtml += results[i];
-    }
-  }
-
-  return `<div style="overflow:auto;height:${containerHeight}px"><div style="position:relative;height:${totalHeight}px">${itemsHtml}</div></div>`;
-}
-
-/**
- * Render an island element: produce a static wrapper with hydration markers
- * inside, plus the embedded props JSON the client needs to hydrate it.
- */
 async function renderIsland(element: IslandElement): Promise<string> {
   const { __island, __props } = element.props;
   const inner = await renderHydratableComponent(__island.component, __props);

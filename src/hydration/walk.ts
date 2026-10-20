@@ -10,33 +10,20 @@
 
 import type { SinwanElement, SinwanNode } from "../types.ts";
 import type { MountedNode } from "../renderer/types.ts";
-import { resolve, type CleanupFn } from "../reactivity/index.ts";
+import { resolve, type CleanupFn, type Signal } from "../reactivity/index.ts";
 import { isSignal } from "../reactivity/signal.ts";
 import { STATE_GETTER_MARKER } from "../react/_internal/bridge.ts";
 import { isComputed } from "../reactivity/computed.ts";
 import { effect } from "../reactivity/effect.ts";
 import { bindEvents, isEventProp } from "../renderer/events.ts";
 import { setSingleAttribute } from "../renderer/attributes.ts";
-import {
-  renderBlockContent,
-  renderControlFlowToDOM,
-  renderForBlock,
-  type ForRecord,
-} from "../renderer/render-control-flow.ts";
 import { HtmlEscapedString } from "../jsx/jsx-runtime.ts";
-import { signal } from "../reactivity/signal.ts";
 import {
-  pushSuspenseBoundary,
-  popSuspenseBoundary,
   getActiveSuspenseBoundary,
 } from "../renderer/suspense-boundary.ts";
-import {
-  errorBoundaryStack,
-  softHideMountedTree,
-  softShowMountedTree,
-  fireMountedAndQueueUpdated,
-  clearChildren,
-} from "../renderer/render-control-flow.ts";
+import { clearChildren } from "../control-flow/shared/clearChildren.ts";
+import { fireMountedAndQueueUpdated } from "../control-flow/shared/fireMountedAndQueueUpdated.ts";
+import { renderBlockContent } from "../control-flow/shared/renderBlockContent.ts";
 import { renderNodeToDOM } from "../renderer/render-children.ts";
 import {
   isTemplateResult,
@@ -48,11 +35,10 @@ import {
   type SinwanTemplateResult,
   type SinwanServerTemplateResult,
 } from "../renderer/template.ts";
-import { applyRef, renderElementToDOM } from "../renderer/render-element.ts";
+import { applyRef } from "../renderer/render-element.ts";
 import {
   removeMountedNode,
   getMountedDomNodes,
-  unmountNode,
 } from "../renderer/unmount.ts";
 import type {
   MountedElement,
@@ -63,6 +49,7 @@ import {
   For,
   Index,
   Key,
+  Match,
   Portal,
   Switch,
   Visible,
@@ -72,6 +59,7 @@ import {
   isForElement,
   isIndexElement,
   isKeyElement,
+  isMatchElement,
   isPortalElement,
   isShowElement,
   isSwitchElement,
@@ -80,12 +68,22 @@ import {
   isSuspenseElement,
   isActivityElement,
   isViewTransitionElement,
-  resolveSwitchContent,
-  resolveKeyChildren,
-  resolveShowChildren,
-  createDynamicElement,
   normalizeContent,
 } from "../component/control-flow.ts";
+import { hydrateActivity } from "../control-flow/components/activity/hydrate.ts";
+import { hydrateDynamic } from "../control-flow/components/dynamic/hydrate.ts";
+import { hydrateErrorBoundary } from "../control-flow/components/error-boundary/hydrate.ts";
+import { hydrateFor } from "../control-flow/components/for/hydrate.ts";
+import { hydrateIndex } from "../control-flow/components/index/hydrate.ts";
+import { hydrateKey } from "../control-flow/components/key/hydrate.ts";
+import { hydrateMatch } from "../control-flow/components/match/hydrate.ts";
+import { hydratePortal } from "../control-flow/components/portal/hydrate.ts";
+import { hydrateShow } from "../control-flow/components/show/hydrate.ts";
+import { hydrateSuspense } from "../control-flow/components/suspense/hydrate.ts";
+import { hydrateSwitch } from "../control-flow/components/switch/hydrate.ts";
+import { hydrateViewTransition } from "../control-flow/components/view-transition/hydrate.ts";
+import { hydrateVirtual } from "../control-flow/components/virtual/hydrate.ts";
+import { expandVisibleForHydrate } from "../control-flow/components/visible/hydrate.ts";
 import {
   DEFAULT_HYDRATION_ADAPTER,
   FUNCTION_MARKER_OPEN,
@@ -654,15 +652,18 @@ function swapHydrateTemplate(
 }
 
 /** Resolve a child slot dynamic to a getter function, or null if not reactive. */
-function resolveChildGetter(value: unknown): (() => unknown) | null {
+type UnknownGetter = { (): unknown };
+function resolveChildGetter(value: unknown): UnknownGetter | null {
   if (isBindingDescriptor(value)) {
-    return (value as any).getter as () => unknown;
+    return (value as { getter: UnknownGetter }).getter;
   }
   if (isSignal(value) || isComputed(value)) {
-    return () => (value as any).value;
+    return function readReactiveValue(): unknown {
+      return (value as { value: unknown }).value;
+    };
   }
-  if (typeof value === "function" && (value as any).length === 0) {
-    return value as () => unknown;
+  if (typeof value === "function" && (value as { length: number }).length === 0) {
+    return value as UnknownGetter;
   }
   return null;
 }
@@ -704,6 +705,7 @@ export function hydrateElement(
     tag === Show ||
     tag === For ||
     tag === Switch ||
+    tag === Match ||
     tag === Index ||
     tag === Key ||
     tag === Dynamic ||
@@ -714,17 +716,21 @@ export function hydrateElement(
   }
 
   if (tag === Visible) {
-    return hydrateElement((tag as Function)(props), cursor);
+    return hydrateElement(
+      expandVisibleForHydrate({ tag, props, children: element.children }),
+      cursor,
+    );
   }
 
   if (isPortalElement(element)) {
-    return renderControlFlowToDOM(element, cursor.parent, cursor.current, null);
+    return hydratePortal(element, cursor);
   }
 
   if (
     isShowElement(element) ||
     isForElement(element) ||
     isSwitchElement(element) ||
+    isMatchElement(element) ||
     isIndexElement(element) ||
     isKeyElement(element) ||
     isDynamicElement(element) ||
@@ -885,13 +891,13 @@ function hydrateAttributes(
   return disposers;
 }
 
-function createHydrationReactiveBlock(
+export function createHydrationReactiveBlock(
   startAnchor: Comment,
   endAnchor: Comment,
   children: MountedNode[],
 ): {
   block: MountedReactiveBlock;
-  attachDispose: (dispose: CleanupFn) => void;
+  attachDispose: { (dispose: CleanupFn): void };
 } {
   let disposeFn: CleanupFn | undefined;
   const block: MountedReactiveBlock = {
@@ -899,7 +905,7 @@ function createHydrationReactiveBlock(
     startAnchor,
     endAnchor,
     children,
-    dispose: () => {
+    dispose: function disposeHydrationBlock() {
       if (disposeFn) {
         disposeFn();
       }
@@ -907,7 +913,7 @@ function createHydrationReactiveBlock(
   };
   return {
     block,
-    attachDispose: (dispose: CleanupFn) => {
+    attachDispose: function attachDispose(dispose: CleanupFn) {
       disposeFn = dispose;
     },
   };
@@ -918,265 +924,23 @@ function hydrateControlFlow(
   cursor: HydrationCursor,
 ): MountedNode {
   if (isShowElement(element)) {
-    const when = resolve((element.props as any).when);
-    const content = when
-      ? resolveShowChildren(element, when)
-      : (element.props as any).fallback;
-    const initialMounted = hydrateContent(content, cursor);
-    return makeReactiveBlock(
-      initialMounted,
-      () => {
-        const newWhen = resolve((element.props as any).when);
-        return newWhen
-          ? resolveShowChildren(element, newWhen)
-          : (element.props as any).fallback;
-      },
-      () => resolve((element.props as any).when),
-    );
+    return hydrateShow(element, cursor);
   }
 
   if (isForElement(element)) {
-    const props = element.props as {
-      each?: unknown;
-      key?: (item: unknown, index: number) => string | number | symbol;
-      fallback?: SinwanNode;
-      children?: (item: unknown, index: () => number) => SinwanNode;
-    };
-    const items = resolve(props.each);
-    const list = Array.isArray(items) ? items : [];
-    const renderChild = props.children;
-
-    // Empty list (or no children fn) at hydration: there is nothing to
-    // reconcile, so keep the generic reactive block which correctly handles
-    // the empty → non-empty transition. This matches prior <For> behavior.
-    if (typeof renderChild !== "function" || list.length === 0) {
-      const resolveChildren = () => {
-        const its = resolve(props.each);
-        if (Array.isArray(its) && typeof props.children === "function") {
-          const result: SinwanNode[] = [];
-          for (let i = 0; i < its.length; i++) {
-            const index = i;
-            result.push(props.children!(its[i], () => index));
-          }
-          return result;
-        }
-        return props.fallback ? [props.fallback] : [];
-      };
-      const initialMounted = hydrateArray(resolveChildren(), cursor);
-      return makeReactiveBlock(
-        initialMounted,
-        () => resolveChildren() as unknown as SinwanNode,
-      );
-    }
-
-    // Non-empty list: hydrate each child into a keyed record, then delegate
-    // updates to the same keyed reconciler the client renderer uses. This
-    // preserves DOM nodes / component state on update instead of recreating
-    // the whole list (parity with client-side <For>).
-    const records: ForRecord<unknown>[] = [];
-    for (let i = 0; i < list.length; i++) {
-      const item = list[i];
-      const key = props.key ? props.key(item, i) : item;
-      const record: ForRecord<unknown> = {
-        key,
-        item,
-        index: i,
-        mounted: undefined as unknown as MountedNode,
-      };
-      const childNode = renderChild(item, () => record.index);
-      record.mounted = hydrateNode(childNode, cursor);
-      records.push(record);
-    }
-
-    const domNodes = records.flatMap((r) => getMountedDomNodes(r.mounted));
-    const firstNode = domNodes[0]!;
-    const parentNode = firstNode.parentNode!;
-    const startAnchor = (parentNode.ownerDocument || document).createComment(
-      "Sinwan-hyd-for",
-    );
-    const endAnchor = (parentNode.ownerDocument || document).createComment(
-      "/Sinwan-hyd-for",
-    );
-    parentNode.insertBefore(startAnchor, firstNode);
-    const lastNode = domNodes[domNodes.length - 1]!;
-    if (lastNode.nextSibling) {
-      parentNode.insertBefore(endAnchor, lastNode.nextSibling);
-    } else {
-      parentNode.appendChild(endAnchor);
-    }
-
-    const childrenArr = new Array(records.length);
-    for (let i = 0; i < records.length; i++) {
-      childrenArr[i] = records[i].mounted;
-    }
-
-    const { block, attachDispose } = createHydrationReactiveBlock(
-      startAnchor,
-      endAnchor,
-      childrenArr,
-    );
-
-    const owner = getCurrentInstance();
-    attachDispose(
-      renderForBlock(element, block, parentNode, null, owner, {
-        records,
-        lastList: list,
-      }),
-    );
-    return block;
+    return hydrateFor(element, cursor);
   }
 
   if (isSwitchElement(element)) {
-    const content = resolveSwitchContent(element);
-    const initialMounted = hydrateContent(content, cursor);
-    return makeReactiveBlock(initialMounted, () =>
-      resolveSwitchContent(element),
-    );
+    return hydrateSwitch(element, cursor);
+  }
+
+  if (isMatchElement(element)) {
+    return hydrateMatch(element, cursor);
   }
 
   if (isIndexElement(element)) {
-    const props = element.props as {
-      each?: unknown;
-      fallback?: SinwanNode;
-      children?: (item: () => unknown, index: number) => SinwanNode;
-    };
-    const items = resolve(props.each);
-    const list = Array.isArray(items) ? items : [];
-    const renderChild = props.children;
-
-    if (typeof renderChild !== "function") {
-      return hydrateContent(props.fallback ?? null, cursor);
-    }
-
-    if (list.length === 0) {
-      return hydrateContent(props.fallback ?? null, cursor);
-    }
-
-    // Create item signals and hydrate children with reactive getters
-    const records: { item: any; mounted: MountedNode }[] = [];
-    for (let i = 0; i < list.length; i++) {
-      const itemSignal = signal(list[i]);
-      const childNode = renderChild(() => itemSignal.value, i);
-      records.push({
-        item: itemSignal,
-        mounted: hydrateNode(childNode, cursor),
-      });
-    }
-
-    // Build reactive block with anchors
-    const domNodes = records.flatMap((r) => getMountedDomNodes(r.mounted));
-    const firstNode = domNodes[0]!;
-    const parentNode = firstNode.parentNode!;
-    const startAnchor = (parentNode.ownerDocument || document).createComment(
-      "Sinwan-hyd-idx",
-    );
-    const endAnchor = (parentNode.ownerDocument || document).createComment(
-      "/Sinwan-hyd-idx",
-    );
-    parentNode.insertBefore(startAnchor, firstNode);
-    const lastNode = domNodes[domNodes.length - 1]!;
-    if (lastNode.nextSibling) {
-      parentNode.insertBefore(endAnchor, lastNode.nextSibling);
-    } else {
-      parentNode.appendChild(endAnchor);
-    }
-
-    const childrenArr = new Array(records.length);
-    for (let i = 0; i < records.length; i++) {
-      childrenArr[i] = records[i].mounted;
-    }
-
-    const { block, attachDispose } = createHydrationReactiveBlock(
-      startAnchor,
-      endAnchor,
-      childrenArr,
-    );
-
-    const owner = getCurrentInstance();
-    let initialized = false;
-
-    const disposeEffect = effect(() => {
-      const newItems = resolve(props.each);
-      const newList = Array.isArray(newItems) ? newItems : [];
-      const currentRenderChild = props.children;
-
-      if (!initialized) {
-        initialized = true;
-        return;
-      }
-
-      if (typeof currentRenderChild !== "function") {
-        clearChildren(block);
-        while (records.length > 0) {
-          removeMountedNode(records.pop()!.mounted);
-        }
-        block.children = [];
-        if (owner) {
-          queueUpdatedHooks(owner);
-        }
-        return;
-      }
-
-      if (newList.length === 0) {
-        clearChildren(block);
-        while (records.length > 0) {
-          removeMountedNode(records.pop()!.mounted);
-        }
-        block.children = renderBlockContent(
-          props.fallback ?? null,
-          parentNode,
-          endAnchor,
-          null,
-          owner,
-        );
-        if (owner) {
-          fireMountedAndQueueUpdated(owner);
-        }
-        return;
-      }
-
-      if (records.length === 0 && block.children.length > 0) {
-        clearChildren(block);
-      }
-
-      // Update existing item signals (granular — only changed values trigger DOM updates)
-      const minLen = Math.min(records.length, newList.length);
-      for (let i = 0; i < minLen; i++) {
-        records[i].item.value = newList[i];
-      }
-
-      // Remove extra items
-      while (records.length > newList.length) {
-        const removed = records.pop()!;
-        removeMountedNode(removed.mounted);
-      }
-
-      // Add new items
-      for (let i = records.length; i < newList.length; i++) {
-        const itemSignal = signal(newList[i]);
-        const childNode = currentRenderChild(() => itemSignal.value, i);
-        const mounted = owner
-          ? withInstance(owner, () =>
-              renderNodeToDOM(childNode, parentNode, endAnchor, null),
-            )
-          : renderNodeToDOM(childNode, parentNode, endAnchor, null);
-        records.push({ item: itemSignal, mounted });
-      }
-
-      // Update block children references
-      const childrenArr = new Array(records.length);
-      for (let i = 0; i < records.length; i++) {
-        childrenArr[i] = records[i].mounted;
-      }
-      block.children = childrenArr;
-
-      if (owner) {
-        fireMountedAndQueueUpdated(owner);
-      }
-    });
-
-    attachDispose(disposeEffect);
-    return block;
+    return hydrateIndex(element, cursor);
   }
 
   if (isKeyElement(element)) {
@@ -1184,251 +948,11 @@ function hydrateControlFlow(
   }
 
   if (isDynamicElement(element)) {
-    const tag = resolve((element.props as any).component);
-    const dynamic = createDynamicElement(element, tag);
-    const initialMounted = dynamic
-      ? hydrateElement(dynamic, cursor)
-      : hydrateArray([], cursor);
-    return makeReactiveBlock(
-      initialMounted,
-      () => {
-        const newTag = resolve((element.props as any).component);
-        const newDynamic = createDynamicElement(element, newTag);
-        return newDynamic;
-      },
-      () => resolve((element.props as any).component),
-    );
+    return hydrateDynamic(element, cursor);
   }
 
   if (isVirtualElement(element)) {
-    const props = element.props as {
-      each?: unknown;
-      key?: (item: unknown, index: number) => string | number | symbol;
-      itemHeight: number;
-      containerHeight: number;
-      overscan?: number;
-      minRendered?: number;
-      fallback?: SinwanNode;
-      children?: (item: unknown, index: () => number) => SinwanNode;
-    };
-
-    const items = resolve(props.each);
-    const list = Array.isArray(items) ? items : [];
-
-    if (list.length === 0) {
-      return hydrateContent(props.fallback ?? null, cursor);
-    }
-
-    const itemHeight = props.itemHeight;
-    const containerHeight = props.containerHeight;
-    const overscan = props.overscan ?? 3;
-    const minRendered = props.minRendered ?? 0;
-
-    let startIndex: number;
-    let endIndex: number;
-
-    const renderChild = props.children;
-    if (typeof renderChild !== "function") {
-      return hydrateArray([], cursor);
-    }
-
-    // Extract shared range calculation logic
-    const resolveRange = (
-      scrollTop: number,
-      length: number,
-    ): readonly [number, number] => {
-      let s = Math.floor(scrollTop / itemHeight);
-      let e = Math.ceil((scrollTop + containerHeight) / itemHeight);
-      s = Math.max(0, s - overscan);
-      e = Math.min(length, e + overscan);
-      if (minRendered > 0) {
-        const visibleCount = e - s;
-        if (visibleCount < minRendered) {
-          const deficit = minRendered - visibleCount;
-          const expandStart = Math.min(s, Math.floor(deficit / 2));
-          const expandEnd = Math.min(length - e, Math.ceil(deficit / 2));
-          const remaining = deficit - expandStart - expandEnd;
-          s -= expandStart;
-          e += expandEnd;
-          if (remaining > 0) {
-            if (e < length) {
-              e = Math.min(length, e + remaining);
-            } else if (s > 0) {
-              s = Math.max(0, s - remaining);
-            }
-          }
-        }
-      }
-      return [s, e] as const;
-    };
-
-    const initialRange = resolveRange(0, list.length);
-    startIndex = initialRange[0];
-    endIndex = initialRange[1];
-
-    // Advance past the container div rendered by the server
-    const containerDiv = advance(cursor) as HTMLElement;
-    if (!containerDiv || containerDiv.nodeType !== 1) {
-      return hydrateArray([], cursor);
-    }
-
-    const contentDiv = containerDiv.firstChild as HTMLElement;
-    if (!contentDiv || contentDiv.nodeType !== 1) {
-      return hydrateArray([], cursor);
-    }
-
-    const itemCursor: HydrationCursor = {
-      parent: contentDiv,
-      current: contentDiv.firstChild,
-      adapter: cursor.adapter,
-    };
-
-    const children: MountedNode[] = [];
-    for (let i = startIndex; i < endIndex; i++) {
-      const index = i;
-      const child = renderChild(list[i], () => index);
-      children.push(
-        hydrateNode(
-          {
-            tag: "div",
-            props: {
-              style: `position:absolute;top:${i * itemHeight}px;left:0;right:0`,
-            },
-            children: normalizeContent(child),
-          },
-          itemCursor,
-        ),
-      );
-    }
-
-    const keyFn = props.key;
-    interface VirtualEntry {
-      mounted: MountedNode;
-      wrapperEl: HTMLElement;
-      currentIndex: number;
-    }
-    const keyMap = new Map<string | number | symbol, VirtualEntry>();
-    for (let i = startIndex; i < endIndex; i++) {
-      const key = keyFn ? (keyFn(list[i], i) ?? i) : i;
-      const m = children[i - startIndex];
-      if (m.type !== "element") continue;
-      const wrapperEl = (m as MountedElement).node as HTMLElement;
-      if (!wrapperEl) continue;
-      keyMap.set(key, { mounted: m, wrapperEl, currentIndex: i });
-    }
-
-    const contentMounted: MountedElement = {
-      type: "element",
-      node: contentDiv,
-      children,
-      eventCleanups: null,
-      attrDisposers: null,
-      refCleanup: null,
-    };
-
-    const mounted: MountedElement = {
-      type: "element",
-      node: containerDiv,
-      children: [contentMounted],
-      eventCleanups: null,
-      attrDisposers: null,
-      refCleanup: null,
-    };
-
-    // Setup scroll reactivity after hydration
-    if (typeof window !== "undefined") {
-      const scrollSignal = signal(0);
-      const scrollHandler = () => {
-        scrollSignal.value = containerDiv.scrollTop;
-      };
-      containerDiv.addEventListener("scroll", scrollHandler, { passive: true });
-
-      // Store cleanup on the mounted element
-      const scrollCleanup = () =>
-        containerDiv.removeEventListener("scroll", scrollHandler);
-
-      // Effect that updates visible items on scroll
-      let initialized = false;
-      const disposeScrollEffect = effect(() => {
-        const scrollTop = scrollSignal.value;
-
-        // Re-read list to handle signal updates
-        const currentList = (() => {
-          const items = resolve(props.each);
-          return Array.isArray(items) ? items : [];
-        })();
-
-        // Skip first run - DOM is already hydrated
-        if (!initialized) {
-          initialized = true;
-          // Just set the total height on first run
-          const totalHeight = currentList.length * itemHeight;
-          contentDiv.style.height = `${totalHeight}px`;
-          return;
-        }
-        const totalHeight = currentList.length * itemHeight;
-        contentDiv.style.height = `${totalHeight}px`;
-
-        const [newStart, newEnd] = resolveRange(scrollTop, currentList.length);
-
-        // Keyed node reuse: keep existing nodes, create only new ones, remove old ones
-        const newChildren: MountedNode[] = [];
-        const newKeyMap = new Map<string | number | symbol, VirtualEntry>();
-
-        for (let i = newStart; i < newEnd; i++) {
-          const key = keyFn ? (keyFn(currentList[i], i) ?? i) : i;
-          const entry = keyMap.get(key);
-          if (entry) {
-            if (entry.currentIndex !== i) {
-              entry.wrapperEl.style.top = `${i * itemHeight}px`;
-              entry.currentIndex = i;
-            }
-            newChildren.push(entry.mounted);
-            keyMap.delete(key);
-            newKeyMap.set(key, entry);
-          } else {
-            const childNode = renderChild!(currentList[i], () => i);
-            const wrapped: SinwanElement = {
-              tag: "div",
-              props: {
-                style: `position:absolute;top:${i * itemHeight}px;left:0;right:0`,
-              },
-              children: normalizeContent(childNode),
-            };
-            const rendered = renderElementToDOM(
-              wrapped,
-              contentDiv,
-              null,
-              null,
-            ) as MountedElement;
-            const wrapperEl = rendered.node as HTMLElement;
-            newChildren.push(rendered);
-            newKeyMap.set(key, {
-              mounted: rendered,
-              wrapperEl,
-              currentIndex: i,
-            });
-          }
-        }
-
-        // Remove nodes that are no longer in the visible window
-        for (const [, entry] of keyMap) {
-          removeMountedNode(entry.mounted);
-        }
-
-        contentMounted.children = newChildren;
-        // Update keyMap for next scroll effect run
-        keyMap.clear();
-        for (const [k, v] of newKeyMap) {
-          keyMap.set(k, v);
-        }
-      });
-
-      // Store cleanup on the mounted element
-      mounted.eventCleanups = [scrollCleanup, disposeScrollEffect];
-    }
-
-    return mounted;
+    return hydrateVirtual(element, cursor);
   }
 
   if (isErrorBoundaryElement(element)) {
@@ -1558,600 +1082,10 @@ function hydrateArray(
 
 // ─── Control flow hydration helpers ────────────────────────
 
-function hydrateErrorBoundary(
-  element: SinwanElement,
-  cursor: HydrationCursor,
-): MountedNode {
-  const props = element.props as {
-    fallback?: SinwanNode | ((error: Error, reset: () => void) => SinwanNode);
-    children?: SinwanNode;
-  };
-  const resetSignal = signal(0);
-  let error: Error | null = null;
-  const owner = getCurrentInstance();
-
-  const startAnchor = document.createComment("sinwan-b");
-  const endAnchor = document.createComment("/sinwan-b");
-  const parent = cursor.parent;
-  const currentDOMNode = cursor.current;
-
-  parent.insertBefore(startAnchor, currentDOMNode);
-
-  const { block, attachDispose } = createHydrationReactiveBlock(
-    startAnchor,
-    endAnchor,
-    [],
-  );
-
-  let initialized = false;
-  const dispose = effect(() => {
-    void resetSignal.value;
-
-    if (initialized) {
-      clearChildren(block);
-      errorBoundaryStack.push(block);
-      try {
-        block.children = renderBlockContent(
-          props.children,
-          parent,
-          endAnchor,
-          null,
-          owner,
-        );
-        error = null;
-      } catch (err) {
-        error = err instanceof Error ? err : new Error(String(err));
-        const fallback = props.fallback;
-        const fallbackContent: SinwanNode =
-          typeof fallback === "function"
-            ? (fallback as any)(error, () => {
-                error = null;
-                resetSignal.value = resetSignal.value + 1;
-              })
-            : fallback;
-        block.children = renderBlockContent(
-          fallbackContent,
-          parent,
-          endAnchor,
-          null,
-          owner,
-        );
-      } finally {
-        errorBoundaryStack.pop();
-      }
-      fireMountedAndQueueUpdated(owner);
-      return;
-    }
-
-    errorBoundaryStack.push(block);
-    try {
-      const child = hydrateContent(props.children, cursor);
-      block.children = [child];
-      initialized = true;
-      parent.insertBefore(endAnchor, cursor.current);
-    } catch (err) {
-      error = err instanceof Error ? err : new Error(String(err));
-      parent.insertBefore(endAnchor, cursor.current);
-      clearChildren(block);
-      const fallback = props.fallback;
-      const fallbackContent: SinwanNode =
-        typeof fallback === "function"
-          ? (fallback as any)(error, () => {
-              error = null;
-              resetSignal.value = resetSignal.value + 1;
-            })
-          : fallback;
-      block.children = renderBlockContent(
-        fallbackContent,
-        parent,
-        endAnchor,
-        null,
-        owner,
-      );
-      initialized = true;
-    } finally {
-      errorBoundaryStack.pop();
-    }
-  });
-
-  attachDispose(dispose);
-  return block;
-}
-
-function hydrateSuspense(
-  element: SinwanElement,
-  cursor: HydrationCursor,
-): MountedNode {
-  const props = element.props as {
-    fallback: SinwanNode;
-    children?: SinwanNode;
-  };
-  const retrySignal = signal(0);
-  const owner = getCurrentInstance();
-
-  const startAnchor = document.createComment("sinwan-b");
-  const endAnchor = document.createComment("/sinwan-b");
-  const parent = cursor.parent;
-  const currentDOMNode = cursor.current;
-
-  parent.insertBefore(startAnchor, currentDOMNode);
-
-  const { block, attachDispose } = createHydrationReactiveBlock(
-    startAnchor,
-    endAnchor,
-    [],
-  );
-
-  let initialized = false;
-  let disposed = false;
-  let fallbackNode: MountedNode | null = null;
-  let contentNodes: MountedNode[] = [];
-  const asyncComponentResults = new Map<Function, unknown>();
-
-  const dispose = effect(() => {
-    void retrySignal.value;
-
-    if (initialized) {
-      for (const node of contentNodes) {
-        removeMountedNode(node);
-      }
-      contentNodes = [];
-
-      let retryScheduled = false;
-      const boundary = {
-        promises: new Set<PromiseLike<unknown>>(),
-        onResolved() {
-          if (disposed || retryScheduled) return;
-          retryScheduled = true;
-          queueMicrotask(() => {
-            retryScheduled = false;
-            if (!disposed) {
-              retrySignal.value = retrySignal.value + 1;
-            }
-          });
-        },
-        asyncComponentResults,
-      };
-
-      pushSuspenseBoundary(boundary);
-
-      const children = props.children;
-      const childArray =
-        children != null
-          ? Array.isArray(children)
-            ? children
-            : [children]
-          : [];
-      const nodes: MountedNode[] = [];
-
-      try {
-        for (const child of childArray) {
-          if (child != null) {
-            nodes.push(renderNodeToDOM(child, parent, endAnchor, null));
-          }
-        }
-        popSuspenseBoundary();
-        if (fallbackNode) {
-          removeMountedNode(fallbackNode);
-          fallbackNode = null;
-        }
-        block.children = nodes;
-        contentNodes = nodes;
-      } catch (err) {
-        popSuspenseBoundary();
-        for (const node of nodes) {
-          removeMountedNode(node);
-        }
-        if (
-          err &&
-          typeof err === "object" &&
-          typeof (err as any).then === "function"
-        ) {
-          boundary.promises.add(err as any);
-          if (!fallbackNode) {
-            fallbackNode = renderNodeToDOM(
-              props.fallback,
-              parent,
-              endAnchor,
-              null,
-            );
-          }
-          block.children = fallbackNode ? [fallbackNode] : [];
-        } else {
-          throw err;
-        }
-      }
-
-      for (const promise of boundary.promises) {
-        promise.then(() => boundary.onResolved());
-      }
-      boundary.promises.clear();
-
-      fireMountedAndQueueUpdated(owner);
-      return;
-    }
-
-    const children = props.children;
-    const childArray =
-      children != null ? (Array.isArray(children) ? children : [children]) : [];
-    const nodes: MountedNode[] = [];
-
-    let retryScheduled = false;
-    const boundary = {
-      promises: new Set<PromiseLike<unknown>>(),
-      onResolved() {
-        if (disposed || retryScheduled) return;
-        retryScheduled = true;
-        queueMicrotask(() => {
-          retryScheduled = false;
-          if (!disposed) {
-            retrySignal.value = retrySignal.value + 1;
-          }
-        });
-      },
-      asyncComponentResults,
-    };
-
-    pushSuspenseBoundary(boundary);
-
-    try {
-      for (const child of childArray) {
-        if (child != null) {
-          nodes.push(hydrateNode(child, cursor));
-        }
-      }
-      popSuspenseBoundary();
-      parent.insertBefore(endAnchor, cursor.current);
-      block.children = nodes;
-      contentNodes = nodes;
-      initialized = true;
-    } catch (err) {
-      popSuspenseBoundary();
-      if (
-        err &&
-        typeof err === "object" &&
-        typeof (err as any).then === "function"
-      ) {
-        boundary.promises.add(err as any);
-        fallbackNode = hydrateNode(props.fallback, cursor);
-        parent.insertBefore(endAnchor, cursor.current);
-        block.children = fallbackNode ? [fallbackNode] : [];
-        contentNodes = block.children;
-        initialized = true;
-      } else {
-        throw err;
-      }
-    }
-
-    for (const promise of boundary.promises) {
-      promise.then(() => boundary.onResolved());
-    }
-    boundary.promises.clear();
-  });
-
-  attachDispose(() => {
-    disposed = true;
-    dispose();
-  });
-  return block;
-}
-
-function hydrateActivity(
-  element: SinwanElement,
-  cursor: HydrationCursor,
-): MountedNode {
-  const props = element.props as {
-    mode?: any;
-    children?: SinwanNode;
-  };
-  const owner = getCurrentInstance();
-
-  const startAnchor = document.createComment("sinwan-b");
-  const endAnchor = document.createComment("/sinwan-b");
-  const parent = cursor.parent;
-  const currentDOMNode = cursor.current;
-
-  parent.insertBefore(startAnchor, currentDOMNode);
-
-  const { block, attachDispose } = createHydrationReactiveBlock(
-    startAnchor,
-    endAnchor,
-    [],
-  );
-
-  let initialized = false;
-  let wasHidden = false;
-  let wrapperMounted: MountedElement | null = null;
-
-  const dispose = effect(() => {
-    const currentMode = resolve(props.mode) ?? "visible";
-    const hidden = currentMode === "hidden";
-
-    if (initialized) {
-      if (hidden !== wasHidden && wrapperMounted) {
-        const wrapper = wrapperMounted.node as HTMLElement;
-        wrapper.setAttribute(
-          "data-sinwan-activity",
-          hidden ? "hidden" : "visible",
-        );
-        if (hidden) {
-          wrapper.setAttribute("hidden", "");
-          wrapper.style.display = "none";
-          softHideMountedTree(wrapperMounted);
-        } else {
-          wrapper.removeAttribute("hidden");
-          wrapper.style.display = "";
-          softShowMountedTree(wrapperMounted);
-        }
-        wasHidden = hidden;
-      }
-      fireMountedAndQueueUpdated(owner);
-      return;
-    }
-
-    // Hydrate the wrapper element from DOM
-    const wrapper = advance(cursor) as HTMLElement;
-    if (wrapper && wrapper.nodeType === 1) {
-      const itemCursor: HydrationCursor = {
-        parent: wrapper,
-        current: wrapper.firstChild,
-        adapter: cursor.adapter,
-      };
-      const child = hydrateContent(props.children, itemCursor);
-
-      wrapperMounted = {
-        type: "element",
-        node: wrapper,
-        children: [child],
-        eventCleanups: null,
-        attrDisposers: null,
-        refCleanup: null,
-      };
-
-      block.children = [wrapperMounted];
-
-      if (hidden) {
-        wrapper.style.display = "none";
-        softHideMountedTree(wrapperMounted);
-      }
-      wasHidden = hidden;
-    }
-
-    parent.insertBefore(endAnchor, cursor.current);
-    initialized = true;
-  });
-
-  attachDispose(dispose);
-  return block;
-}
-
-function hydrateViewTransition(
-  element: SinwanElement,
-  cursor: HydrationCursor,
-): MountedNode {
-  const props = element.props as {
-    name?: string;
-    children?: SinwanNode;
-  };
-  const name = props.name;
-
-  if (!name) {
-    return hydrateContent(props.children, cursor);
-  }
-
-  const wrapper = advance(cursor) as HTMLElement;
-  if (!wrapper || wrapper.nodeType !== 1) {
-    return hydrateContent(props.children, cursor);
-  }
-
-  const itemCursor: HydrationCursor = {
-    parent: wrapper,
-    current: wrapper.firstChild,
-    adapter: cursor.adapter,
-  };
-  const child = hydrateContent(props.children, itemCursor);
-
-  const mounted: MountedElement = {
-    type: "element",
-    node: wrapper,
-    children: [child],
-    eventCleanups: null,
-    attrDisposers: null,
-    refCleanup: null,
-  };
-
-  return mounted;
-}
-
-interface HydratedKeyCacheEntry {
-  key: unknown;
-  mounted: MountedNode[];
-  fragment: DocumentFragment;
-}
-
-function fireMountedForSubtree(node: MountedNode): void {
-  if (node.type === "component" && node.instance) {
-    fireMountedHooks(node.instance);
-    return;
-  }
-  if ("children" in node && Array.isArray(node.children)) {
-    for (const child of node.children) {
-      fireMountedForSubtree(child);
-    }
-  }
-}
-
-function hydrateKey(
-  element: SinwanElement,
-  cursor: HydrationCursor,
-): MountedNode {
-  const key = resolve((element.props as any).when);
-  const owner = getCurrentInstance();
-
-  const startAnchor = document.createComment("sinwan-b");
-  const endAnchor = document.createComment("/sinwan-b");
-  const parent = cursor.parent;
-  const currentDOMNode = cursor.current;
-
-  parent.insertBefore(startAnchor, currentDOMNode);
-
-  const { block, attachDispose } = createHydrationReactiveBlock(
-    startAnchor,
-    endAnchor,
-    [],
-  );
-
-  let initialized = false;
-  let currentKey: unknown;
-  let currentEntry: HydratedKeyCacheEntry | null = null;
-  const cache = new Map<unknown, HydratedKeyCacheEntry>();
-  const useCache = (element.props as any).cache === true;
-
-  // Hydrate initial content for the current key
-  const initialMounted = hydrateContent(
-    resolveKeyChildren(element, key),
-    cursor,
-  );
-  parent.insertBefore(endAnchor, cursor.current);
-  block.children = [initialMounted];
-
-  const entry: HydratedKeyCacheEntry = {
-    key,
-    mounted: [initialMounted],
-    fragment: document.createDocumentFragment(),
-  };
-  cache.set(key, entry);
-  currentEntry = entry;
-  currentKey = key;
-  initialized = true;
-
-  const disposeEffect = effect(() => {
-    const newKey = resolve((element.props as any).when);
-    if (initialized && Object.is(currentKey, newKey)) {
-      return;
-    }
-
-    // When cache=false, fully unmount old content (React-style key behavior)
-    if (!useCache && currentEntry) {
-      for (const child of currentEntry.mounted) {
-        removeMountedNode(child);
-      }
-      currentEntry = null;
-    }
-
-    // Soft-hide and detach current entry (keep-alive path)
-    if (useCache && currentEntry) {
-      for (const child of currentEntry.mounted) {
-        softHideMountedTree(child);
-      }
-      for (const child of currentEntry.mounted) {
-        for (const node of getMountedDomNodes(child)) {
-          currentEntry.fragment.appendChild(node);
-        }
-      }
-    }
-
-    currentKey = newKey;
-    initialized = true;
-
-    if (!useCache) {
-      // React-style: always render fresh, never cache
-      const content = resolveKeyChildren(element, newKey);
-      const mounted = renderBlockContent(
-        content,
-        parent,
-        block.endAnchor,
-        null,
-        owner,
-      );
-      const nextEntry: HydratedKeyCacheEntry = {
-        key: newKey,
-        mounted,
-        fragment: document.createDocumentFragment(),
-      };
-      currentEntry = nextEntry;
-      block.children = nextEntry.mounted;
-
-      for (const child of nextEntry.mounted) {
-        fireMountedForSubtree(child);
-      }
-      if (owner) {
-        queueUpdatedHooks(owner);
-      }
-      return;
-    }
-
-    // Look up or create cache entry for this key
-    let nextEntry = cache.get(newKey);
-    if (!nextEntry) {
-      const content = resolveKeyChildren(element, newKey);
-      const mounted = renderBlockContent(
-        content,
-        parent,
-        block.endAnchor,
-        null,
-        owner,
-      );
-      nextEntry = {
-        key: newKey,
-        mounted,
-        fragment: document.createDocumentFragment(),
-      };
-      cache.set(newKey, nextEntry);
-
-      // Fire mounted hooks for newly created components
-      for (const child of nextEntry.mounted) {
-        fireMountedForSubtree(child);
-      }
-    } else {
-      // Reattach DOM nodes from the cached fragment
-      for (const child of nextEntry.mounted) {
-        for (const node of getMountedDomNodes(child)) {
-          parent.insertBefore(node, block.endAnchor);
-        }
-      }
-      // Soft-show to restore state and fire mounted hooks
-      for (const child of nextEntry.mounted) {
-        softShowMountedTree(child);
-      }
-    }
-
-    currentEntry = nextEntry;
-    block.children = nextEntry.mounted;
-
-    if (owner) {
-      queueUpdatedHooks(owner);
-    }
-  });
-
-  attachDispose(() => {
-    disposeEffect();
-    for (const cached of cache.values()) {
-      for (const child of cached.mounted) {
-        unmountNode(child);
-      }
-    }
-    cache.clear();
-    currentEntry = null;
-  });
-  return block;
-}
-
-/**
- * Wraps an already-hydrated MountedNode in a reactive block that re-renders
- * when the source signal changes. This makes control-flow elements (Show, Key,
- * Dynamic) reactive after hydration.
- *
- * Strategy:
- * 1. Insert anchor comments around the existing hydrated DOM
- * 2. Create a MountedReactiveBlock containing the hydrated content
- * 3. Set up an effect that watches the source signal
- * 4. On change: clear children, render new content between anchors
- */
-function makeReactiveBlock(
+export function makeReactiveBlock(
   initialMounted: MountedNode,
-  getContent: () => SinwanNode | null,
-  getCompareValue?: () => unknown,
+  getContent: { (): SinwanNode | null },
+  getCompareValue?: { (): unknown },
 ): MountedNode {
   // Get all DOM nodes belonging to the initial hydrated content
   const domNodes = getMountedDomNodes(initialMounted);

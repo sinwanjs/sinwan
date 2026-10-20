@@ -92,7 +92,8 @@ function compilePanels(
     );
   const compiled = transform(
     `
-    import { cc, Show } from "sinwan/component";
+    import { cc } from "sinwan/component";
+    import { Show } from "sinwan/control-flow";
     export const App = cc(() => {
       const left = panels.value[0], right = panels.value[1];
       const leftCollapsed = left?.collapsed.value ?? false;
@@ -113,7 +114,7 @@ function compilePanels(
   ).code;
   const code = transpiler.transformSync(
     compiled
-      .replace(/^import .*;\n/gm, "")
+      .replace(/import\s*[\s\S]*?\s*from\s*["'][^"']+["']\s*;?\n*/g, "")
       .replace("export const App", "const App"),
   );
   const runtime = {

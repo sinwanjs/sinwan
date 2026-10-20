@@ -242,13 +242,14 @@ type CrossOrigin = "anonymous" | "use-credentials" | "" | undefined;
 
 // ─── Typed Event Handlers ───────────────────────────────────
 //
-// Sinwan binds events directly to the element (addEventListener, no
-// delegation), so at runtime `event.currentTarget` is always the element the
-// handler is attached to. The DOM lib already maps each `on*` property to its
-// correct event class (onclick → PointerEvent, oninput → InputEvent,
-// onkeydown → KeyboardEvent, onsubmit → SubmitEvent, …). We only need to
-// (a) pull that event class out and (b) narrow `currentTarget`/`target` to the
-// element type — so `event.currentTarget.value` works with no manual cast.
+// Sinwan binds `on*` props via document capture delegation (`$$click` etc.).
+// The delegated walker sets `event.currentTarget` to the element that owns the
+// handler, so typed handlers still see that element as `currentTarget`. The DOM
+// lib already maps each `on*` property to its correct event class (onclick →
+// PointerEvent, oninput → InputEvent, onkeydown → KeyboardEvent, onsubmit →
+// SubmitEvent, …). We only need to (a) pull that event class out and (b) narrow
+// `currentTarget`/`target` to the element type — so `event.currentTarget.value`
+// works with no manual cast.
 
 /**
  * Remove string/number index signatures from a type, keeping only its

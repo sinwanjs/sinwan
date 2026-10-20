@@ -161,14 +161,183 @@ describe("TemplateSlotProtocol + _$createTemplate", () => {
       return _$createTemplate(def, ["fallback"]);
     });
 
-    // Since the slot marker does not match the default protocol, the child
-    // is not rendered at the marker position and the original comment remains.
-    container.innerHTML = "<div><p>Count: <!--x:0--></p></div>";
-    const app = hydrate(App, container);
-    expect(container.textContent).toContain("Count:");
-    // The original comment should still be there because the protocol could not decode it.
-    expect(container.querySelector("p")?.childNodes.length).toBe(2);
+    // Path is authoritative: the node at [0, 1] is replaced even if the
+    // comment does not use the default `s:N` protocol encoding.
+    const app = mount(App, container);
+    expect(container.querySelector("p")?.textContent).toBe("Count: fallback");
+    app.unmount();
+  });
 
+  it("binds sole-dynamic child slots via parent element path", async () => {
+    const count = signal(3);
+    const def: TemplateDef = {
+      html: "<div><span></span></div>",
+      slots: [{ path: [0], type: "child" }],
+    };
+
+    const App = cc(() => _$createTemplate(def, [() => count.value]));
+    const app = mount(App, container);
+    expect(container.querySelector("span")!.textContent).toBe("3");
+    count.value = 9;
+    await nextTick();
+    expect(container.querySelector("span")!.textContent).toBe("9");
+    app.unmount();
+  });
+
+  it("queues onUpdated from fixed parent-fill text bindings", async () => {
+    const { onUpdated } = await import("../src/component/lifecycle.ts");
+    const count = signal(1);
+    let updates = 0;
+    const def: TemplateDef = {
+      html: "<div><span></span></div>",
+      slots: [{ path: [0], type: "child" }],
+    };
+    const App = cc(() => {
+      onUpdated(() => {
+        updates++;
+      });
+      return _$createTemplate(def, [() => count.value]);
+    });
+    const app = mount(App, container);
+    expect(container.querySelector("span")!.textContent).toBe("1");
+    count.value = 2;
+    await nextTick();
+    expect(container.querySelector("span")!.textContent).toBe("2");
+    await nextTick();
+    expect(updates).toBeGreaterThan(0);
+    app.unmount();
+  });
+
+  it("appends static scalars into parent-fill slots", () => {
+    const def: TemplateDef = {
+      html: "<div><td></td></div>",
+      slots: [{ path: [0], type: "child" }],
+    };
+    const App = cc(() => _$createTemplate(def, ["42"]));
+    const app = mount(App, container);
+    expect(container.querySelector("td")!.textContent).toBe("42");
+    app.unmount();
+  });
+
+  it("skips child slots whose path resolves to a non-element non-comment", () => {
+    const def: TemplateDef = {
+      html: "<div>text</div>",
+      slots: [{ path: [0], type: "child" }],
+    };
+    const App = cc(() => _$createTemplate(def, ["nope"]));
+    const app = mount(App, container);
+    expect(container.querySelector("div")!.textContent).toBe("text");
+    app.unmount();
+  });
+
+  it("binds nested parent-fill and attr slots via compiled resolvers", () => {
+    const def: TemplateDef = {
+      html: '<div><section><p></p><span title=""></span></section></div>',
+      slots: [
+        { path: [0, 0], type: "child" },
+        { path: [0, 1], type: "attr", name: "title" },
+      ],
+    };
+    const App = cc(() => _$createTemplate(def, ["hello", "tip"]));
+    const app = mount(App, container);
+    expect(container.querySelector("p")!.textContent).toBe("hello");
+    expect(container.querySelector("span")!.getAttribute("title")).toBe("tip");
+    app.unmount();
+  });
+
+  it("binds depth-3 and depth-4 child slots via compiled resolvers", () => {
+    const deep3: TemplateDef = {
+      html: "<div><a><b><i></i></b></a></div>",
+      slots: [{ path: [0, 0, 0], type: "child" }],
+    };
+    const deep4: TemplateDef = {
+      html: "<div><a><b><c><i></i></c></b></a></div>",
+      slots: [{ path: [0, 0, 0, 0], type: "child" }],
+    };
+    const App = cc(() => [
+      _$createTemplate(deep3, ["d3"]),
+      _$createTemplate(deep4, ["d4"]),
+    ]);
+    const app = mount(App, container);
+    expect(container.textContent).toContain("d3");
+    expect(container.textContent).toContain("d4");
+    app.unmount();
+  });
+
+  it("throws when a compiled resolver path misses the DOM", () => {
+    const def: TemplateDef = {
+      html: "<div></div>",
+      slots: [{ path: [0], type: "child" }],
+    };
+    expect(() => _$createTemplate(def, ["x"])).toThrow(/invalid slot path/);
+
+    const empty: TemplateDef = {
+      html: "",
+      slots: [{ path: [], type: "attr", name: "id" }],
+    };
+    expect(() => _$createTemplate(empty, ["x"])).toThrow(/no children/);
+
+    const miss1: TemplateDef = {
+      html: "",
+      slots: [{ path: [0], type: "child" }],
+    };
+    expect(() => _$createTemplate(miss1, ["x"])).toThrow(/no children/);
+
+    const miss2: TemplateDef = {
+      html: "<div><span></span></div>",
+      slots: [{ path: [0, 1], type: "child" }],
+    };
+    expect(() => _$createTemplate(miss2, ["x"])).toThrow(/invalid slot path/);
+
+    const miss2empty: TemplateDef = {
+      html: "",
+      slots: [{ path: [0, 0], type: "child" }],
+    };
+    expect(() => _$createTemplate(miss2empty, ["x"])).toThrow(/no children/);
+
+    const miss2depth0: TemplateDef = {
+      html: "<div></div>",
+      slots: [{ path: [1, 0], type: "child" }],
+    };
+    expect(() => _$createTemplate(miss2depth0, ["x"])).toThrow(/invalid slot path/);
+
+    const miss3: TemplateDef = {
+      html: "<div><a><b></b></a></div>",
+      slots: [{ path: [0, 0, 1], type: "child" }],
+    };
+    expect(() => _$createTemplate(miss3, ["x"])).toThrow(/invalid slot path/);
+
+    const miss3empty: TemplateDef = {
+      html: "",
+      slots: [{ path: [0, 0, 0], type: "child" }],
+    };
+    expect(() => _$createTemplate(miss3empty, ["x"])).toThrow(/no children/);
+
+    const miss3depth0: TemplateDef = {
+      html: "<div></div>",
+      slots: [{ path: [1, 0, 0], type: "child" }],
+    };
+    expect(() => _$createTemplate(miss3depth0, ["x"])).toThrow(/invalid slot path/);
+
+    const miss3depth1: TemplateDef = {
+      html: "<div><a></a></div>",
+      slots: [{ path: [0, 1, 0], type: "child" }],
+    };
+    expect(() => _$createTemplate(miss3depth1, ["x"])).toThrow(/invalid slot path/);
+  });
+
+  it("renders reactive object children through parent-fill slots", async () => {
+    const node = signal({ tag: "em", props: {}, children: ["x"] } as const);
+    const def: TemplateDef = {
+      html: "<div><!--s:0--></div>",
+      slots: [{ path: [0], type: "child" }],
+    };
+    const App = cc(() => _$createTemplate(def, [() => node.value]));
+    const app = mount(App, container);
+    expect(container.querySelector("em")!.textContent).toBe("x");
+    node.value = { tag: "em", props: {}, children: ["y"] };
+    await nextTick();
+    expect(container.querySelector("em")!.textContent).toBe("y");
     app.unmount();
   });
 });

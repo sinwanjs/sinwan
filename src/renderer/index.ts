@@ -1,57 +1,9 @@
 /**
  * SinwanJS Client Renderer — Public API
+ *
+ * Core mount/render vs hoist web helpers are separate modules so app bundlers
+ * can tree-shake. Prefer `sinwan/renderer/web` for `_$createTemplate` / `_$bind*`.
  */
 
-// Mount / unmount
-export { mount, render, unmountNode } from "./mount.ts";
-
-// Low-level rendering
-export { renderNodeToDOM, renderChildrenToDOM } from "./render-children.ts";
-export { renderElementToDOM } from "./render-element.ts";
-
-// DOM operations (for custom renderers / testing)
-export { domOps, setDOMOps, resetDOMOps } from "./dom-ops.ts";
-export type { DOMOps } from "./dom-ops.ts";
-
-// Template hoisting (compiler-generated)
-export {
-  _$createTemplate,
-  _$bindText,
-  _$bindAttr,
-  _$bindStyle,
-  _$bindClass,
-  isTemplateResult,
-  isServerTemplateResult,
-  isBindingDescriptor,
-  setHydrationMode,
-  SINWAN_TEMPLATE,
-  SINWAN_SERVER_TEMPLATE,
-} from "./template.ts";
-export type {
-  SinwanTemplateResult,
-  SinwanServerTemplateResult,
-} from "./template.ts";
-export { DEFAULT_TEMPLATE_SLOT_PROTOCOL } from "./template-protocol.ts";
-export type {
-  TemplateSlot,
-  TemplateDef,
-  TemplateSlotProtocol,
-} from "./template-protocol.ts";
-
-// Attribute & event helpers
-export { applyAttributes } from "./attributes.ts";
-export { bindEvents, bindEvent, isEventProp, toEventName } from "./events.ts";
-
-// Types
-export type {
-  MountedNode,
-  MountedText,
-  MountedReactiveText,
-  MountedElement,
-  MountedFragment,
-  MountedReactiveBlock,
-  MountedComponent,
-  MountedAsync,
-  MountedPortal,
-  AppInstance,
-} from "./types.ts";
+export * from "./core.ts";
+export * from "./web.ts";

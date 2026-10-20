@@ -46,7 +46,6 @@ import {
   Key,
   Portal,
   Switch,
-  Visible,
   Show,
   Virtual,
   isDynamicElement,
@@ -62,13 +61,22 @@ import {
   isActivityElement,
   isSuspenseElement,
   isViewTransitionElement,
-  resolveMatchChildren,
-  resolveShowChildren,
-  resolveKeyChildren,
-  resolveSwitchContent,
-  createDynamicElement,
-  normalizeContent,
-} from "../component/control-flow.ts";
+} from "../control-flow/identity.ts";
+import { Visible } from "../control-flow/components/visible/factory.ts";
+import { renderActivityElement } from "../control-flow/components/activity/ssr.ts";
+import { renderDynamicElement } from "../control-flow/components/dynamic/ssr.ts";
+import { renderErrorBoundaryNode } from "../control-flow/components/error-boundary/ssr.ts";
+import { resolveForRenderNodes } from "../control-flow/components/for/ssr.ts";
+import { resolveIndexRenderNodes } from "../control-flow/components/index/ssr.ts";
+import { resolveKeyRenderNode } from "../control-flow/components/key/ssr.ts";
+import { resolveMatchRenderNode } from "../control-flow/components/match/ssr.ts";
+import { renderPortalElement } from "../control-flow/components/portal/ssr.ts";
+import { resolveShowRenderNode } from "../control-flow/components/show/ssr.ts";
+import { resolveSuspenseRenderNode } from "../control-flow/components/suspense/ssr.ts";
+import { resolveSwitchRenderNode } from "../control-flow/components/switch/ssr.ts";
+import { resolveViewTransitionRenderNode } from "../control-flow/components/view-transition/ssr.ts";
+import { renderVirtualHtml } from "../control-flow/components/virtual/ssr.ts";
+import { resolveVisibleRenderNode } from "../control-flow/components/visible/ssr.ts";
 import { setSSRContext, createSSRContext } from "../event/ssr-context.ts";
 
 const STATE_GETTER_MARKER = Symbol.for("sinwan.state_getter");
@@ -357,9 +365,8 @@ async function renderServerTemplate(
     }
   }
 
-  // Pass 2: resolve child slots by replacing `<!--s:N-->` markers.
-  // The marker number N is the Nth child slot (not the slots-array index),
-  // because only child slots call nextSlotId in the compiler.
+  // Pass 2: resolve child slots. Marker-based slots replace `<!--s:N-->`.
+  // Sole-dynamic parent-fill slots have no marker — inject at `slot.path`.
   let childSlotCount = 0;
   for (let i = 0; i < def.slots.length; i++) {
     const slot = def.slots[i]!;
@@ -367,11 +374,211 @@ async function renderServerTemplate(
     const marker = `<!--s:${childSlotCount}-->`;
     const value = dynamics[i];
     const rendered = await renderServerTemplateChild(value, ctx);
-    html = html.replace(marker, rendered);
+    if (html.includes(marker)) {
+      html = html.replace(marker, rendered);
+    } else {
+      html = injectHtmlAtPath(html, slot.path, rendered);
+    }
     childSlotCount++;
   }
 
   return html;
+}
+
+/** Void elements that never carry child content (compiler HTML only). */
+const SSR_VOID_ELEMENTS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);
+
+interface SsrElemRange {
+  kind: "element";
+  openEnd: number;
+  closeStart: number;
+  closeEnd: number;
+}
+
+interface SsrLeafRange {
+  kind: "text" | "comment";
+  start: number;
+  end: number;
+}
+
+type SsrChildRange = SsrElemRange | SsrLeafRange;
+
+/**
+ * Inject `content` as the inner HTML of the element at `path`, using the same
+ * path semantics as client `walkToSlot` (root = first element in the fragment).
+ */
+function injectHtmlAtPath(
+  html: string,
+  path: number[],
+  content: string,
+): string {
+  const root = findRootElementRange(html);
+  if (!root) return html;
+  let range: SsrElemRange = root;
+  for (let d = 0; d < path.length; d++) {
+    const kids = listSsrChildNodes(html, range.openEnd, range.closeStart);
+    const child = kids[path[d]!];
+    if (!child || child.kind !== "element") return html;
+    range = child;
+  }
+  return html.slice(0, range.openEnd) + content + html.slice(range.closeStart);
+}
+
+function findRootElementRange(html: string): SsrElemRange | null {
+  let i = 0;
+  while (i < html.length && (html[i] === " " || html[i] === "\n" || html[i] === "\t" || html[i] === "\r")) {
+    i++;
+  }
+  if (html[i] !== "<" || html[i + 1] === "!" || html[i + 1] === "/") return null;
+  const open = parseSsrOpenTag(html, i);
+  if (!open) return null;
+  if (open.selfClosing || SSR_VOID_ELEMENTS.has(open.tag)) {
+    return {
+      kind: "element",
+      openEnd: open.end,
+      closeStart: open.end,
+      closeEnd: open.end,
+    };
+  }
+  const closeStart = findSsrMatchingClose(html, open.end, open.tag);
+  if (closeStart < 0) return null;
+  return {
+    kind: "element",
+    openEnd: open.end,
+    closeStart,
+    closeEnd: closeStart + open.tag.length + 3,
+  };
+}
+
+function listSsrChildNodes(
+  html: string,
+  from: number,
+  to: number,
+): SsrChildRange[] {
+  const kids: SsrChildRange[] = [];
+  let i = from;
+  while (i < to) {
+    if (html.startsWith("<!--", i)) {
+      const end = html.indexOf("-->", i + 4);
+      const endPos = end < 0 ? to : Math.min(end + 3, to);
+      kids.push({ kind: "comment", start: i, end: endPos });
+      i = endPos;
+      continue;
+    }
+    if (html[i] === "<") {
+      if (html[i + 1] === "/") break;
+      const open = parseSsrOpenTag(html, i);
+      if (!open) {
+        i++;
+        continue;
+      }
+      if (open.selfClosing || SSR_VOID_ELEMENTS.has(open.tag)) {
+        kids.push({
+          kind: "element",
+          openEnd: open.end,
+          closeStart: open.end,
+          closeEnd: open.end,
+        });
+        i = open.end;
+        continue;
+      }
+      const closeStart = findSsrMatchingClose(html, open.end, open.tag);
+      if (closeStart < 0 || closeStart > to) break;
+      const closeEnd = closeStart + open.tag.length + 3;
+      kids.push({
+        kind: "element",
+        openEnd: open.end,
+        closeStart,
+        closeEnd,
+      });
+      i = closeEnd;
+      continue;
+    }
+    let j = i + 1;
+    while (j < to && html[j] !== "<") j++;
+    kids.push({ kind: "text", start: i, end: j });
+    i = j;
+  }
+  return kids;
+}
+
+function parseSsrOpenTag(
+  html: string,
+  start: number,
+): { tag: string; end: number; selfClosing: boolean } | null {
+  if (html[start] !== "<") return null;
+  let i = start + 1;
+  if (i >= html.length || html[i] === "/" || html[i] === "!") return null;
+  const tagStart = i;
+  while (i < html.length && /[A-Za-z0-9:-]/.test(html[i]!)) i++;
+  if (i === tagStart) return null;
+  const tag = html.slice(tagStart, i).toLowerCase();
+  let selfClosing = false;
+  while (i < html.length) {
+    if (html[i] === ">") {
+      i++;
+      break;
+    }
+    if (html[i] === "/" && html[i + 1] === ">") {
+      selfClosing = true;
+      i += 2;
+      break;
+    }
+    if (html[i] === '"' || html[i] === "'") {
+      const q = html[i]!;
+      i++;
+      while (i < html.length && html[i] !== q) i++;
+      i++;
+      continue;
+    }
+    i++;
+  }
+  return { tag, end: i, selfClosing };
+}
+
+function findSsrMatchingClose(html: string, from: number, tag: string): number {
+  const openRe = new RegExp(`<${tag}\\b`, "gi");
+  const closeStr = `</${tag}>`;
+  let depth = 1;
+  let i = from;
+  while (i < html.length) {
+    if (html.startsWith("<!--", i)) {
+      const end = html.indexOf("-->", i + 4);
+      i = end < 0 ? html.length : end + 3;
+      continue;
+    }
+    openRe.lastIndex = i;
+    const openMatch = openRe.exec(html);
+    const closeIdx = html.toLowerCase().indexOf(closeStr, i);
+    if (closeIdx < 0) return -1;
+    if (openMatch && openMatch.index < closeIdx) {
+      // Nested same-tag open — advance past this open tag.
+      // openRe already matched `<tag\b`, so parseSsrOpenTag cannot fail here.
+      const open = parseSsrOpenTag(html, openMatch.index)!;
+      if (!(open.selfClosing || SSR_VOID_ELEMENTS.has(open.tag))) depth++;
+      i = open.end;
+      continue;
+    }
+    depth--;
+    if (depth === 0) return closeIdx;
+    i = closeIdx + closeStr.length;
+  }
+  return -1;
 }
 
 /**
@@ -473,120 +680,101 @@ export async function renderElementH(
   }
 
   if (tag === Visible) {
-    return await renderElementH((tag as Function)(props), ctx, isComponentRoot);
+    return await renderElementH(
+      resolveVisibleRenderNode(element),
+      ctx,
+      isComponentRoot,
+    );
   }
 
   if (isShowElement(element)) {
-    const when = resolve(props.when);
-    const content = when
-      ? resolveShowChildren(element, when)
-      : (props.fallback as SinwanNode);
-    return await renderNodeMaybeRoot(content, ctx, isComponentRoot);
+    return await renderNodeMaybeRoot(
+      resolveShowRenderNode(element),
+      ctx,
+      isComponentRoot,
+    );
   }
 
   if (isForElement(element)) {
-    return await renderForElementH(element, ctx);
+    // sequential render to avoid race on mutable context indices
+    let output = "";
+    for (const node of resolveForRenderNodes(element)) {
+      output += await renderNodeH(node, ctx);
+    }
+    return output;
   }
 
   if (isSwitchElement(element)) {
     return await renderNodeMaybeRoot(
-      resolveSwitchContent(element),
+      resolveSwitchRenderNode(element),
       ctx,
       isComponentRoot,
     );
   }
 
   if (isMatchElement(element)) {
-    const when = resolve(props.when);
     return await renderNodeMaybeRoot(
-      when ? resolveMatchChildren(element, when) : null,
+      resolveMatchRenderNode(element),
       ctx,
       isComponentRoot,
     );
   }
 
   if (isIndexElement(element)) {
-    return await renderIndexElementH(element, ctx);
+    // sequential render to avoid race on mutable context indices
+    let output = "";
+    for (const node of resolveIndexRenderNodes(element)) {
+      output += await renderNodeH(node, ctx);
+    }
+    return output;
   }
 
   if (isKeyElement(element)) {
-    const key = resolve(props.when);
     return await renderNodeMaybeRoot(
-      resolveKeyChildren(element, key),
+      resolveKeyRenderNode(element),
       ctx,
       isComponentRoot,
     );
   }
 
   if (isDynamicElement(element)) {
-    const dynamicTag = resolve(props.component);
-    const dynamic = createDynamicElement(element, dynamicTag);
+    const dynamic = renderDynamicElement(element);
     return dynamic ? await renderElementH(dynamic, ctx, isComponentRoot) : "";
   }
 
   if (isPortalElement(element)) {
-    return "";
+    return renderPortalElement(element);
   }
 
   if (isErrorBoundaryElement(element)) {
-    try {
-      return await renderNodeH(props.children as SinwanNode, ctx);
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      const fallback = props.fallback;
-      const fallbackContent =
-        typeof fallback === "function"
-          ? (fallback as (error: Error, reset: () => void) => SinwanNode)(
-              error,
-              ssrReset,
-            )
-          : fallback;
-      return await renderNodeH(fallbackContent as SinwanNode, ctx);
-    }
+    return await renderErrorBoundaryNode(element, ssrReset, (node) =>
+      renderNodeH(node, ctx),
+    );
   }
 
   if (isVirtualElement(element)) {
-    return await renderVirtualElementH(element, ctx);
+    return await renderVirtualHtml(
+      element,
+      (node) => renderNodeH(node, ctx),
+      { sequential: true },
+    );
   }
 
   if (isSuspenseElement(element)) {
-    return await renderNodeH(props.children as SinwanNode, ctx);
+    return await renderNodeH(resolveSuspenseRenderNode(element), ctx);
   }
 
   if (isViewTransitionElement(element)) {
-    const name = props.name;
-    const viewChildren = (props as any).children as SinwanNode;
-    if (!name) {
-      return await renderNodeMaybeRoot(viewChildren, ctx, isComponentRoot);
-    }
-    const wrapperTag = (props as any).as ?? "div";
-    const wrapperElement: SinwanElement = {
-      tag: wrapperTag,
-      props: {
-        style: { viewTransitionName: name },
-        children: viewChildren,
-      },
-      children: normalizeContent(viewChildren),
-    };
-    return await renderElementH(wrapperElement, ctx, isComponentRoot);
+    return await renderNodeMaybeRoot(
+      resolveViewTransitionRenderNode(element),
+      ctx,
+      isComponentRoot,
+    );
   }
 
   if (isActivityElement(element)) {
-    const mode = resolve(props.mode) ?? "visible";
-    const activityChildren = (props as any).children as SinwanNode;
-    const tag = (element.props as any).as ?? "div";
-    const hidden = mode === "hidden";
-
     return await renderElementH(
-      {
-        tag,
-        props: {
-          "data-sinwan-activity": hidden ? "hidden" : "visible",
-          ...(hidden ? { hidden: true } : {}),
-          children: activityChildren,
-        },
-        children: normalizeContent(activityChildren),
-      },
+      renderActivityElement(element),
       ctx,
       isComponentRoot,
     );
@@ -795,132 +983,3 @@ async function renderIslandH(element: IslandElement): Promise<string> {
   return `<${__island.tag} ${ISLAND_ATTR}="${safeName}" ${ISLAND_PROPS_ATTR}="${safeProps}">${inner}</${__island.tag}>`;
 }
 
-async function renderForElementH(
-  element: SinwanElement,
-  ctx: HydrationContext,
-): Promise<string> {
-  const props = element.props as {
-    each?: unknown;
-    fallback?: SinwanNode;
-    children?: (item: unknown, index: () => number) => SinwanNode;
-  };
-  const each = resolve(props.each);
-  if (!Array.isArray(each) || typeof props.children !== "function") {
-    return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
-  }
-
-  if (each.length === 0) {
-    return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
-  }
-
-  // sequential render to avoid race condition on mutable context indices (textIndex, eventIndex, componentIndex)
-  let output = "";
-  for (let i = 0; i < each.length; i++) {
-    const index = i;
-    output += await renderNodeH(
-      props.children!(each[i], () => index),
-      ctx,
-    );
-  }
-  return output;
-}
-
-async function renderIndexElementH(
-  element: SinwanElement,
-  ctx: HydrationContext,
-): Promise<string> {
-  const props = element.props as {
-    each?: unknown;
-    fallback?: SinwanNode;
-    children?: (item: () => unknown, index: number) => SinwanNode;
-  };
-  const each = resolve(props.each);
-  if (!Array.isArray(each) || typeof props.children !== "function") {
-    return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
-  }
-
-  if (each.length === 0) {
-    return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
-  }
-
-  // sequential render to avoid race condition on mutable context indices (textIndex, eventIndex, componentIndex)
-  let output = "";
-  for (let i = 0; i < each.length; i++) {
-    const item = each[i];
-    output += await renderNodeH(
-      props.children!(() => item, i),
-      ctx,
-    );
-  }
-  return output;
-}
-
-async function renderVirtualElementH(
-  element: SinwanElement,
-  ctx: HydrationContext,
-): Promise<string> {
-  const props = element.props as {
-    each?: unknown;
-    key?: (item: unknown, index: number) => string | number | symbol;
-    itemHeight: number;
-    containerHeight: number;
-    overscan?: number;
-    minRendered?: number;
-    fallback?: SinwanNode;
-    children?: (item: unknown, index: () => number) => SinwanNode;
-  };
-
-  const items = resolve(props.each);
-  const list = Array.isArray(items) ? items : [];
-
-  if (list.length === 0) {
-    return props.fallback ? await renderNodeH(props.fallback, ctx) : "";
-  }
-
-  const itemHeight = props.itemHeight;
-  const containerHeight = props.containerHeight;
-  const overscan = props.overscan ?? 3;
-  const minRendered = props.minRendered ?? 0;
-
-  let startIndex = 0;
-  let endIndex = Math.ceil(containerHeight / itemHeight);
-  startIndex = Math.max(0, startIndex - overscan);
-  endIndex = Math.min(list.length, endIndex + overscan);
-
-  if (minRendered > 0) {
-    const visibleCount = endIndex - startIndex;
-    if (visibleCount < minRendered) {
-      const deficit = minRendered - visibleCount;
-      const expandStart = Math.min(startIndex, Math.floor(deficit / 2));
-      const expandEnd = Math.min(
-        list.length - endIndex,
-        Math.ceil(deficit / 2),
-      );
-      let remaining = deficit - expandStart - expandEnd;
-      startIndex -= expandStart;
-      endIndex += expandEnd;
-      if (remaining > 0 && endIndex < list.length) {
-        endIndex = Math.min(list.length, endIndex + remaining);
-      }
-    }
-  }
-
-  const totalHeight = list.length * itemHeight;
-  const renderChild = props.children;
-
-  let itemsHtml = "";
-  if (typeof renderChild === "function") {
-    // sequential render to avoid race condition on mutable context indices (textIndex, eventIndex, componentIndex)
-    for (let i = startIndex; i < endIndex; i++) {
-      const index = i;
-      const top = i * itemHeight;
-      const html = await renderNodeH(
-        renderChild(list[i], () => index),
-        ctx,
-      );
-      itemsHtml += `<div style="position:absolute;top:${top}px;left:0;right:0">${html}</div>`;
-    }
-  }
-
-  return `<div style="overflow:auto;height:${containerHeight}px"><div style="position:relative;height:${totalHeight}px">${itemsHtml}</div></div>`;
-}

@@ -222,10 +222,10 @@ describe("For Component (Stress)", () => {
         { id: 1, name: "A" },
         { id: 2, name: "B" },
       ]),
-      key: (item) => item.id,
+      by: (item) => item.id,
       children: (item) => item.name,
     });
-    expect(forEl.props.key).toBeDefined();
+    expect(forEl.props.by).toBeDefined();
   });
 
   it("should support multiple key types", () => {
@@ -238,10 +238,10 @@ describe("For Component (Stress)", () => {
     keyTypes.forEach((keyFn) => {
       const forEl = For({
         each: signal([{ id: 1 }]),
-        key: keyFn as any,
+        by: keyFn as any,
         children: (item) => item.id,
       });
-      expect(forEl.props.key).toBe(keyFn);
+      expect(forEl.props.by).toBe(keyFn);
     });
   });
 

@@ -1,0 +1,10 @@
+[test]
+coverageSkipTestFiles = true
+coveragePathIgnorePatterns = [
+  "**/__tests__/**",
+  "**/node_modules/**",
+  "**/dist/**",
+  # Linked/sibling package pulled into coverage when tests import compiler sources.
+  "**/sinwan-compiler/**",
+  "../sinwan-compiler/**",
+]

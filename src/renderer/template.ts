@@ -1,150 +1,65 @@
 import { domOps } from "./dom-ops.ts";
-import { isReactive, effect, resolve, type CleanupFn } from "../reactivity/index.ts";
+import {
+  isReactive,
+  effect,
+  resolve,
+  untrack,
+  type CleanupFn,
+} from "../reactivity/index.ts";
 import { setActiveEffectScope } from "../reactivity/effect.ts";
 import {
   getCurrentInstance,
   queueUpdatedHooks,
 } from "../component/instance.ts";
 import { renderNodeToDOM } from "./render-children.ts";
-import { setSingleAttribute } from "./attributes.ts";
-import { applyRef } from "./render-element.ts";
-import {
-  DEFAULT_TEMPLATE_SLOT_PROTOCOL,
-  type TemplateSlot,
-  type TemplateDef,
-} from "./template-protocol.ts";
+import { assignClassName, setSingleAttribute } from "./set-attribute.ts";
+import { applyRef } from "./apply-ref.ts";
+import { bindEvent } from "./events.ts";
+import { type TemplateDef } from "./template-protocol.ts";
 import type { SinwanNode } from "../types.ts";
+import {
+  SINWAN_TEMPLATE,
+  SINWAN_SERVER_TEMPLATE,
+  isBindingDescriptor,
+  isTemplateResult,
+  isServerTemplateResult,
+  _$bindText,
+  _$bindAttr,
+  _$bindStyle,
+  _$bindClass,
+  type SinwanTemplateResult,
+  type SinwanServerTemplateResult,
+} from "./template-identity.ts";
 
-/** Runtime symbol to identify compiler-generated template results. */
-export const SINWAN_TEMPLATE = Symbol.for("sinwan.template");
-
-export interface SinwanTemplateResult {
-  [SINWAN_TEMPLATE]: true;
-  /** The root document fragment containing cloned DOM nodes. */
-  fragment: DocumentFragment;
-  /** Disposer functions for reactive bindings and event listeners. */
-  disposers: CleanupFn[];
-}
-
-/**
- * Runtime symbol identifying a server-side template result.
- *
- * When `_$createTemplate` runs in an environment without a `document` global
- * (SSR), it cannot build a live DOM fragment. Instead it returns this object,
- * carrying the original `TemplateDef` and `dynamics` so the SSR renderer can
- * serialize it to HTML (with hydration markers) and the hydration walker can
- * attach to the resulting DOM.
- */
-export const SINWAN_SERVER_TEMPLATE = Symbol.for("sinwan.server_template");
-
-export interface SinwanServerTemplateResult {
-  [SINWAN_SERVER_TEMPLATE]: true;
-  /** The compiled template definition (static HTML + slot descriptors). */
-  def: TemplateDef;
-  /** Dynamic values for each slot, in render order. */
-  dynamics: unknown[];
-}
+export {
+  SINWAN_TEMPLATE,
+  SINWAN_SERVER_TEMPLATE,
+  isBindingDescriptor,
+  isTemplateResult,
+  isServerTemplateResult,
+  _$bindText,
+  _$bindAttr,
+  _$bindStyle,
+  _$bindClass,
+  type SinwanTemplateResult,
+  type SinwanServerTemplateResult,
+} from "./template-identity.ts";
 
 /**
  * Parsed-template cache keyed by the active `document`.
  *
  * Hoisted `TemplateDef`s are module-level singletons, so the parsed
- * `<template>` element only needs to be built once per def per document. Tests
- * that swap `globalThis.document` get a fresh inner map automatically (the
- * outer `WeakMap` key is the document itself), so cache staleness across
- * environments is impossible. Each render then performs only a cheap
- * `cloneNode(true)` instead of re-parsing `def.html`.
+ * `<template>` element and compiled slot resolvers only need to be built
+ * once per def per document. Each render then performs only a cheap
+ * `cloneNode(true)` plus resolver calls instead of re-parsing `def.html`
+ * or generic `walkToSlot` loops.
  */
-const templateCache = new WeakMap<
-  Document,
-  Map<TemplateDef, HTMLTemplateElement>
->();
-
-// ─── Compiler-driven binding descriptors (Phase 2) ─────────────────
-
-interface TextBindingDescriptor {
-  type: "text";
-  getter: () => unknown;
+interface CachedTemplate {
+  templateEl: HTMLTemplateElement;
+  resolvers: Array<(root: DocumentFragment) => Node>;
 }
 
-interface AttrBindingDescriptor {
-  type: "attr";
-  name: string;
-  getter: () => unknown;
-}
-
-interface StyleBindingDescriptor {
-  type: "style";
-  getter: () => unknown;
-}
-
-interface ClassBindingDescriptor {
-  type: "class";
-  getter: () => unknown;
-}
-
-type BindingDescriptor =
-  | TextBindingDescriptor
-  | AttrBindingDescriptor
-  | StyleBindingDescriptor
-  | ClassBindingDescriptor;
-
-export function isBindingDescriptor(
-  value: unknown,
-): value is BindingDescriptor {
-  return (
-    value != null &&
-    typeof value === "object" &&
-    "type" in (value as any) &&
-    "getter" in (value as any) &&
-    typeof (value as any).getter === "function"
-  );
-}
-
-/** Create a reactive text binding descriptor. */
-export function _$bindText(getter: () => unknown): TextBindingDescriptor {
-  return { type: "text", getter };
-}
-
-/** Create a reactive attribute binding descriptor. */
-export function _$bindAttr(
-  name: string,
-  getter: () => unknown,
-): AttrBindingDescriptor {
-  return { type: "attr", name, getter };
-}
-
-/** Create a reactive style binding descriptor. */
-export function _$bindStyle(getter: () => unknown): StyleBindingDescriptor {
-  return { type: "style", getter };
-}
-
-/** Create a reactive class binding descriptor. */
-export function _$bindClass(getter: () => unknown): ClassBindingDescriptor {
-  return { type: "class", getter };
-}
-
-/** Check if a value is a compiler-generated template result. */
-export function isTemplateResult(
-  value: unknown,
-): value is SinwanTemplateResult {
-  return (
-    value != null &&
-    typeof value === "object" &&
-    (value as any)[SINWAN_TEMPLATE] === true
-  );
-}
-
-/** Check if a value is a server-side template result (no DOM available). */
-export function isServerTemplateResult(
-  value: unknown,
-): value is SinwanServerTemplateResult {
-  return (
-    value != null &&
-    typeof value === "object" &&
-    (value as any)[SINWAN_SERVER_TEMPLATE] === true
-  );
-}
+const templateCache = new WeakMap<Document, Map<TemplateDef, CachedTemplate>>();
 
 /**
  * Hydration mode flag. When true, `_$createTemplate` returns a
@@ -194,47 +109,59 @@ function createLiveTemplate(
   def: TemplateDef,
   dynamics: unknown[],
 ): SinwanTemplateResult {
-  // Reuse the parsed <template> element across renders. Hoisted defs are
-  // module-level singletons, so we cache one parsed element per def per
-  // document (see `templateCache` doc for the document-keying rationale).
+  // Reuse the parsed <template> element and compiled slot resolvers across
+  // renders. Hoisted defs are module-level singletons, so we cache one entry
+  // per def per document (see `templateCache` doc for the document-keying
+  // rationale).
   let perDocument = templateCache.get(document);
   if (!perDocument) {
     perDocument = new Map();
     templateCache.set(document, perDocument);
   }
-  let templateEl = perDocument.get(def);
-  if (!templateEl) {
-    templateEl = document.createElement("template");
+  let cached = perDocument.get(def);
+  if (!cached) {
+    const templateEl = document.createElement("template");
     templateEl.innerHTML = def.html;
-    perDocument.set(def, templateEl);
+    cached = {
+      templateEl,
+      resolvers: def.slots.map((slot) => compileSlotResolver(slot.path, def)),
+    };
+    perDocument.set(def, cached);
   }
-  const root = templateEl.content.cloneNode(true) as DocumentFragment;
+  const root = cached.templateEl.content.cloneNode(true) as DocumentFragment;
+  const resolvers = cached.resolvers;
   const disposers: CleanupFn[] = [];
 
-  // Pre-collect all slot targets BEFORE processing any slots.
-  // This avoids index-shift bugs: when a reactive child slot replaces a
-  // comment marker with multiple nodes (e.g. reactive anchors), the sibling
-  // indices used by walkToSlot become stale for subsequent slots in the same
-  // parent. By collecting all targets upfront, we decouple slot lookup from
-  // the mutating DOM tree.
-  const childSlotMarkers: Comment[] = [];
-  collectSlotMarkers(root, childSlotMarkers);
-
-  // Pre-resolve attr/event slot targets on the unmutated DOM tree.
-  const slotTargets: (Node | null)[] = def.slots.map((slot) =>
-    slot.type === "child" ? null : walkToSlot(root, slot.path, def),
-  );
+  // Pre-resolve every slot target on the unmutated tree. Child slots may be
+  // comment markers (mixed static+dynamic) or parent Elements (sole-dynamic
+  // path fill with no <!--s:N-->). Resolving upfront avoids sibling-index
+  // shift after earlier slots mutate the DOM.
+  const slotTargets: (Node | null)[] = new Array(def.slots.length);
+  for (let i = 0; i < def.slots.length; i++) {
+    slotTargets[i] = resolvers[i]!(root);
+  }
 
   // Walk slots and bind dynamic expressions
   let dynIdx = 0;
-  let childSlotIdx = 0;
   for (const slot of def.slots) {
     const value = dynamics[dynIdx++];
 
     if (slot.type === "child") {
-      const comment = childSlotMarkers[childSlotIdx++];
-      if (!comment || !comment.parentNode) continue;
-      const parent = comment.parentNode;
+      const target = slotTargets[dynIdx - 1];
+      if (!target) continue;
+
+      let parent: Node;
+      let anchor: Comment | null;
+      if (target instanceof Comment) {
+        if (!target.parentNode) continue;
+        parent = target.parentNode;
+        anchor = target;
+      } else if (target instanceof Element) {
+        parent = target;
+        anchor = null;
+      } else {
+        continue;
+      }
 
       if (isBindingDescriptor(value) && value.type === "text") {
         const initial = value.getter();
@@ -242,10 +169,10 @@ function createLiveTemplate(
           const mounted = renderNodeToDOM(
             value.getter as SinwanNode,
             parent,
-            comment,
+            anchor,
             null,
           );
-          comment.parentNode?.removeChild(comment);
+          anchor?.parentNode?.removeChild(anchor);
           if (
             mounted &&
             "dispose" in mounted &&
@@ -254,29 +181,53 @@ function createLiveTemplate(
             disposers.push((mounted as any).dispose);
           }
         } else {
-          const textNode = domOps.createTextNode("");
-          parent.insertBefore(textNode, comment);
-          parent.removeChild(comment);
-          const owner = getCurrentInstance();
-          let initialized = false;
-          const dispose = effect(() => {
-            const resolved = value.getter();
-            textNode.textContent = resolved == null ? "" : String(resolved);
-            if (initialized) {
-              queueUpdatedHooks(owner);
-            }
-            initialized = true;
-          });
-          disposers.push(dispose);
+          disposers.push(bindScalarTextSlot(parent, anchor, value.getter));
+        }
+      } else if (isScalarReactiveChild(value)) {
+        // Solid-style: reactive string/number children bind textContent
+        // without comment-anchored reactive blocks (no sinwan-r pairs).
+        const peek = untrack(() => resolve(value as () => unknown));
+        if (peek != null && typeof peek === "object") {
+          const mounted = renderNodeToDOM(
+            value as SinwanNode,
+            parent,
+            anchor,
+            null,
+          );
+          anchor?.parentNode?.removeChild(anchor);
+          if (
+            mounted &&
+            "dispose" in mounted &&
+            typeof (mounted as any).dispose === "function"
+          ) {
+            disposers.push((mounted as any).dispose);
+          }
+        } else {
+          disposers.push(bindScalarTextSlot(parent, anchor, value));
+        }
+      } else if (
+        value == null ||
+        typeof value === "boolean" ||
+        typeof value === "string" ||
+        typeof value === "number"
+      ) {
+        // Static scalar — replace marker or append into empty parent.
+        const text = domOps.createTextNode(
+          value == null || typeof value === "boolean" ? "" : String(value),
+        );
+        if (anchor) {
+          parent.replaceChild(text, anchor);
+        } else {
+          parent.appendChild(text);
         }
       } else {
         const mounted = renderNodeToDOM(
           value as SinwanNode,
           parent,
-          comment,
+          anchor,
           null,
         );
-        comment.parentNode?.removeChild(comment);
+        anchor?.parentNode?.removeChild(anchor);
         if (
           mounted &&
           "dispose" in mounted &&
@@ -292,8 +243,9 @@ function createLiveTemplate(
       if (slot.type === "attr" && slot.name) {
         if (target instanceof Element) {
           const attrName = slot.name;
+          // previousStyleProps is only needed for style object diffing — not class.
           const state =
-            attrName === "style" || attrName === "class"
+            attrName === "style"
               ? { previousStyleProps: new Set<string>() }
               : undefined;
 
@@ -301,14 +253,25 @@ function createLiveTemplate(
             if (value.type === "text") continue;
             const getter = value.getter;
             const dispose = effect(() => {
-              setSingleAttribute(target, attrName, getter(), state);
+              if (attrName === "class") {
+                applyClassString(target, getter());
+              } else {
+                setSingleAttribute(target, attrName, getter(), state);
+              }
             });
             disposers.push(dispose);
           } else if (isReactive(value)) {
             const dispose = effect(() => {
-              setSingleAttribute(target, attrName, resolve(value), state);
+              const next = resolve(value);
+              if (attrName === "class") {
+                applyClassString(target, next);
+              } else {
+                setSingleAttribute(target, attrName, next, state);
+              }
             });
             disposers.push(dispose);
+          } else if (attrName === "class") {
+            applyClassString(target, value);
           } else {
             setSingleAttribute(target, attrName, value, state);
           }
@@ -316,10 +279,9 @@ function createLiveTemplate(
       } else if (slot.type === "event" && slot.name) {
         if (target instanceof Element && typeof value === "function") {
           const eventName = slot.name.slice(2).toLowerCase();
-          target.addEventListener(eventName, value as any);
-          disposers.push(() => {
-            target.removeEventListener(eventName, value as any);
-          });
+          disposers.push(
+            bindEvent(target, eventName, value as EventListener),
+          );
         }
       } else if (slot.type === "ref") {
         if (target instanceof Element) {
@@ -333,18 +295,188 @@ function createLiveTemplate(
   return { [SINWAN_TEMPLATE]: true as const, fragment: root, disposers };
 }
 
-function collectSlotMarkers(node: Node, out: Comment[]): void {
-  if (node instanceof Comment) {
-    if (DEFAULT_TEMPLATE_SLOT_PROTOCOL.decodeSlot(node) !== null) {
-      out.push(node);
-    }
+/**
+ * Zero-arity getters / signals / computeds that resolve to scalars bind as
+ * textContent. Render-prop functions (arity > 0) are not used as template
+ * child dynamics from the compiler; they take the vnode path if present.
+ */
+function isScalarReactiveChild(value: unknown): boolean {
+  return isReactive(value);
+}
+
+/**
+ * Bind a live text node into a child slot (Solid insertExpression).
+ * `anchor` is the `<!--s:N-->` marker when present; null for parent-fill slots.
+ */
+function bindScalarTextSlot(
+  parent: Node,
+  anchor: Comment | null,
+  source: unknown,
+): CleanupFn {
+  const textNode = domOps.createTextNode("");
+  if (anchor) {
+    parent.insertBefore(textNode, anchor);
+    parent.removeChild(anchor);
+  } else {
+    parent.appendChild(textNode);
+  }
+  const owner = getCurrentInstance();
+  let initialized = false;
+  // Fixed effect: Update-every-10th re-runs ~1100 text bindings without
+  // full cleanupDeps/retrack. queueUpdatedHooks is skipped when unused.
+  return effect(
+    () => {
+      const resolved = resolve(source as () => unknown);
+      const next =
+        resolved == null || typeof resolved === "boolean"
+          ? ""
+          : String(resolved);
+      if (textNode.data !== next) {
+        textNode.data = next;
+      }
+      if (
+        initialized &&
+        owner &&
+        owner._updatedHooks.length > 0
+      ) {
+        queueUpdatedHooks(owner);
+      }
+      initialized = true;
+    },
+    { fixed: true },
+  );
+}
+
+/**
+ * Fast class updates for template slots. HTML uses `className`; SVG and
+ * MathML go through the class attribute.
+ */
+function applyClassString(el: Element, value: unknown): void {
+  if (value == null || value === false || value === "") {
+    assignClassName(el, "");
     return;
   }
-  if (node instanceof Element || node instanceof DocumentFragment) {
-    for (const child of node.childNodes) {
-      collectSlotMarkers(child, out);
-    }
+  if (typeof value === "object") {
+    setSingleAttribute(el, "class", value);
+    return;
   }
+  assignClassName(el, String(value));
+}
+
+/**
+ * Compile a path into a one-shot walker used on every template clone.
+ * Same fragment-unwrap semantics as `walkToSlot`, without per-call path loops
+ * for the common length 0–3 cases (bench parent-fill / attr paths).
+ */
+function compileSlotResolver(
+  path: number[],
+  def: TemplateDef,
+): (root: DocumentFragment) => Node {
+  const htmlHint = () => def.html.slice(0, 120);
+  const len = path.length;
+
+  if (len === 0) {
+    return (root) => {
+      const node = root.firstChild;
+      if (!node) {
+        throw new Error(
+          `Sinwan template: invalid slot path [] — template fragment has no children. Template html: "${htmlHint()}"`,
+        );
+      }
+      return node;
+    };
+  }
+
+  if (len === 1) {
+    const i0 = path[0]!;
+    return (root) => {
+      const base = root.firstChild;
+      if (!base) {
+        throw new Error(
+          `Sinwan template: invalid slot path [${i0}] — template fragment has no children. Template html: "${htmlHint()}"`,
+        );
+      }
+      let child = base.firstChild;
+      for (let i = 0; i < i0 && child; i++) child = child.nextSibling;
+      if (!child) {
+        throw new Error(
+          `Sinwan template: invalid slot path [${i0}] — no child at index ${i0} (depth 0). Template html: "${htmlHint()}"`,
+        );
+      }
+      return child;
+    };
+  }
+
+  if (len === 2) {
+    const i0 = path[0]!;
+    const i1 = path[1]!;
+    return (root) => {
+      const base = root.firstChild;
+      if (!base) {
+        throw new Error(
+          `Sinwan template: invalid slot path [${i0},${i1}] — template fragment has no children. Template html: "${htmlHint()}"`,
+        );
+      }
+      let child = base.firstChild;
+      for (let i = 0; i < i0 && child; i++) child = child.nextSibling;
+      if (!child) {
+        throw new Error(
+          `Sinwan template: invalid slot path [${i0},${i1}] — no child at index ${i0} (depth 0). Template html: "${htmlHint()}"`,
+        );
+      }
+      let node: Node = child;
+      child = node.firstChild;
+      for (let i = 0; i < i1 && child; i++) child = child.nextSibling;
+      if (!child) {
+        throw new Error(
+          `Sinwan template: invalid slot path [${i0},${i1}] — no child at index ${i1} (depth 1). Template html: "${htmlHint()}"`,
+        );
+      }
+      return child;
+    };
+  }
+
+  if (len === 3) {
+    const i0 = path[0]!;
+    const i1 = path[1]!;
+    const i2 = path[2]!;
+    return (root) => {
+      const base = root.firstChild;
+      if (!base) {
+        throw new Error(
+          `Sinwan template: invalid slot path [${i0},${i1},${i2}] — template fragment has no children. Template html: "${htmlHint()}"`,
+        );
+      }
+      let child = base.firstChild;
+      for (let i = 0; i < i0 && child; i++) child = child.nextSibling;
+      if (!child) {
+        throw new Error(
+          `Sinwan template: invalid slot path [${i0},${i1},${i2}] — no child at index ${i0} (depth 0). Template html: "${htmlHint()}"`,
+        );
+      }
+      let node: Node = child;
+      child = node.firstChild;
+      for (let i = 0; i < i1 && child; i++) child = child.nextSibling;
+      if (!child) {
+        throw new Error(
+          `Sinwan template: invalid slot path [${i0},${i1},${i2}] — no child at index ${i1} (depth 1). Template html: "${htmlHint()}"`,
+        );
+      }
+      node = child;
+      child = node.firstChild;
+      for (let i = 0; i < i2 && child; i++) child = child.nextSibling;
+      if (!child) {
+        throw new Error(
+          `Sinwan template: invalid slot path [${i0},${i1},${i2}] — no child at index ${i2} (depth 2). Template html: "${htmlHint()}"`,
+        );
+      }
+      return child;
+    };
+  }
+
+  // Longer paths: closed-over loop (still one call per slot, no map alloc).
+  const pathCopy = path.slice();
+  return (root) => walkToSlot(root, pathCopy, def);
 }
 
 export function walkToSlot(root: Node, path: number[], def: TemplateDef): Node {

@@ -64,9 +64,13 @@ export function getActiveEffectScope(): EffectScope | null {
 /**
  * A Dep is any object that can track subscribers.
  * Signals and computeds implement this internally.
+ * Dense array (not Set): Create-10k allocates tens of thousands of
+ * subscriptions — Set add/delete dominated that path.
  */
 export interface Dep {
-  subscribers: Set<ReactiveEffect>;
+  subscribers: ReactiveEffect[];
+  /** Called when the last subscriber is removed (e.g. createSelector Map trim). */
+  onEmpty?: () => void;
 }
 
 // ─── ReactiveEffect ────────────────────────────────────────
@@ -86,8 +90,19 @@ export class ReactiveEffect implements EffectNode {
 
   /** All deps this effect is subscribed to (for bidirectional cleanup) */
   deps: Dep[] = [];
-  /** Deps tracked in the current run (used by cleanupDeps to prune stale ones) */
-  _newDeps: Set<Dep> = new Set();
+  /**
+   * Deps tracked in the current run. Array (not Set): template text/class
+   * effects almost always have 0–2 deps, and Create-10k allocates tens of
+   * thousands of effects — Set overhead dominated the create path.
+   */
+  _newDeps: Dep[] = [];
+  /**
+   * When true, a re-run whose dependency list is unchanged skips
+   * unsubscribe/resubscribe. The run still tracks, so a getter that switches
+   * signals (flag ? a : b) subscribes to the new source.
+   */
+  fixed = false;
+  private _fixedReady = false;
 
   constructor(fn: EffectFn) {
     this.id = effectIdCounter++;
@@ -113,7 +128,7 @@ export class ReactiveEffect implements EffectNode {
     effectStack.push(this);
     const prevEffect = activeEffect;
     activeEffect = this;
-    this._newDeps.clear();
+    this._newDeps.length = 0;
 
     try {
       const result = this.fn();
@@ -123,26 +138,45 @@ export class ReactiveEffect implements EffectNode {
     } finally {
       activeEffect = prevEffect;
       effectStack.pop();
-      // Clean up dependencies that weren't re-tracked in this run
-      this.cleanupDeps();
+      // Stable fixed bindings keep their subscriptions. A changed list still
+      // unsubscribes dropped deps and keeps newly tracked ones.
+      if (
+        this.fixed &&
+        this._fixedReady &&
+        sameDepList(this.deps, this._newDeps)
+      ) {
+        this._newDeps.length = 0;
+      } else {
+        this.cleanupDeps();
+        if (this.fixed) this._fixedReady = true;
+      }
     }
   }
 
   /**
    * Unsubscribe from deps that were not re-tracked in the latest run.
-   * Rebuilds the deps array from the newly tracked set.
+   * Swaps the tracked-deps buffer to avoid allocating a fresh array each run.
    */
   private cleanupDeps(): void {
-    for (const dep of this.deps) {
-      if (!this._newDeps.has(dep)) {
-        dep.subscribers.delete(this);
+    const next = this._newDeps;
+    const prev = this.deps;
+    for (let i = 0; i < prev.length; i++) {
+      const dep = prev[i]!;
+      let found = false;
+      for (let j = 0; j < next.length; j++) {
+        if (next[j] === dep) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        removeSubscriber(dep, this);
       }
     }
-    this.deps = [];
-    for (const dep of this._newDeps) {
-      this.deps.push(dep);
-    }
-    this._newDeps.clear();
+    // Swap buffers: deps becomes the just-tracked list; recycle the old array.
+    this.deps = next;
+    prev.length = 0;
+    this._newDeps = prev;
   }
 
   /**
@@ -167,10 +201,10 @@ export class ReactiveEffect implements EffectNode {
 
     // Remove from all deps and clear
     for (const dep of this.deps) {
-      dep.subscribers.delete(this);
+      removeSubscriber(dep, this);
     }
     this.deps.length = 0;
-    this._newDeps.clear();
+    this._newDeps.length = 0;
 
     unscheduleEffect(this);
   }
@@ -197,8 +231,18 @@ export class ReactiveEffect implements EffectNode {
  *
  * dispose(); // stops tracking
  */
-export function effect(fn: EffectFn): CleanupFn {
+export interface EffectOptions {
+  /**
+   * Skip unsubscribe/resubscribe when a re-run reads the same dependencies
+   * in the same order. New dependencies are still tracked. For template text
+   * bindings whose source usually stays on one signal.
+   */
+  fixed?: boolean;
+}
+
+export function effect(fn: EffectFn, options?: EffectOptions): CleanupFn {
   const e = new ReactiveEffect(fn);
+  if (options?.fixed) e.fixed = true;
   // Run immediately (synchronous first run for initial tracking)
   e.run();
   const dispose = () => e.dispose();
@@ -226,14 +270,17 @@ export function effect(fn: EffectFn): CleanupFn {
 export function track(dep: Dep): void {
   if (activeEffect) {
     const effect = activeEffect;
+    const tracked = effect._newDeps;
 
-    // Prevent duplicate tracking in the same run.
-    if (effect._newDeps.has(dep)) {
-      return;
+    // Prevent duplicate tracking in the same run (linear — deps are tiny).
+    for (let i = 0; i < tracked.length; i++) {
+      if (tracked[i] === dep) {
+        return;
+      }
     }
 
-    effect._newDeps.add(dep);
-    dep.subscribers.add(effect);
+    tracked.push(dep);
+    addSubscriber(dep, effect);
   }
 }
 
@@ -242,9 +289,51 @@ export function track(dep: Dep): void {
  * Called by signal.value setters.
  */
 export function trigger(dep: Dep): void {
-  for (const effect of dep.subscribers) {
+  const subs = dep.subscribers;
+  const n = subs.length;
+  if (n === 0) return;
+  if (n === 1) {
+    const effect = subs[0]!;
+    if (effect.active) effect.notify();
+    return;
+  }
+  // Snapshot so dispose during notify cannot skip remaining subscribers.
+  const snapshot = subs.slice();
+  for (let i = 0; i < snapshot.length; i++) {
+    const effect = snapshot[i]!;
     if (effect.active) {
       effect.notify();
+    }
+  }
+}
+
+function sameDepList(prev: Dep[], next: Dep[]): boolean {
+  if (prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i++) {
+    if (prev[i] !== next[i]) return false;
+  }
+  return true;
+}
+
+function addSubscriber(dep: Dep, effect: ReactiveEffect): void {
+  const subs = dep.subscribers;
+  for (let i = 0; i < subs.length; i++) {
+    if (subs[i] === effect) return;
+  }
+  subs.push(effect);
+}
+
+function removeSubscriber(dep: Dep, effect: ReactiveEffect): void {
+  const subs = dep.subscribers;
+  for (let i = 0; i < subs.length; i++) {
+    if (subs[i] === effect) {
+      const last = subs.length - 1;
+      subs[i] = subs[last]!;
+      subs.pop();
+      if (subs.length === 0) {
+        dep.onEmpty?.();
+      }
+      return;
     }
   }
 }

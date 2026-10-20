@@ -4,9 +4,9 @@
  * Proves every major assertion in the document:
  * 1. provide / inject (Sinwan native DI)
  * 2. createContext / useContext (React-compatible API)
- * 3. createStore / createMutable (Sinwan stores)
+ * 3. Shared reactive state via signals + provide/inject
  * 4. useReducer (React-compatible local state)
- * 5. Combined patterns (Store+provide/inject, createContext+store, useReducer+provide/inject, Store+useReducer)
+ * 5. Combined patterns (useReducer+provide/inject)
  * 6. What you CANNOT combine (and workarounds)
  * 7. Interoperability between createContext and provide/inject
  */
@@ -16,10 +16,9 @@ import { Window } from "happy-dom";
 import { mount } from "../src/renderer/mount.ts";
 import { cc } from "../src/component/create.ts";
 import { provide, inject } from "../src/component/provide-inject.ts";
-import { effect, nextTick } from "../src/reactivity/index.ts";
+import { nextTick, signal } from "../src/reactivity/index.ts";
 import type { SinwanElement } from "../src/types.ts";
 import { useContext, useReducer, useState } from "../src/react/_client.ts";
-import { createStore, createMutable, produce } from "../src/store/index.ts";
 import { createContext } from "../src/react/create-context.ts";
 
 // ─── DOM setup ─────────────────────────────────────────────
@@ -127,26 +126,26 @@ describe("provide / inject — Sinwan native DI", () => {
     expect((container as any).textContent).toBe("20");
   });
 
-  it("accepts stores for reactive injection", async () => {
-    const Key = Symbol("store");
-    const [state, setState] = createStore({ count: 0 });
-    let captured: any;
+  it("accepts signals for reactive injection", async () => {
+    const Key = Symbol("count");
+    const count = signal(0);
+    let captured: ReturnType<typeof signal<number>> | undefined;
 
     const Child = cc(() => {
       captured = inject(Key);
-      const text = () => (captured as any).count;
+      const text = () => captured!.value;
       return el("span", {}, text);
     });
 
     const App = cc(() => {
-      provide(Key, state);
+      provide(Key, count);
       return el("div", {}, el(Child, {}));
     });
 
     mount(App, container);
-    expect((captured as any).count).toBe(0);
+    expect(captured!.value).toBe(0);
 
-    setState("count", 5);
+    count.value = 5;
     await nextTick();
     expect((container as any).textContent).toBe("5");
   });
@@ -281,78 +280,6 @@ describe("createContext / useContext — React-compatible API", () => {
     countSig.value = 5;
     await nextTick();
     expect((container as any).textContent).toBe("5");
-  });
-});
-
-// ─── 3. createStore / createMutable ──────────────────────
-
-describe("createStore / createMutable — Sinwan stores", () => {
-  it("createStore returns a proxy where each property owns a signal", async () => {
-    const [state, setState] = createStore({ count: 0, name: "a" });
-    const log: number[] = [];
-
-    effect(() => {
-      log.push(state.count);
-    });
-
-    setState("count", 1);
-    await nextTick();
-    expect(log).toEqual([0, 1]);
-  });
-
-  it("reads track at the property level (fine-grained)", async () => {
-    const [state, setState] = createStore({ a: 1, b: 2 });
-    const logA: number[] = [];
-
-    effect(() => {
-      logA.push(state.a);
-    });
-
-    setState("b", 20);
-    await nextTick();
-    expect(logA).toEqual([1]); // no re-run for unrelated property
-
-    setState("a", 10);
-    await nextTick();
-    expect(logA).toEqual([1, 10]);
-  });
-
-  it("supports path-based updates", async () => {
-    const [state, setState] = createStore({ user: { name: "Alice" } });
-    setState("user", "name", "Bob");
-    await nextTick();
-    expect(state.user.name).toBe("Bob");
-  });
-
-  it("createMutable allows direct property mutation", async () => {
-    const state = createMutable({ count: 0 });
-    const log: number[] = [];
-
-    effect(() => {
-      log.push(state.count);
-    });
-
-    state.count = 5;
-    await nextTick();
-    expect(log).toEqual([0, 5]);
-  });
-
-  it("can be created at module scope (global singleton)", async () => {
-    const globalState = createMutable({ theme: "dark" });
-    let text: string | undefined;
-
-    const App = cc(() => {
-      text = globalState.theme;
-      const t = () => globalState.theme;
-      return el("div", {}, t);
-    });
-
-    mount(App, container);
-    expect(text).toBe("dark");
-
-    globalState.theme = "light";
-    await nextTick();
-    expect((container as any).textContent).toBe("light");
   });
 });
 
@@ -556,40 +483,35 @@ describe("useReducer — React-compatible local state", () => {
 
 // ─── 5. Combined patterns ──────────────────────────────────
 
-describe("Pattern 1: Store + provide/inject", () => {
-  it("provides a reactive store tuple to descendants", async () => {
-    interface AppState {
-      user: { name: string } | null;
-      notifications: { id: number; text: string }[];
-    }
-
-    type AppStore = ReturnType<typeof createStore<AppState>>;
-    const AppStoreKey: symbol = Symbol("AppStore");
+describe("Pattern 1: signal + provide/inject", () => {
+  it("provides a reactive signal object to descendants", async () => {
+    const AppStateKey = Symbol("AppState");
+    const state = {
+      user: signal<{ name: string } | null>(null),
+      notifications: signal<{ id: number; text: string }[]>([]),
+    };
 
     const Header = cc(() => {
-      const [state] = inject(AppStoreKey) as AppStore;
-      const text = () => state.user?.name ?? "Guest";
+      const s = inject(AppStateKey) as typeof state;
+      const text = () => s.user.value?.name ?? "Guest";
       return el("nav", {}, text);
     });
 
     const Main = cc(() => {
-      const [state, setState] = inject(AppStoreKey) as AppStore;
-      const login = () =>
-        setState("user", { name: "Alice", role: "admin" } as any);
+      const s = inject(AppStateKey) as typeof state;
+      const login = () => {
+        s.user.value = { name: "Alice" };
+      };
       return el(
         "div",
         {},
         el("button", { onClick: login }, "Login"),
-        el("p", {}, () => `Notifications: ${state.notifications.length}`),
+        el("p", {}, () => `Notifications: ${s.notifications.value.length}`),
       );
     });
 
     const App = cc(() => {
-      const store = createStore<AppState>({
-        user: null,
-        notifications: [],
-      });
-      provide(AppStoreKey, store);
+      provide(AppStateKey, state);
       return el("div", {}, el(Header, {}), el(Main, {}));
     });
 
@@ -601,59 +523,6 @@ describe("Pattern 1: Store + provide/inject", () => {
     (btn as any).click();
     await nextTick();
     expect((container as any).textContent).toContain("Alice");
-  });
-});
-
-describe("Pattern 2: createContext + store (React-style)", () => {
-  it("shares a store via createContext Provider", async () => {
-    interface Todo {
-      id: number;
-      text: string;
-      done: boolean;
-    }
-
-    function createTodoStore() {
-      const [state, setState] = createStore({
-        items: [] as Todo[],
-        filter: "all" as "all" | "active" | "done",
-      });
-
-      const addTodo = (text: string) =>
-        setState("items", (prev) => [
-          ...prev,
-          { id: Date.now(), text, done: false },
-        ]);
-
-      const toggle = (id: number) =>
-        setState(
-          produce((draft: any) => {
-            const item = draft.items.find((t: Todo) => t.id === id);
-            if (item) item.done = !item.done;
-          }),
-        );
-
-      return { state, addTodo, toggle };
-    }
-
-    type TodoStore = ReturnType<typeof createTodoStore>;
-    const TodoCtx = createContext<TodoStore | null>(null);
-
-    const TodoList = cc(() => {
-      const { state, toggle } = useContext(TodoCtx)!;
-      const text = () =>
-        state.items.map((t) => `${t.done ? "✓" : "○"} ${t.text}`).join(", ");
-      return el("ul", {}, text);
-    });
-
-    const App = cc(() => {
-      const store = createTodoStore();
-      // Add one item for testing
-      store.addTodo("Test");
-      return el(TodoCtx.Provider, { value: store }, el(TodoList, {}));
-    });
-
-    mount(App, container);
-    expect((container as any).textContent).toContain("Test");
   });
 });
 
@@ -731,71 +600,6 @@ describe("Pattern 3: useReducer + provide/inject", () => {
   });
 });
 
-describe("Pattern 4: Store + useReducer (complex local + shared)", () => {
-  it("uses useReducer for local UI state and mutable store for shared data", async () => {
-    const appState = createMutable({
-      products: [] as string[],
-      cart: [] as string[],
-    });
-    appState.products = ["Apple", "Banana", "Cherry"];
-
-    const ProductPage = cc(() => {
-      const [ui, dispatchUI] = useReducer(
-        (state: { filterOpen: boolean; sortBy: string }, action: any) => {
-          switch (action.type) {
-            case "openFilter":
-              return { ...state, filterOpen: true };
-            case "closeFilter":
-              return { ...state, filterOpen: false };
-            case "setSort":
-              return { ...state, sortBy: action.field };
-          }
-          return state;
-        },
-        { filterOpen: false, sortBy: "name" },
-      );
-
-      const addToCart = (product: string) => {
-        appState.cart.push(product);
-      };
-
-      const sorted = () => {
-        const field = ui().sortBy;
-        return [...appState.products].sort((a, b) => (a > b ? 1 : -1));
-      };
-
-      return el(
-        "div",
-        {},
-        el(
-          "button",
-          { onClick: () => dispatchUI({ type: "openFilter" }) },
-          "Filter",
-        ),
-        () =>
-          sorted().map((p) =>
-            el(
-              "div",
-              {},
-              p,
-              el("button", { onClick: () => addToCart(p) }, "Add"),
-            ),
-          ),
-      );
-    });
-
-    mount(ProductPage, container);
-    expect((container as any).textContent).toContain("Apple");
-    expect((container as any).textContent).toContain("Banana");
-
-    const btns = container.getElementsByTagName("button");
-    // First "Add" button adds Apple
-    (btns[1] as any).click();
-    await nextTick();
-    expect(appState.cart).toEqual(["Apple"]);
-  });
-});
-
 // ─── 6. What you CANNOT combine ──────────────────────────────
 
 describe("What you CANNOT combine (and workarounds)", () => {
@@ -844,7 +648,7 @@ describe("What you CANNOT combine (and workarounds)", () => {
 
     mount(App, container);
     // Without a provider, it falls back to defaultValue.
-    // The document recommends createMutable/createStore for module-level singletons.
+    // Module-level signals are the shared-state singleton pattern in core Sinwan.
     expect(theme).toBe("light");
   });
 
@@ -936,18 +740,18 @@ describe("Summary table validations", () => {
     // No signal means no reactive updates — value is static.
   });
 
-  it("module-level createMutable is global and reactive", async () => {
-    const globalTheme = createMutable({ theme: "dark" });
+  it("module-level signal is global and reactive", async () => {
+    const theme = signal("dark");
 
     const App = cc(() => {
-      const t = () => globalTheme.theme;
+      const t = () => theme.value;
       return el("div", {}, t);
     });
 
     mount(App, container);
     expect((container as any).textContent).toBe("dark");
 
-    globalTheme.theme = "light";
+    theme.value = "light";
     await nextTick();
     expect((container as any).textContent).toBe("light");
   });
@@ -1005,14 +809,14 @@ describe("Summary table validations", () => {
     expect((container as any).textContent).toContain("1");
   });
 
-  it("useState + store works for mixed local + shared state", async () => {
-    const [store, setStore] = createStore({ multiplier: 2 });
+  it("useState + shared signal works for mixed local + shared state", async () => {
+    const multiplier = signal(2);
     let setBase: any;
 
     const App = cc(() => {
       const [base, _setBase] = useState(5);
       setBase = _setBase;
-      const result = () => base() * store.multiplier;
+      const result = () => base() * multiplier.value;
       return el("span", {}, result);
     });
 
@@ -1023,7 +827,7 @@ describe("Summary table validations", () => {
     await tick();
     expect((container as any).textContent).toBe("20");
 
-    setStore("multiplier", 3);
+    multiplier.value = 3;
     await nextTick();
     expect((container as any).textContent).toBe("30");
   });

@@ -19,7 +19,6 @@ import {
   Key,
   Portal,
   Switch,
-  Visible,
   Show,
   Virtual,
   isDynamicElement,
@@ -35,13 +34,22 @@ import {
   isSuspenseElement,
   isActivityElement,
   isViewTransitionElement,
-  resolveSwitchContent,
-  resolveKeyChildren,
-  resolveMatchChildren,
-  resolveShowChildren,
-  createDynamicElement,
-  normalizeContent,
-} from "../component/control-flow.ts";
+} from "../control-flow/identity.ts";
+import { Visible } from "../control-flow/components/visible/factory.ts";
+import { renderActivityElement } from "../control-flow/components/activity/ssr.ts";
+import { renderDynamicElement } from "../control-flow/components/dynamic/ssr.ts";
+import { renderErrorBoundaryNode } from "../control-flow/components/error-boundary/ssr.ts";
+import { resolveForRenderNodes } from "../control-flow/components/for/ssr.ts";
+import { resolveIndexRenderNodes } from "../control-flow/components/index/ssr.ts";
+import { resolveKeyRenderNode } from "../control-flow/components/key/ssr.ts";
+import { resolveMatchRenderNode } from "../control-flow/components/match/ssr.ts";
+import { renderPortalElement } from "../control-flow/components/portal/ssr.ts";
+import { resolveShowRenderNode } from "../control-flow/components/show/ssr.ts";
+import { resolveSuspenseRenderNode } from "../control-flow/components/suspense/ssr.ts";
+import { resolveSwitchRenderNode } from "../control-flow/components/switch/ssr.ts";
+import { resolveViewTransitionRenderNode } from "../control-flow/components/view-transition/ssr.ts";
+import { streamVirtualHtml } from "../control-flow/components/virtual/ssr.ts";
+import { resolveVisibleRenderNode } from "../control-flow/components/visible/ssr.ts";
 import {
   createComponentInstance,
   getCurrentInstance,
@@ -305,56 +313,46 @@ async function streamElement(
   }
 
   if (tag === Visible) {
-    await streamElement((tag as Function)(props), controller, encoder);
+    await streamElement(resolveVisibleRenderNode(element), controller, encoder);
     return;
   }
 
   if (isShowElement(element)) {
-    const when = resolve(props.when);
-    await streamNode(
-      when
-        ? resolveShowChildren(element, when)
-        : (props.fallback as SinwanNode),
-      controller,
-      encoder,
-    );
+    await streamNode(resolveShowRenderNode(element), controller, encoder);
     return;
   }
 
   if (isForElement(element)) {
-    await streamForElement(element, controller, encoder);
+    for (const node of resolveForRenderNodes(element)) {
+      await streamNode(node, controller, encoder);
+    }
     return;
   }
 
   if (isSwitchElement(element)) {
-    await streamNode(resolveSwitchContent(element), controller, encoder);
+    await streamNode(resolveSwitchRenderNode(element), controller, encoder);
     return;
   }
 
   if (isMatchElement(element)) {
-    const when = resolve(props.when);
-    await streamNode(
-      when ? resolveMatchChildren(element, when) : null,
-      controller,
-      encoder,
-    );
+    await streamNode(resolveMatchRenderNode(element), controller, encoder);
     return;
   }
 
   if (isIndexElement(element)) {
-    await streamIndexElement(element, controller, encoder);
+    for (const node of resolveIndexRenderNodes(element)) {
+      await streamNode(node, controller, encoder);
+    }
     return;
   }
 
   if (isKeyElement(element)) {
-    const key = resolve(props.when);
-    await streamNode(resolveKeyChildren(element, key), controller, encoder);
+    await streamNode(resolveKeyRenderNode(element), controller, encoder);
     return;
   }
 
   if (isDynamicElement(element)) {
-    const dynamicTag = resolve(props.component);
-    const dynamic = createDynamicElement(element, dynamicTag);
+    const dynamic = renderDynamicElement(element);
     if (dynamic) {
       await streamElement(dynamic, controller, encoder);
     }
@@ -362,29 +360,46 @@ async function streamElement(
   }
 
   if (isPortalElement(element)) {
+    enqueue(controller, encoder, renderPortalElement(element));
     return;
   }
 
   if (isErrorBoundaryElement(element)) {
-    try {
-      await streamNode(props.children as SinwanNode, controller, encoder);
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      const fallback = props.fallback;
-      const fallbackContent =
-        typeof fallback === "function"
-          ? (fallback as (error: Error, reset: () => void) => SinwanNode)(
-              error,
-              ssrReset,
-            )
-          : fallback;
-      await streamNode(fallbackContent as SinwanNode, controller, encoder);
-    }
+    await renderErrorBoundaryNode(element, ssrReset, (node) =>
+      streamNode(node, controller, encoder),
+    );
     return;
   }
 
   if (isVirtualElement(element)) {
-    await streamVirtualElement(element, controller, encoder);
+    await streamVirtualHtml(
+      element,
+      (html) => enqueue(controller, encoder, html),
+      (node) => streamNode(node, controller, encoder),
+    );
+    return;
+  }
+
+  if (isSuspenseElement(element)) {
+    await streamNode(resolveSuspenseRenderNode(element), controller, encoder);
+    return;
+  }
+
+  if (isViewTransitionElement(element)) {
+    await streamNode(
+      resolveViewTransitionRenderNode(element),
+      controller,
+      encoder,
+    );
+    return;
+  }
+
+  if (isActivityElement(element)) {
+    await streamElement(
+      renderActivityElement(element),
+      controller,
+      encoder,
+    );
     return;
   }
 
@@ -617,7 +632,7 @@ export async function streamHydratableElement(
 
   if (tag === Visible) {
     await streamHydratableElement(
-      (tag as Function)(props),
+      resolveVisibleRenderNode(element),
       controller,
       encoder,
       ctx,
@@ -627,11 +642,8 @@ export async function streamHydratableElement(
   }
 
   if (isShowElement(element)) {
-    const when = resolve(props.when);
     await streamHydratableNodeToController(
-      when
-        ? resolveShowChildren(element, when)
-        : (props.fallback as SinwanNode),
+      resolveShowRenderNode(element),
       controller,
       encoder,
       ctx,
@@ -641,13 +653,20 @@ export async function streamHydratableElement(
   }
 
   if (isForElement(element)) {
-    await streamHydratableForElement(element, controller, encoder, ctx);
+    for (const node of resolveForRenderNodes(element)) {
+      await streamHydratableNodeToController(
+        node,
+        controller,
+        encoder,
+        ctx,
+      );
+    }
     return;
   }
 
   if (isSwitchElement(element)) {
     await streamHydratableNodeToController(
-      resolveSwitchContent(element),
+      resolveSwitchRenderNode(element),
       controller,
       encoder,
       ctx,
@@ -657,9 +676,8 @@ export async function streamHydratableElement(
   }
 
   if (isMatchElement(element)) {
-    const when = resolve(props.when);
     await streamHydratableNodeToController(
-      when ? resolveMatchChildren(element, when) : null,
+      resolveMatchRenderNode(element),
       controller,
       encoder,
       ctx,
@@ -669,14 +687,20 @@ export async function streamHydratableElement(
   }
 
   if (isIndexElement(element)) {
-    await streamHydratableIndexElement(element, controller, encoder, ctx);
+    for (const node of resolveIndexRenderNodes(element)) {
+      await streamHydratableNodeToController(
+        node,
+        controller,
+        encoder,
+        ctx,
+      );
+    }
     return;
   }
 
   if (isKeyElement(element)) {
-    const key = resolve(props.when);
     await streamHydratableNodeToController(
-      resolveKeyChildren(element, key),
+      resolveKeyRenderNode(element),
       controller,
       encoder,
       ctx,
@@ -686,8 +710,7 @@ export async function streamHydratableElement(
   }
 
   if (isDynamicElement(element)) {
-    const dynamicTag = resolve(props.component);
-    const dynamic = createDynamicElement(element, dynamicTag);
+    const dynamic = renderDynamicElement(element);
     if (dynamic) {
       await streamHydratableElement(
         dynamic,
@@ -701,47 +724,36 @@ export async function streamHydratableElement(
   }
 
   if (isPortalElement(element)) {
+    enqueue(controller, encoder, renderPortalElement(element));
     return;
   }
 
   if (isErrorBoundaryElement(element)) {
-    try {
-      await streamHydratableNodeToController(
-        props.children as SinwanNode,
+    await renderErrorBoundaryNode(element, ssrReset, (node) =>
+      streamHydratableNodeToController(
+        node,
         controller,
         encoder,
         ctx,
         isComponentRoot,
-      );
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      const fallback = props.fallback;
-      const fallbackContent =
-        typeof fallback === "function"
-          ? (fallback as (error: Error, reset: () => void) => SinwanNode)(
-              error,
-              ssrReset,
-            )
-          : fallback;
-      await streamHydratableNodeToController(
-        fallbackContent as SinwanNode,
-        controller,
-        encoder,
-        ctx,
-        isComponentRoot,
-      );
-    }
+      ),
+    );
     return;
   }
 
   if (isVirtualElement(element)) {
-    await streamHydratableVirtualElement(element, controller, encoder, ctx);
+    await streamVirtualHtml(
+      element,
+      (html) => controller.enqueue(encoder.encode(html)),
+      (node) =>
+        streamHydratableNodeToController(node, controller, encoder, ctx),
+    );
     return;
   }
 
   if (isSuspenseElement(element)) {
     await streamHydratableNodeToController(
-      props.children as SinwanNode,
+      resolveSuspenseRenderNode(element),
       controller,
       encoder,
       ctx,
@@ -751,28 +763,8 @@ export async function streamHydratableElement(
   }
 
   if (isViewTransitionElement(element)) {
-    const name = props.name;
-    const viewChildren = (props as any).children as SinwanNode;
-    if (!name) {
-      await streamHydratableNodeToController(
-        viewChildren,
-        controller,
-        encoder,
-        ctx,
-        isComponentRoot,
-      );
-      return;
-    }
-    const wrapperTag = (props as any).as ?? "div";
-    await streamHydratableElement(
-      {
-        tag: wrapperTag,
-        props: {
-          style: { viewTransitionName: name },
-          children: viewChildren,
-        },
-        children: normalizeContent(viewChildren),
-      },
+    await streamHydratableNodeToController(
+      resolveViewTransitionRenderNode(element),
       controller,
       encoder,
       ctx,
@@ -782,21 +774,8 @@ export async function streamHydratableElement(
   }
 
   if (isActivityElement(element)) {
-    const mode = resolve(props.mode) ?? "visible";
-    const activityChildren = (props as any).children as SinwanNode;
-    const tag = (element.props as any).as ?? "div";
-    const hidden = mode === "hidden";
-
     await streamHydratableElement(
-      {
-        tag,
-        props: {
-          "data-sinwan-activity": hidden ? "hidden" : "visible",
-          ...(hidden ? { hidden: true } : {}),
-          children: activityChildren,
-        },
-        children: normalizeContent(activityChildren),
-      },
+      renderActivityElement(element),
       controller,
       encoder,
       ctx,
@@ -897,195 +876,6 @@ async function streamHydratableIntrinsic(
   enqueue(controller, encoder, `</${tag}>`);
 }
 
-async function streamHydratableForElement(
-  element: SinwanElement,
-  controller: ReadableStreamDefaultController<Uint8Array>,
-  encoder: TextEncoder,
-  ctx: HydratableStreamContext,
-): Promise<void> {
-  const props = element.props as {
-    each?: unknown;
-    fallback?: SinwanNode;
-    children?: (item: unknown, index: () => number) => SinwanNode;
-  };
-  const each = resolve(props.each);
-  if (!Array.isArray(each) || typeof props.children !== "function") {
-    if (props.fallback) {
-      await streamHydratableNodeToController(
-        props.fallback,
-        controller,
-        encoder,
-        ctx,
-      );
-    }
-    return;
-  }
-
-  if (each.length === 0) {
-    if (props.fallback) {
-      await streamHydratableNodeToController(
-        props.fallback,
-        controller,
-        encoder,
-        ctx,
-      );
-    }
-    return;
-  }
-
-  for (let index = 0; index < each.length; index++) {
-    const idx = index;
-    await streamHydratableNodeToController(
-      props.children(each[index], () => idx),
-      controller,
-      encoder,
-      ctx,
-    );
-  }
-}
-
-async function streamHydratableIndexElement(
-  element: SinwanElement,
-  controller: ReadableStreamDefaultController<Uint8Array>,
-  encoder: TextEncoder,
-  ctx: HydratableStreamContext,
-): Promise<void> {
-  const props = element.props as {
-    each?: unknown;
-    fallback?: SinwanNode;
-    children?: (item: () => unknown, index: number) => SinwanNode;
-  };
-  const each = resolve(props.each);
-  if (!Array.isArray(each) || typeof props.children !== "function") {
-    if (props.fallback) {
-      await streamHydratableNodeToController(
-        props.fallback,
-        controller,
-        encoder,
-        ctx,
-      );
-    }
-    return;
-  }
-
-  if (each.length === 0) {
-    if (props.fallback) {
-      await streamHydratableNodeToController(
-        props.fallback,
-        controller,
-        encoder,
-        ctx,
-      );
-    }
-    return;
-  }
-
-  for (let index = 0; index < each.length; index++) {
-    const item = each[index];
-    await streamHydratableNodeToController(
-      props.children(() => item, index),
-      controller,
-      encoder,
-      ctx,
-    );
-  }
-}
-
-async function streamHydratableVirtualElement(
-  element: SinwanElement,
-  controller: ReadableStreamDefaultController<Uint8Array>,
-  encoder: TextEncoder,
-  ctx: HydratableStreamContext,
-): Promise<void> {
-  const props = element.props as {
-    each?: unknown;
-    key?: (item: unknown, index: number) => string | number | symbol;
-    itemHeight: number;
-    containerHeight: number;
-    overscan?: number;
-    minRendered?: number;
-    fallback?: SinwanNode;
-    children?: (item: unknown, index: () => number) => SinwanNode;
-  };
-
-  const items = resolve(props.each);
-  const list = Array.isArray(items) ? items : [];
-
-  if (list.length === 0) {
-    if (props.fallback) {
-      await streamHydratableNodeToController(
-        props.fallback,
-        controller,
-        encoder,
-        ctx,
-      );
-    }
-    return;
-  }
-
-  const itemHeight = props.itemHeight;
-  const containerHeight = props.containerHeight;
-  const overscan = props.overscan ?? 3;
-  const minRendered = props.minRendered ?? 0;
-
-  // Compute initial visible window at scrollTop=0
-  let startIndex = 0;
-  let endIndex = Math.ceil(containerHeight / itemHeight);
-  startIndex = Math.max(0, startIndex - overscan);
-  endIndex = Math.min(list.length, endIndex + overscan);
-
-  if (minRendered > 0) {
-    const visibleCount = endIndex - startIndex;
-    if (visibleCount < minRendered) {
-      const deficit = minRendered - visibleCount;
-      const expandStart = Math.min(startIndex, Math.floor(deficit / 2));
-      const expandEnd = Math.min(
-        list.length - endIndex,
-        Math.ceil(deficit / 2),
-      );
-      let remaining = deficit - expandStart - expandEnd;
-      startIndex -= expandStart;
-      endIndex += expandEnd;
-      if (remaining > 0 && endIndex < list.length) {
-        endIndex = Math.min(list.length, endIndex + remaining);
-      }
-    }
-  }
-
-  const totalHeight = list.length * itemHeight;
-  const renderChild = props.children;
-
-  // Stream container start
-  controller.enqueue(
-    encoder.encode(
-      `<div style="overflow:auto;height:${containerHeight}px"><div style="position:relative;height:${totalHeight}px">`,
-    ),
-  );
-
-  // Stream visible items with absolute positioning
-  if (typeof renderChild === "function") {
-    for (let i = startIndex; i < endIndex; i++) {
-      const index = i;
-      const top = i * itemHeight;
-      controller.enqueue(
-        encoder.encode(
-          `<div style="position:absolute;top:${top}px;left:0;right:0">`,
-        ),
-      );
-      await streamHydratableNodeToController(
-        renderChild(list[i], () => index),
-        controller,
-        encoder,
-        ctx,
-      );
-      controller.enqueue(encoder.encode("</div>"));
-    }
-  }
-
-  // Stream container end
-  controller.enqueue(encoder.encode("</div></div>"));
-}
-
 function renderHydratableAttributes(
   props: Record<string, unknown>,
   ctx: HydratableStreamContext,
@@ -1135,172 +925,6 @@ function enqueue(
   controller.enqueue(encoder.encode(html));
 }
 
-async function streamForElement(
-  element: SinwanElement,
-  controller: ReadableStreamDefaultController<Uint8Array>,
-  encoder: TextEncoder,
-): Promise<void> {
-  const props = element.props as {
-    each?: unknown;
-    fallback?: SinwanNode;
-    children?: (item: unknown, index: () => number) => SinwanNode;
-  };
-  const each = resolve(props.each);
-  if (!Array.isArray(each) || typeof props.children !== "function") {
-    if (props.fallback) {
-      await streamNode(props.fallback, controller, encoder);
-    }
-    return;
-  }
-
-  if (each.length === 0) {
-    if (props.fallback) {
-      await streamNode(props.fallback, controller, encoder);
-    }
-    return;
-  }
-
-  for (let index = 0; index < each.length; index++) {
-    const idx = index;
-    await streamNode(
-      props.children(each[index], () => idx),
-      controller,
-      encoder,
-    );
-  }
-}
-
-async function streamIndexElement(
-  element: SinwanElement,
-  controller: ReadableStreamDefaultController<Uint8Array>,
-  encoder: TextEncoder,
-): Promise<void> {
-  const props = element.props as {
-    each?: unknown;
-    fallback?: SinwanNode;
-    children?: (item: () => unknown, index: number) => SinwanNode;
-  };
-  const each = resolve(props.each);
-  if (!Array.isArray(each) || typeof props.children !== "function") {
-    if (props.fallback) {
-      await streamNode(props.fallback, controller, encoder);
-    }
-    return;
-  }
-
-  if (each.length === 0) {
-    if (props.fallback) {
-      await streamNode(props.fallback, controller, encoder);
-    }
-    return;
-  }
-
-  for (let index = 0; index < each.length; index++) {
-    const item = each[index];
-    await streamNode(
-      props.children(() => item, index),
-      controller,
-      encoder,
-    );
-  }
-}
-
-async function streamVirtualElement(
-  element: SinwanElement,
-  controller: ReadableStreamDefaultController<Uint8Array>,
-  encoder: TextEncoder,
-): Promise<void> {
-  const props = element.props as {
-    each?: unknown;
-    key?: (item: unknown, index: number) => string | number | symbol;
-    itemHeight: number;
-    containerHeight: number;
-    overscan?: number;
-    minRendered?: number;
-    fallback?: SinwanNode;
-    children?: (item: unknown, index: () => number) => SinwanNode;
-  };
-
-  const items = resolve(props.each);
-  const list = Array.isArray(items) ? items : [];
-
-  if (list.length === 0) {
-    if (props.fallback) {
-      await streamNode(props.fallback, controller, encoder);
-    }
-    return;
-  }
-
-  const itemHeight = props.itemHeight;
-  const containerHeight = props.containerHeight;
-  const overscan = props.overscan ?? 3;
-  const minRendered = props.minRendered ?? 0;
-
-  // Compute initial visible window at scrollTop=0
-  let startIndex = 0;
-  let endIndex = Math.ceil(containerHeight / itemHeight);
-  startIndex = Math.max(0, startIndex - overscan);
-  endIndex = Math.min(list.length, endIndex + overscan);
-
-  if (minRendered > 0) {
-    const visibleCount = endIndex - startIndex;
-    if (visibleCount < minRendered) {
-      const deficit = minRendered - visibleCount;
-      const expandStart = Math.min(startIndex, Math.floor(deficit / 2));
-      const expandEnd = Math.min(
-        list.length - endIndex,
-        Math.ceil(deficit / 2),
-      );
-      let remaining = deficit - expandStart - expandEnd;
-      startIndex -= expandStart;
-      endIndex += expandEnd;
-      if (remaining > 0 && endIndex < list.length) {
-        endIndex = Math.min(list.length, endIndex + remaining);
-      }
-    }
-  }
-
-  const totalHeight = list.length * itemHeight;
-  const renderChild = props.children;
-
-  // Stream container start
-  controller.enqueue(
-    encoder.encode(
-      `<div style="overflow:auto;height:${containerHeight}px"><div style="position:relative;height:${totalHeight}px">`,
-    ),
-  );
-
-  // Stream visible items with absolute positioning
-  if (typeof renderChild === "function") {
-    for (let i = startIndex; i < endIndex; i++) {
-      const index = i;
-      const top = i * itemHeight;
-      controller.enqueue(
-        encoder.encode(
-          `<div style="position:absolute;top:${top}px;left:0;right:0">`,
-        ),
-      );
-      await streamNode(
-        renderChild(list[i], () => index),
-        controller,
-        encoder,
-      );
-      controller.enqueue(encoder.encode("</div>"));
-    }
-  }
-
-  // Stream container end
-  controller.enqueue(encoder.encode("</div></div>"));
-}
-
-/**
- * Stream an island element: emit the static wrapper tag with hydration
- * markers inside, plus the embedded props JSON the client needs to hydrate.
- *
- * Islands always render to a single `renderToHydratableString` call so each
- * island has an independent marker counter starting at 0 — this is what
- * makes them safe to hydrate individually on the client.
- */
 async function streamIsland(
   element: IslandElement,
   controller: ReadableStreamDefaultController<Uint8Array>,

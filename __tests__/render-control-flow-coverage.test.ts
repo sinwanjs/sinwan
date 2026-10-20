@@ -42,6 +42,11 @@ import { Suspense } from "../src/react/suspense.ts";
 import { Activity } from "../src/react/activity.ts";
 import { ViewTransition } from "../src/react/view-transition.ts";
 import type { SinwanElement, SinwanNode } from "../src/types.ts";
+import { renderForBlock, __reconcileDomArraysForTests } from "../src/control-flow/components/for/client.ts";
+import type {
+  MountedPortal,
+  MountedReactiveBlock,
+} from "../src/renderer/types.ts";
 
 let win: InstanceType<typeof Window>;
 let doc: Document;
@@ -272,7 +277,7 @@ describe("render-control-flow coverage > For", () => {
     const App = cc(() =>
       el(For, {
         each: items,
-        key: (item: any) => item.id,
+        by: (item: any) => item.id,
         children: (item: any) => el("span", {}, item.name),
       }),
     );
@@ -298,7 +303,7 @@ describe("render-control-flow coverage > For", () => {
     const App = cc(() =>
       el(For, {
         each: items,
-        key: (item: any) => item.id,
+        by: (item: any) => item.id,
         children: (item: any) => el("span", {}, item.name),
       }),
     );
@@ -322,7 +327,7 @@ describe("render-control-flow coverage > For", () => {
     const App = cc(() =>
       el(For, {
         each: items,
-        key: (item: any) => item.id,
+        by: (item: any) => item.id,
         children: (item: any) => el("span", {}, item.name),
       }),
     );
@@ -552,6 +557,33 @@ describe("render-control-flow coverage > Suspense", () => {
     mount(App, container);
     await nextTick();
     expect(container.textContent).toContain("content");
+  });
+
+  it("clears partially rendered siblings when a later child throws a promise", async () => {
+    const pending = Promise.withResolvers<void>();
+    let thrown = false;
+    const Thrower = cc(() => {
+      if (!thrown) {
+        thrown = true;
+        throw pending.promise;
+      }
+      return el("span", {}, "ok");
+    });
+    const App = cc(() =>
+      el(Suspense, {
+        fallback: el("p", {}, "loading"),
+        children: [el("span", {}, "partial"), el(Thrower)],
+      }),
+    );
+    mount(App, container);
+    await nextTick();
+    expect(container.textContent).toContain("loading");
+    expect(container.textContent).not.toContain("partial");
+    pending.resolve();
+    await nextTick();
+    await nextTick();
+    expect(container.textContent).toContain("partial");
+    expect(container.textContent).toContain("ok");
   });
 });
 
@@ -832,6 +864,191 @@ describe("render-control-flow coverage > clearChildren fast path", () => {
     expect(container.querySelectorAll("span").length).toBe(0);
     expect(container.textContent).toContain("hidden");
   });
+
+  it("clears For lists with >4 rows via Range between anchors", async () => {
+    const items = signal([1, 2, 3, 4, 5, 6]);
+    const App = cc(() =>
+      el(For, {
+        each: items,
+        fallback: el("p", {}, "empty"),
+        children: (n: number) => el("span", {}, `row-${n}`),
+      }),
+    );
+    mount(App, container);
+    await nextTick();
+    expect(container.querySelectorAll("span").length).toBe(6);
+    items.value = [];
+    await nextTick();
+    expect(container.querySelectorAll("span").length).toBe(0);
+    expect(container.textContent).toContain("empty");
+  });
+
+  it("clears Index lists with >4 rows via Range between anchors", async () => {
+    const items = signal(["a", "b", "c", "d", "e"]);
+    const App = cc(() =>
+      el(Index, {
+        each: items,
+        fallback: el("p", {}, "none"),
+        children: (item: () => string) => el("span", {}, item()),
+      }),
+    );
+    mount(App, container);
+    await nextTick();
+    expect(container.querySelectorAll("span").length).toBe(5);
+    items.value = [];
+    await nextTick();
+    expect(container.querySelectorAll("span").length).toBe(0);
+    expect(container.textContent).toContain("none");
+  });
+
+  it("appends For rows via a single fragment insert", async () => {
+    const items = signal([1, 2, 3]);
+    const App = cc(() =>
+      el(For, {
+        each: items,
+        children: (n: number) => el("span", { "data-id": String(n) }, `row-${n}`),
+      }),
+    );
+    mount(App, container);
+    await nextTick();
+    expect(container.querySelectorAll("span").length).toBe(3);
+    items.value = [1, 2, 3, 4, 5, 6];
+    await nextTick();
+    const spans = [...container.querySelectorAll("span")];
+    expect(spans.map((s) => s.getAttribute("data-id"))).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+    ]);
+  });
+
+  it("appends Index rows via a single fragment insert", async () => {
+    const items = signal(["a", "b"]);
+    const App = cc(() =>
+      el(Index, {
+        each: items,
+        children: (item: () => string) => el("span", {}, item()),
+      }),
+    );
+    mount(App, container);
+    await nextTick();
+    items.value = ["a", "b", "c", "d"];
+    await nextTick();
+    expect([...container.querySelectorAll("span")].map((s) => s.textContent)).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+    ]);
+  });
+
+  it("creates For rows with portals from empty via fragment path", async () => {
+    const target = document.createElement("div");
+    target.id = "empty-to-n-portal";
+    doc.body.appendChild(target);
+    const items = signal<number[]>([]);
+    const App = cc(() =>
+      el(For, {
+        each: items,
+        children: (n: number) =>
+          el(Portal, {
+            mount: "#empty-to-n-portal",
+            children: el("span", {}, `p-${n}`),
+          }),
+      }),
+    );
+    mount(App, container);
+    await nextTick();
+    items.value = [1, 2];
+    await nextTick();
+    expect(target.textContent).toContain("p-1");
+    expect(target.textContent).toContain("p-2");
+    items.value = [1, 2, 3];
+    await nextTick();
+    expect(target.textContent).toContain("p-3");
+    items.value = [];
+    await nextTick();
+    expect(target.textContent).not.toContain("p-");
+  });
+
+  it("detects portals on For append and mid-reconcile create", async () => {
+    const target = document.createElement("div");
+    target.id = "append-mid-portal";
+    doc.body.appendChild(target);
+    type Row = { id: number; portal: boolean };
+    const a: Row = { id: 1, portal: false };
+    const b: Row = { id: 2, portal: false };
+    const c: Row = { id: 3, portal: false };
+    const items = signal<Row[]>([a]);
+    const App = cc(() =>
+      el(For, {
+        each: items,
+        by: (r: Row) => r.id,
+        children: (r: Row) =>
+          r.portal
+            ? el(Portal, {
+                mount: "#append-mid-portal",
+                children: el("span", {}, `portal-${r.id}`),
+              })
+            : el("span", {}, `row-${r.id}`),
+      }),
+    );
+    mount(App, container);
+    await nextTick();
+    // Append-only while listHasPortal is false.
+    items.value = [a, { id: 10, portal: true }];
+    await nextTick();
+    expect(target.textContent).toContain("portal-10");
+    // Clear resets sticky flag.
+    items.value = [];
+    await nextTick();
+    // Mid-reconcile create while listHasPortal is false again.
+    items.value = [a, b, c];
+    await nextTick();
+    items.value = [a, { id: 4, portal: true }, c];
+    await nextTick();
+    expect(target.textContent).toContain("portal-4");
+  });
+
+  it("seeds listHasPortal from a For hydration seed with a portal row", async () => {
+    const start = doc.createComment("sinwan-b");
+    const end = doc.createComment("/sinwan-b");
+    container.append(start, end);
+    const block: MountedReactiveBlock = {
+      type: "reactive-block",
+      dispose: () => {},
+      children: [],
+      startAnchor: start,
+      endAnchor: end,
+    };
+    const portalMounted: MountedPortal = {
+      type: "portal",
+      anchor: doc.createComment("p"),
+      children: [],
+      dispose: () => {},
+    };
+    const items = signal([1]);
+    const element = el(For, {
+      each: items,
+      children: (n: number) => el("span", {}, String(n)),
+    });
+    const dispose = renderForBlock(element, block, container, null, null, {
+      items: [1],
+      keys: [1],
+      mounted: [portalMounted],
+      indexes: null,
+      lastList: [1],
+    });
+    await nextTick();
+    // Append forces reconcile with sticky portal flag already true from seed.
+    items.value = [1, 2];
+    await nextTick();
+    expect(container.textContent).toContain("2");
+    dispose();
+  });
 });
 
 // ─── Key: basic rendering ──────────────────────────────────
@@ -935,6 +1152,43 @@ describe("render-control-flow coverage > Virtual edge cases", () => {
 });
 
 describe("render-control-flow coverage > For edge cases", () => {
+  it("swaps distant indices without remounting row DOM (bench Swap shape)", async () => {
+    type Item = { id: number };
+    const list: Item[] = [];
+    for (let i = 0; i < 20; i++) list.push({ id: i });
+    const items = signal(list.slice());
+    const App = cc(() =>
+      el(For, {
+        each: items,
+        children: (item: Item) =>
+          el("span", { "data-id": String(item.id) }, String(item.id)),
+      }),
+    );
+    mount(App, container);
+    await nextTick();
+    const before = Array.from(container.querySelectorAll("span"));
+    expect(before.map((s) => s.getAttribute("data-id"))).toEqual(
+      list.map((i) => String(i.id)),
+    );
+    const swapped = items.value.slice();
+    const tmp = swapped[1]!;
+    swapped[1] = swapped[18]!;
+    swapped[18] = tmp;
+    items.value = swapped;
+    await nextTick();
+    const after = Array.from(container.querySelectorAll("span"));
+    expect(after.map((s) => s.getAttribute("data-id"))).toEqual(
+      swapped.map((i) => String(i.id)),
+    );
+    // Same DOM nodes reused (reconcileArrays move, not remount).
+    expect(after[1]).toBe(before[18]);
+    expect(after[18]).toBe(before[1]);
+    for (let i = 0; i < 20; i++) {
+      if (i === 1 || i === 18) continue;
+      expect(after[i]).toBe(before[i]);
+    }
+  });
+
   it("handles swap fast-path with null nodes (early return)", async () => {
     const items = signal(["a", "b", "c", "d"]);
     const App = cc(() =>
@@ -966,6 +1220,53 @@ describe("render-control-flow coverage > For edge cases", () => {
     // This is hard to trigger directly; the swap path with no parent
     // is an edge case safety guard
     app.unmount();
+  });
+
+  it("reorders a portal opened inside an existing For row and clears target anchors", async () => {
+    const target = doc.createElement("div");
+    doc.body.appendChild(target);
+    const open = signal(false);
+    const a = { id: "a" };
+    const b = { id: "b" };
+    const items = signal([a, b]);
+    const App = cc(() =>
+      el(For, {
+        each: items,
+        by: (item: { id: string }) => item.id,
+        children: (item: { id: string }) =>
+          el(Show, {
+            when: open,
+            children: el(Portal, {
+              mount: target,
+              children: el("span", {}, item.id),
+            }),
+          }),
+      }),
+    );
+    mount(App, container);
+    await nextTick();
+    expect(target.querySelectorAll("span").length).toBe(0);
+
+    open.value = true;
+    await nextTick();
+    expect(
+      [...target.querySelectorAll("span")].map((span) => span.textContent),
+    ).toEqual(["a", "b"]);
+
+    items.value = [b, a];
+    await nextTick();
+    expect(
+      [...target.querySelectorAll("span")].map((span) => span.textContent),
+    ).toEqual(["b", "a"]);
+
+    items.value = [];
+    await nextTick();
+    expect(target.querySelectorAll("span").length).toBe(0);
+    const comments = [...target.childNodes].filter(
+      (node) => node.nodeType === Node.COMMENT_NODE,
+    );
+    expect(comments).toEqual([]);
+    target.remove();
   });
 
   it("handles portal sync after swap in For", async () => {
@@ -1193,6 +1494,27 @@ describe("render-control-flow coverage > Key cache=false", () => {
     await nextTick();
     expect(container.textContent).toContain("key-a");
   });
+
+  it("skips work when when resolves to the same key", async () => {
+    const key = signal("a");
+    const tick = signal(0);
+    const App = cc(() =>
+      el(Key, {
+        when: () => {
+          tick.value;
+          return key.value;
+        },
+        children: (value: string) => el("span", {}, `key-${value}`),
+      }),
+    );
+    const app = mount(App, container);
+    await nextTick();
+    const span = container.querySelector("span");
+    tick.value++;
+    await nextTick();
+    expect(container.querySelector("span")).toBe(span);
+    app.unmount();
+  });
 });
 
 describe("render-control-flow coverage > Key cache=true (keep-alive)", () => {
@@ -1205,7 +1527,7 @@ describe("render-control-flow coverage > Key cache=true (keep-alive)", () => {
         children: (value: string) => el("span", {}, `key-${value}`),
       }),
     );
-    mount(App, container);
+    const app = mount(App, container);
     await nextTick();
     expect(container.textContent).toContain("key-a");
     key.value = "b";
@@ -1215,6 +1537,7 @@ describe("render-control-flow coverage > Key cache=true (keep-alive)", () => {
     key.value = "a";
     await nextTick();
     expect(container.textContent).toContain("key-a");
+    app.unmount();
   });
 });
 
@@ -1229,7 +1552,7 @@ describe("render-control-flow coverage > For keyed in-place update", () => {
     const App = cc(() =>
       el(For, {
         each: items,
-        key: (item: any) => item.id,
+        by: (item: any) => item.id,
         children: (item: any) => item.name,
       }),
     );
@@ -1250,7 +1573,7 @@ describe("render-control-flow coverage > For keyed in-place update", () => {
     const App = cc(() =>
       el(For, {
         each: items,
-        key: (item: any) => item.id,
+        by: (item: any) => item.id,
         children: (item: any) => el("span", {}, item.name),
       }),
     );
@@ -1550,6 +1873,26 @@ describe("render-control-flow coverage > For non-function second run", () => {
     await nextTick();
     expect(container.textContent).toBe("");
   });
+
+  it("disposes existing rows when children becomes non-function", async () => {
+    const items = signal([1, 2]);
+    const props: {
+      each: typeof items;
+      children: unknown;
+    } = {
+      each: items,
+      children: (item: number) => el("span", {}, String(item)),
+    };
+    const element: SinwanElement = { tag: For, props, children: [] };
+    const App = cc(() => element);
+    mount(App, container);
+    await nextTick();
+    expect(container.textContent).toBe("12");
+    props.children = "not a function";
+    items.value = [3, 4];
+    await nextTick();
+    expect(container.textContent).toBe("");
+  });
 });
 
 // ─── Index: non-function children queueUpdatedHooks (second run) ──
@@ -1566,6 +1909,27 @@ describe("render-control-flow coverage > Index non-function second run", () => {
     await nextTick();
     // Trigger second run — initialized=true → queueUpdatedHooks fires
     items.value = [3, 4];
+    await nextTick();
+    expect(container.textContent).toBe("");
+  });
+
+  it("disposes existing rows when children becomes non-function", async () => {
+    const items = signal([1, 2]);
+    const props: {
+      each: typeof items;
+      children: unknown;
+    } = {
+      each: items,
+      children: (item: () => number, index: number) =>
+        el("span", {}, () => `${item()}-${index}`),
+    };
+    const element: SinwanElement = { tag: Index, props, children: [] };
+    const App = cc(() => element);
+    mount(App, container);
+    await nextTick();
+    expect(container.textContent).toBe("1-02-1");
+    props.children = "not a function";
+    items.value = [3];
     await nextTick();
     expect(container.textContent).toBe("");
   });
@@ -1675,6 +2039,50 @@ describe("render-control-flow coverage > For portal full reconcile", () => {
 // ─── containsPortal: fragment, reactive-block, and async cases ──
 
 describe("render-control-flow coverage > containsPortal all node types", () => {
+  it("scans fragment/reactive-block/async rows without portals", async () => {
+    const FragComp = cc(() => [el("span", {}, "f1"), el("span", {}, "f2")]);
+    const AsyncComp = cc(async () => {
+      await Promise.resolve();
+      return el("span", {}, "async-row");
+    });
+    const fragItem = { id: "frag" };
+    const showItem = { id: "show" };
+    const asyncItem = { id: "async" };
+    const showFlag = signal(true);
+    // Portal-free list so sticky listHasPortal stays false and containsPortal
+    // walks fragment / reactive-block / async cases through to return false.
+    const items = signal([fragItem, showItem]);
+    const App = cc(() =>
+      el(For, {
+        each: items,
+        children: (item: { id: string }) => {
+          if (item.id === "frag") return el(FragComp, {});
+          if (item.id === "show")
+            return el(Show, {
+              when: showFlag,
+              children: el("span", {}, "show"),
+              fallback: el("span", {}, "hidden"),
+            });
+          return el(AsyncComp, {});
+        },
+      }),
+    );
+    mount(App, container);
+    await nextTick();
+    items.value = [showItem, fragItem];
+    await nextTick();
+    expect(container.textContent).toContain("show");
+    expect(container.textContent).toContain("f1");
+
+    items.value = [asyncItem, fragItem, showItem];
+    await nextTick();
+    await nextTick();
+    await nextTick();
+    items.value = [fragItem, asyncItem, showItem];
+    await nextTick();
+    expect(container.textContent).toContain("async-row");
+  });
+
   it("detects portal inside a fragment (component returning array)", async () => {
     const target = doc.createElement("div");
     target.id = "frag-portal-target";
@@ -2007,7 +2415,7 @@ describe("render-control-flow coverage > updateTextNodeContent element", () => {
     const App = cc(() =>
       el(For, {
         each: items,
-        key: (item: any) => item.id,
+        by: (item: any) => item.id,
         children: (item: any) =>
           item.type === "element" ? el("span", {}, item.value) : item.value,
       }),
@@ -2030,7 +2438,7 @@ describe("render-control-flow coverage > updateTextNodeContent element", () => {
     const App = cc(() =>
       el(For, {
         each: items,
-        key: (item: any) => item.id,
+        by: (item: any) => item.id,
         children: (item: any) =>
           item.type === "nested"
             ? el("div", {}, el("span", {}, item.value))
@@ -2046,5 +2454,127 @@ describe("render-control-flow coverage > updateTextNodeContent element", () => {
     items.value = [{ id: 1, type: "text", value: "CHANGED" }, item2];
     await nextTick();
     expect(container.textContent).toBe("CHANGEDflat");
+  });
+});
+
+describe("render-control-flow coverage > reconcileDomArrays", () => {
+  it("inserts when a is empty", () => {
+    const parent = doc.createElement("div");
+    const end = doc.createComment("/for");
+    parent.appendChild(end);
+    const n1 = doc.createElement("span");
+    n1.textContent = "1";
+    const n2 = doc.createElement("span");
+    n2.textContent = "2";
+    __reconcileDomArraysForTests(parent, [], [n1, n2], end);
+    expect([...parent.childNodes].map((n) => n.textContent)).toEqual([
+      "1",
+      "2",
+      "/for",
+    ]);
+  });
+
+  it("removes nodes only present in a", () => {
+    const parent = doc.createElement("div");
+    const a1 = doc.createElement("span");
+    a1.textContent = "a";
+    const a2 = doc.createElement("span");
+    a2.textContent = "b";
+    const end = doc.createComment("/for");
+    parent.append(a1, a2, end);
+    __reconcileDomArraysForTests(parent, [a1, a2], [a1], end);
+    expect([...parent.childNodes].map((n) => n.textContent)).toEqual([
+      "a",
+      "/for",
+    ]);
+  });
+
+  it("inserts a prefix before a matched run (sequence fast path)", () => {
+    const parent = doc.createElement("div");
+    const x = doc.createElement("span");
+    x.textContent = "x";
+    const y = doc.createElement("span");
+    y.textContent = "y";
+    const z = doc.createElement("span");
+    z.textContent = "z";
+    const end = doc.createComment("/for");
+    // DOM currently y,z — want x,y,z (insert x before the yz run)
+    parent.append(y, z, end);
+    __reconcileDomArraysForTests(parent, [y, z], [x, y, z], end);
+    expect([...parent.childNodes].map((n) => n.textContent)).toEqual([
+      "x",
+      "y",
+      "z",
+      "/for",
+    ]);
+  });
+
+  it("moves via replace-style branch when the matched run is short", () => {
+    const parent = doc.createElement("div");
+    const a = doc.createElement("span");
+    a.textContent = "a";
+    const b = doc.createElement("span");
+    b.textContent = "b";
+    const c = doc.createElement("span");
+    c.textContent = "c";
+    const end = doc.createComment("/for");
+    parent.append(a, b, c, end);
+    // Want c,a,b — forces map path with short sequence (replace-style move)
+    __reconcileDomArraysForTests(parent, [a, b, c], [c, a, b], end);
+    expect([...parent.childNodes].map((n) => n.textContent)).toEqual([
+      "c",
+      "a",
+      "b",
+      "/for",
+    ]);
+  });
+
+  it("removes an a-node that is absent from b during map reconcile", () => {
+    const parent = doc.createElement("div");
+    const keep = doc.createElement("span");
+    keep.textContent = "keep";
+    const gone = doc.createElement("span");
+    gone.textContent = "gone";
+    const neu = doc.createElement("span");
+    neu.textContent = "new";
+    const end = doc.createComment("/for");
+    parent.append(gone, keep, end);
+    __reconcileDomArraysForTests(parent, [gone, keep], [neu, keep], end);
+    expect([...parent.childNodes].map((n) => n.textContent)).toEqual([
+      "new",
+      "keep",
+      "/for",
+    ]);
+  });
+});
+
+describe("render-control-flow coverage > For multi-root rows", () => {
+  it("reorders fragment rows via the right-to-left fallback", async () => {
+    type Item = { id: string };
+    const a = { id: "a" };
+    const b = { id: "b" };
+    const c = { id: "c" };
+    const items = signal<Item[]>([a, b, c]);
+    const App = cc(() =>
+      el(For, {
+        each: items,
+        by: (item: Item) => item.id,
+        // Two sibling elements → no single getMountedDomRoot
+        children: (item: Item) => [
+          el("span", { "data-id": item.id }, item.id),
+          el("i", {}, "!"),
+        ],
+      }),
+    );
+    mount(App, container);
+    await nextTick();
+    items.value = [c, a, b];
+    await nextTick();
+    const spans = Array.from(container.querySelectorAll("span"));
+    expect(spans.map((s) => s.getAttribute("data-id"))).toEqual([
+      "c",
+      "a",
+      "b",
+    ]);
   });
 });

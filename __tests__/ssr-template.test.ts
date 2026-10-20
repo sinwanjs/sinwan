@@ -60,6 +60,109 @@ describe("SSR template serialization (Phase A)", () => {
     expect(html).toContain("<p>");
   });
 
+  it("serializes a parent-fill child slot without <!--s:N--> markers", async () => {
+    const { _$createTemplate } = await import("../src/renderer/template.ts");
+    const { renderToHydratableString } =
+      await import("../src/server/hydration-markers.ts");
+    const { cc } = await import("../src/component/create.ts");
+    const { signal } = await import("../src/reactivity/signal.ts");
+
+    const count = signal(7);
+
+    // Compiler sole-dynamic shape: empty parent, path points at the element.
+    const def = {
+      html: "<div><p></p></div>",
+      slots: [{ path: [0], type: "child" as const }],
+    };
+
+    const App = cc(() => {
+      return _$createTemplate(def, [() => count.value]);
+    });
+
+    const html = await renderToHydratableString(App, {});
+    expect(html).toContain("<p><!--sinwan-t:0-->7<!--/sinwan-t--></p>");
+    expect(html).not.toContain("<!--s:0-->");
+  });
+
+  it("injects parent-fill slots through nested paths, comments, and whitespace", async () => {
+    const { _$createTemplate } = await import("../src/renderer/template.ts");
+    const { renderToHydratableString } =
+      await import("../src/server/hydration-markers.ts");
+    const { cc } = await import("../src/component/create.ts");
+
+    const def = {
+      html: ' <tr><td class="id"></td><td><!--keep--><a></a></td>tail<img /></tr>',
+      slots: [
+        { path: [0], type: "child" as const },
+        { path: [1, 1], type: "child" as const },
+      ],
+    };
+
+    const App = cc(() => _$createTemplate(def, ["1", "label"]));
+    const html = await renderToHydratableString(App, {});
+    expect(html).toContain('<td class="id">1</td>');
+    expect(html).toContain("<!--keep--><a>label</a>");
+    expect(html).toContain("<img />");
+  });
+
+  it("falls back when parent-fill path cannot be resolved", async () => {
+    const { _$createTemplate } = await import("../src/renderer/template.ts");
+    const { renderToHydratableString } =
+      await import("../src/server/hydration-markers.ts");
+    const { cc } = await import("../src/component/create.ts");
+
+    const def = {
+      html: "not-html",
+      slots: [{ path: [0], type: "child" as const }],
+    };
+
+    const App = cc(() => _$createTemplate(def, ["x"]));
+    const html = await renderToHydratableString(App, {});
+    expect(html).toContain("not-html");
+  });
+
+  it("covers void roots, nested same tags, and malformed open tags in inject", async () => {
+    const { _$createTemplate } = await import("../src/renderer/template.ts");
+    const { renderToHydratableString } =
+      await import("../src/server/hydration-markers.ts");
+    const { cc } = await import("../src/component/create.ts");
+
+    const voidRoot = {
+      html: "<img />",
+      slots: [{ path: [], type: "child" as const }],
+    };
+    const nested = {
+      html: "<div><div><div><span></span></div></div></div>",
+      slots: [{ path: [0, 0, 0], type: "child" as const }],
+    };
+    // Broken open tag after a valid child forces parseSsrOpenTag failure path.
+    const broken = {
+      html: "<div><span></span><</div>",
+      slots: [{ path: [0], type: "child" as const }],
+    };
+    const unclosed = {
+      html: "<section><div><span></span>",
+      slots: [{ path: [0, 0], type: "child" as const }],
+    };
+    // Same-tag open that cannot be parsed as a tag name (`<div` + `<`).
+    const badNested = {
+      html: "<div><div</div>",
+      slots: [{ path: [], type: "child" as const }],
+    };
+
+    const App = cc(() => [
+      _$createTemplate(voidRoot, ["x"]),
+      _$createTemplate(nested, ["n"]),
+      _$createTemplate(broken, ["b"]),
+      _$createTemplate(unclosed, ["u"]),
+      _$createTemplate(badNested, ["z"]),
+    ]);
+    const html = await renderToHydratableString(App, {});
+    expect(html).toContain("<img />");
+    expect(html).toContain("<span>n</span>");
+    expect(html).toContain("<span>b</span>");
+  });
+
   it("serializes a template with an event slot", async () => {
     const { _$createTemplate } = await import("../src/renderer/template.ts");
     const { renderToHydratableString } =

@@ -235,6 +235,59 @@ describe("streamElement branches", () => {
     expect(html).toBe("");
   });
 
+  it("streams Suspense content on the non-hydratable path", async () => {
+    const html = await collectStream(
+      streamPage(
+        () =>
+          Suspense({
+            fallback: "loading",
+            children: el("p", {}, "ready"),
+          }),
+        {},
+      ),
+    );
+    expect(html).toBe("<p>ready</p>");
+  });
+
+  it("streams Activity and ViewTransition on the non-hydratable path", async () => {
+    expect(
+      await collectStream(
+        streamPage(() => ViewTransition({ children: "plain" }), {}),
+      ),
+    ).toBe("plain");
+    expect(
+      await collectStream(
+        streamPage(
+          () =>
+            ViewTransition({
+              name: "card",
+              as: "section",
+              children: "named",
+            }),
+          {},
+        ),
+      ),
+    ).toBe('<section style="view-transition-name:card">named</section>');
+    expect(
+      await collectStream(
+        streamPage(
+          () =>
+            Activity({
+              mode: "hidden",
+              as: "article",
+              children: "kept",
+            }),
+          {},
+        ),
+      ),
+    ).toBe('<article data-sinwan-activity="hidden" hidden>kept</article>');
+    expect(
+      await collectStream(
+        streamPage(() => Activity({ mode: "visible", children: "shown" }), {}),
+      ),
+    ).toBe('<div data-sinwan-activity="visible">shown</div>');
+  });
+
   it("streams For with items", async () => {
     const html = await collectStream(
       streamPage(

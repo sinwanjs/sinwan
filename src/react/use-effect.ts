@@ -82,6 +82,7 @@ function registerEffect(
     onUnmounted(() => {
       unmounted = true;
       if (typeof cleanup === "function") cleanup();
+      if (slot.dispose) slot.dispose();
     });
   } else {
     // ── Dependency array (empty [] or [a, b, ...]) ───────────────────────

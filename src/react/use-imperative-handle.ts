@@ -86,6 +86,7 @@ export function useImperativeHandle<T, R extends T>(
     onUnmounted(() => {
       unmounted = true;
       clearHandle();
+      if (slot.dispose) slot.dispose();
     });
   } else {
     // ── Dependency array (empty [] or [a, b, ...]) ───────────────────────
