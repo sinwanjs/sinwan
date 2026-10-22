@@ -293,6 +293,71 @@ describe("For", () => {
     expect(container.textContent).toBe("empty");
   });
 
+  it("does not stack For fallback when the list stays empty across effect re-runs", async () => {
+    // DataTable filter: each={(revision, rows)} re-runs while rows stay [].
+    const items = signal<string[]>(["A"]);
+    const tick = signal(0);
+
+    const App = cc(() =>
+      el(
+        "ul",
+        {},
+        el(For, {
+          each: () => (tick.value, items.value),
+          fallback: el("li", { "data-slot": "empty" }, "No results."),
+          children: (item: string) => el("li", {}, item),
+        }),
+      ),
+    );
+
+    mount(App, container);
+    expect(container.textContent).toBe("A");
+
+    items.value = [];
+    await nextTick();
+    expect(container.querySelectorAll('[data-slot="empty"]').length).toBe(1);
+
+    tick.value = 1;
+    await nextTick();
+    tick.value = 2;
+    await nextTick();
+    tick.value = 3;
+    await nextTick();
+    expect(container.querySelectorAll('[data-slot="empty"]').length).toBe(1);
+    expect(container.textContent).toBe("No results.");
+  });
+
+  it("does not stack Index fallback when the list stays empty across effect re-runs", async () => {
+    const items = signal<string[]>(["A"]);
+    const tick = signal(0);
+
+    const App = cc(() =>
+      el(
+        "ul",
+        {},
+        el(Index, {
+          each: () => (tick.value, items.value),
+          fallback: el("li", { "data-slot": "empty" }, "No results."),
+          children: (item: { (): string }) => el("li", {}, () => item()),
+        }),
+      ),
+    );
+
+    mount(App, container);
+    expect(container.textContent).toBe("A");
+
+    items.value = [];
+    await nextTick();
+    expect(container.querySelectorAll('[data-slot="empty"]').length).toBe(1);
+
+    tick.value = 1;
+    await nextTick();
+    tick.value = 2;
+    await nextTick();
+    expect(container.querySelectorAll('[data-slot="empty"]').length).toBe(1);
+    expect(container.textContent).toBe("No results.");
+  });
+
   it("renders, reorders, inserts, removes, and updates keyed rows", async () => {
     type Item = { id: string; label: string };
     const a = { id: "a", label: "A" };

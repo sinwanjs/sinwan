@@ -2,6 +2,18 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.0.2] — For/Index Empty Fallback No Longer Stacks
+
+Sinwan 2.0.2 keeps a single empty-list fallback when `<For>` or `<Index>` re-runs while the list stays empty (for example DataTable filter keystrokes with no matches).
+
+### Fixed
+
+- **Empty fallback remount (`control-flow/components/for`, `control-flow/components/index`)**: When `each` re-evaluates to `[]` again, the existing fallback stays mounted instead of appending another copy. Transitioning from non-empty → empty still clears rows and mounts fallback once.
+
+### Changed
+
+- **Release metadata tests**: Assert package version `2.0.2` and keep prior changelog headings including `## [2.0.2]`.
+
 ## [2.0.1] — SSR Fills Omitted Class and Event Slots
 
 Sinwan 2.0.1 fills hoisted `class` and `on*` slots when the template HTML has no empty placeholder. Pair with **sinwan-compiler 1.0.0**, which omits ` class=""` and ` onclick=""` from hoisted markup.

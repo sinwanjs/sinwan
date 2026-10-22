@@ -96,18 +96,22 @@ export function renderIndexBlock<T>(
     if (newLen === 0) {
       if (len > 0) {
         clearMountedBetweenAnchors(block, mounted);
+        items = [];
+        mounted = [];
+        signals = [];
+        len = 0;
+        block.children = [];
       }
-      items = [];
-      mounted = [];
-      signals = [];
-      len = 0;
-      block.children = renderBlockContent(
-        props.fallback,
-        host,
-        block.endAnchor,
-        namespace,
-        owner,
-      );
+      // Stay empty: do not remount fallback on every effect re-run.
+      if (block.children.length === 0) {
+        block.children = renderBlockContent(
+          props.fallback,
+          host,
+          block.endAnchor,
+          namespace,
+          owner,
+        );
+      }
       if (initialized) {
         fireMountedAndQueueUpdated(owner);
       }

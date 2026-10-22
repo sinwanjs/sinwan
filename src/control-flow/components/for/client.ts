@@ -151,20 +151,25 @@ export function renderForBlock<T>(
     if (newLen === 0) {
       if (len > 0) {
         clearMountedBetweenAnchors(block, mounted);
+        items = [];
+        keys = [];
+        mounted = [];
+        indexes = needsIndex ? [] : null;
+        len = 0;
+        listHasPortal = false;
+        block.children = [];
       }
-      items = [];
-      keys = [];
-      mounted = [];
-      indexes = needsIndex ? [] : null;
-      len = 0;
-      listHasPortal = false;
-      block.children = renderBlockContent(
-        props.fallback,
-        host,
-        block.endAnchor,
-        namespace,
-        owner,
-      );
+      // Stay empty: do not remount fallback on every effect re-run (e.g. filter
+      // keystrokes while the row model is already []). That stacked duplicates.
+      if (block.children.length === 0) {
+        block.children = renderBlockContent(
+          props.fallback,
+          host,
+          block.endAnchor,
+          namespace,
+          owner,
+        );
+      }
       if (initialized) {
         fireMountedAndQueueUpdated(owner);
       }

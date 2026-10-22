@@ -1,5 +1,5 @@
 /**
- * SinwanJS Release Metadata — from 1.0.0 to 2.0.0
+ * SinwanJS Release Metadata — package.json version ↔ CHANGELOG heading
  */
 
 import { describe, it, expect } from "bun:test";
@@ -9,20 +9,26 @@ const root = join(import.meta.dir, "..");
 
 describe("release metadata", () => {
   /**
-   * Publishes package version 2.0.0
+   * package.json version must match the latest changelog heading.
+   * Update this suite whenever section 8 bumps the package version.
    */
-  it("publishes package version 2.0.1", async () => {
+  it("publishes package version matching package.json and changelog", async () => {
     const pkg = await Bun.file(join(root, "package.json")).json();
-    expect(pkg.version).toBe("2.0.1");
+    expect(typeof pkg.version).toBe("string");
+    expect(pkg.version).toBe("2.0.2");
     expect(pkg.exports["./renderer"]).toBeDefined();
     expect(pkg.exports["./control-flow"]).toBeDefined();
+
+    const changelog = await Bun.file(join(root, "CHANGELOG.md")).text();
+    expect(changelog).toContain(`## [${pkg.version}]`);
   });
 
   /**
-   * Uses a 1.5.1 changelog entry without removed patch entries
+   * Prior release headings remain in the chronology.
    */
-  it("uses a 1.5.1 changelog entry without removed patch entries", async () => {
+  it("keeps prior changelog version headings", async () => {
     const changelog = await Bun.file(join(root, "CHANGELOG.md")).text();
+    expect(changelog).toContain("## [2.0.2]");
     expect(changelog).toContain("## [2.0.1]");
     expect(changelog).toContain("## [2.0.0]");
     expect(changelog).toContain("## [1.5.1]");
