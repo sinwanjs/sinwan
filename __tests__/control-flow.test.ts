@@ -1207,6 +1207,126 @@ describe("Virtual", () => {
     expect(doc.getElementById("empty")).toBeTruthy();
   });
 
+  it("does not stack Virtual fallback when the list stays empty across effect re-runs", async () => {
+    const items = signal<string[]>(["A"]);
+    const tick = signal(0);
+
+    const App = cc(() =>
+      el(Virtual, {
+        each: () => (tick.value, items.value),
+        itemHeight: 50,
+        containerHeight: 200,
+        fallback: el("div", { "data-slot": "empty" }, "No results."),
+        children: (item: string) => el("div", { "data-slot": "row" }, item),
+      }),
+    );
+
+    mount(App, container);
+    await nextTick();
+    expect(container.textContent).toContain("A");
+
+    items.value = [];
+    await nextTick();
+    expect(container.querySelectorAll('[data-slot="empty"]').length).toBe(1);
+
+    tick.value = 1;
+    await nextTick();
+    tick.value = 2;
+    await nextTick();
+    tick.value = 3;
+    await nextTick();
+    expect(container.querySelectorAll('[data-slot="empty"]').length).toBe(1);
+    expect(container.textContent).toBe("No results.");
+
+    items.value = ["B"];
+    await nextTick();
+    expect(container.querySelectorAll('[data-slot="empty"]').length).toBe(0);
+    expect(container.querySelectorAll('[data-slot="row"]').length).toBe(1);
+    expect(container.textContent).toBe("B");
+
+    // Filter empty → clear → filter empty again must remount fallback.
+    items.value = [];
+    await nextTick();
+    expect(container.querySelectorAll('[data-slot="empty"]').length).toBe(1);
+    expect(container.textContent).toBe("No results.");
+  });
+
+  it("unmounts a parked Virtual fallback with the list", async () => {
+    const items = signal<string[]>([]);
+    const log: string[] = [];
+    const Empty = cc(() => {
+      onUnmounted(() => log.push("fallback unmounted"));
+      return el("p", { "data-slot": "empty" }, "No results.");
+    });
+
+    const App = cc(() =>
+      el(Virtual, {
+        each: items,
+        itemHeight: 50,
+        containerHeight: 200,
+        fallback: el(Empty),
+        children: (item: string) => el("div", { "data-slot": "row" }, item),
+      }),
+    );
+
+    const app = mount(App, container);
+    await nextTick();
+    expect(container.textContent).toBe("No results.");
+
+    items.value = ["A"];
+    await nextTick();
+    expect(container.textContent).toBe("A");
+    expect(log).toEqual([]);
+
+    app.unmount();
+    expect(log).toEqual(["fallback unmounted"]);
+  });
+
+  it("unmounts the Virtual fallback when children stop being a renderer", async () => {
+    const hasRenderer = signal(true);
+    const log: string[] = [];
+    const Empty = cc(() => {
+      onUnmounted(() => log.push("fallback unmounted"));
+      return el("p", { "data-slot": "empty" }, "No results.");
+    });
+    const renderRow = (item: string) => el("div", { "data-slot": "row" }, item);
+
+    const items = signal<string[]>([]);
+    const App = cc(() =>
+      Virtual({
+        each: items,
+        itemHeight: 50,
+        containerHeight: 200,
+        fallback: el(Empty),
+        get children() {
+          return hasRenderer.value ? renderRow : undefined;
+        },
+      }),
+    );
+
+    mount(App, container);
+    await nextTick();
+    expect(container.textContent).toBe("No results.");
+
+    hasRenderer.value = false;
+    await nextTick();
+    expect(container.textContent).toBe("");
+    expect(log).toEqual(["fallback unmounted"]);
+
+    hasRenderer.value = true;
+    await nextTick();
+    expect(container.querySelectorAll('[data-slot="empty"]').length).toBe(1);
+
+    items.value = ["A"];
+    await nextTick();
+    expect(container.querySelectorAll('[data-slot="row"]').length).toBe(1);
+
+    hasRenderer.value = false;
+    await nextTick();
+    expect(container.querySelectorAll('[data-slot="row"]').length).toBe(0);
+    expect(container.textContent).toBe("");
+  });
+
   it("updates visible window when list changes", async () => {
     const items = signal(Array.from({ length: 20 }, (_, i) => `item-${i}`));
 

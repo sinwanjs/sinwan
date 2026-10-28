@@ -77,6 +77,32 @@ export function renderVirtualBlock<T>(
 
   let initialized = false;
   let records: ForRecord<T>[] = [];
+  // Compiled JSX fallbacks drain their template fragment on first mount and
+  // cannot be remounted. Park/restore the mounted fallback DOM instead.
+  let fallbackMounted: MountedNode[] = [];
+  let fallbackParked = false;
+
+  const parkFallback = (): void => {
+    if (fallbackMounted.length === 0 || fallbackParked) return;
+    for (const child of fallbackMounted) {
+      const nodes = getMountedDomNodes(child);
+      for (const node of nodes) {
+        if (node.parentNode) domOps.remove(node);
+      }
+    }
+    fallbackParked = true;
+  };
+
+  const restoreFallback = (): void => {
+    if (fallbackMounted.length === 0 || !fallbackParked) return;
+    for (const child of fallbackMounted) {
+      const nodes = getMountedDomNodes(child);
+      for (const node of nodes) {
+        domOps.appendChild(content, node);
+      }
+    }
+    fallbackParked = false;
+  };
 
   const disposeEffect = effect(() => {
     const items = resolve(props.each) as readonly T[] | null | undefined;
@@ -88,6 +114,11 @@ export function renderVirtualBlock<T>(
         removeMountedNode(record.mounted);
       }
       records = [];
+      for (const child of fallbackMounted) {
+        removeMountedNode(child);
+      }
+      fallbackMounted = [];
+      fallbackParked = false;
       block.children = [];
       if (initialized) queueUpdatedHooks(owner);
       initialized = true;
@@ -95,28 +126,37 @@ export function renderVirtualBlock<T>(
     }
 
     if (list.length === 0) {
-      for (const record of records) {
-        removeMountedNode(record.mounted);
+      if (records.length > 0) {
+        for (const record of records) {
+          removeMountedNode(record.mounted);
+        }
+        records = [];
+        content.style.height = "";
       }
-      records = [];
-      while (content.firstChild) {
-        domOps.remove(content.firstChild);
-      }
-      if (props.fallback != null) {
-        block.children = renderBlockContent(
-          props.fallback,
-          content,
-          null,
-          namespace,
-          owner,
-        );
+      if (fallbackMounted.length === 0) {
+        content.style.height = "";
+        if (props.fallback != null) {
+          fallbackMounted = renderBlockContent(
+            props.fallback,
+            content,
+            null,
+            namespace,
+            owner,
+          );
+        }
+        fallbackParked = false;
       } else {
-        block.children = [];
+        restoreFallback();
       }
+      block.children = fallbackMounted;
       if (initialized) fireMountedAndQueueUpdated(owner);
       initialized = true;
       return;
     }
+
+    // Leaving empty: detach fallback without unmounting (keeps template alive).
+    parkFallback();
+    block.children = [];
 
     const scrollTop = scrollSignal.value;
     const totalHeight = list.length * itemHeight;

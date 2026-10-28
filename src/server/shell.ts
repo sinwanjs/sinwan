@@ -371,7 +371,7 @@ function renderBootScript<P extends Record<string, unknown>>(
 function serialiseAttrs(attrs: Record<string, unknown>): string {
   let out = "";
   for (const [key, value] of Object.entries(attrs)) {
-    if (value == null || value === false) continue;
+    if (value == null) continue;
     out += renderServerAttribute(key, value);
   }
   return out;

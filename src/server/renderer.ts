@@ -388,8 +388,8 @@ function renderAttributes(props: Record<string, unknown>): string {
 
     const resolvedValue = resolve(value);
 
-    // Skip null/undefined/false values
-    if (resolvedValue == null || resolvedValue === false) continue;
+    // Skip null/undefined values
+    if (resolvedValue == null) continue;
 
     attrs += renderServerAttribute(key, resolvedValue);
   }

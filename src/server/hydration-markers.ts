@@ -914,7 +914,7 @@ async function renderIntrinsicH(
       continue;
     }
 
-    if (value == null || value === false) continue;
+    if (value == null) continue;
 
     // Resolve signal/computed values, state getters, and plain 0-arity
     // function getters to current values for SSR.

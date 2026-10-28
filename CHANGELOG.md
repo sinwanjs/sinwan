@@ -2,6 +2,20 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.0.3] — Virtual Empty Fallback Survives Clear → Refilter
+
+Sinwan 2.0.3 keeps a single `<Virtual>` empty fallback across filter cycles: empty→empty keystrokes, clear (rows return), and a second empty filter all show one “No results.” state.
+
+### Fixed
+
+- **ARIA boolean attributes**: `aria-*={true}` renders `"true"` and `aria-*={false}` renders `"false"`. `null` and `undefined` still remove the attribute. Other boolean attributes and `data-*` keep presence (`""`) and removal.
+- **Components inside compiled templates unmount with the template (`renderer/template`)**: A template child slot now unmounts whatever it mounted when the template is removed. Before, only nodes with a `dispose` method were cleaned up, so a component inside markup such as `<section><HoverCard /></section>` kept its `Portal` content in `document.body` after a route change. Open popovers, hover cards, and menus no longer stay on the next page or flash when the theme changes.
+- **Virtual empty fallback (`control-flow/components/virtual`)**: Empty→empty effect re-runs leave the existing fallback in place. Leaving empty **parks** the fallback DOM without unmounting (compiled JSX templates cannot remount after their fragment is drained). Restoring the parked fallback on the next empty list shows “No results.” again after clear → refilter.
+
+### Changed
+
+- **Release metadata tests**: Assert package version `2.0.3` and keep prior changelog headings including `## [2.0.3]`.
+
 ## [2.0.2] — For/Index Empty Fallback No Longer Stacks
 
 Sinwan 2.0.2 keeps a single empty-list fallback when `<For>` or `<Index>` re-runs while the list stays empty (for example DataTable filter keystrokes with no matches).

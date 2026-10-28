@@ -477,7 +477,7 @@ function renderAttributes(props: Record<string, unknown>): string {
     }
 
     const resolvedValue = resolve(value);
-    if (resolvedValue == null || resolvedValue === false) continue;
+    if (resolvedValue == null) continue;
 
     attrs += renderServerAttribute(key, resolvedValue);
   }
@@ -905,7 +905,7 @@ function renderHydratableAttributes(
     }
 
     const resolvedValue = resolve(value);
-    if (resolvedValue == null || resolvedValue === false) continue;
+    if (resolvedValue == null) continue;
 
     attrs += renderServerAttribute(key, resolvedValue);
   }

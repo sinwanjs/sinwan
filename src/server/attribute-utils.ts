@@ -1,16 +1,5 @@
 import { escapeHtml } from "../common/escaper.ts";
-
-// HTML enumerated attributes that accept "true" / "false" rather than being
-// boolean presence/absence attributes. For these, value === true must render as
-// the string "true" (e.g. draggable="true"), not a bare attribute name.
-const ENUMERATED_BOOLEAN_ATTRIBUTES = new Set([
-  "draggable",
-  "contentEditable",
-  "contenteditable",
-  "spellcheck",
-  "autocorrect",
-  "writingsuggestions",
-]);
+import { booleanAttributeValue } from "../common/boolean-attributes.ts";
 
 // Attributes that accept URLs and should have dangerous protocols blocked.
 const URL_ATTRIBUTES = new Set([
@@ -48,15 +37,14 @@ export function renderServerAttribute(key: string, value: unknown): string {
   if (key === "defaultValue") key = "value";
   if (key === "defaultChecked") key = "checked";
 
-  if (value == null || value === false) {
+  if (value == null) {
     return "";
   }
 
-  if (value === true) {
-    if (ENUMERATED_BOOLEAN_ATTRIBUTES.has(key)) {
-      return ` ${key}="true"`;
-    }
-    return ` ${key}`;
+  if (typeof value === "boolean") {
+    const attrValue = booleanAttributeValue(key, value);
+    if (attrValue === null) return "";
+    return attrValue === "" ? ` ${key}` : ` ${key}="${attrValue}"`;
   }
 
   // Skip non-renderable values

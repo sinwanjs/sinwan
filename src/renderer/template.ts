@@ -12,6 +12,7 @@ import {
   queueUpdatedHooks,
 } from "../component/instance.ts";
 import { renderNodeToDOM } from "./render-children.ts";
+import { unmountNode } from "./unmount.ts";
 import { assignClassName, setSingleAttribute } from "./set-attribute.ts";
 import { applyRef } from "./apply-ref.ts";
 import { bindEvent } from "./events.ts";
@@ -173,13 +174,7 @@ function createLiveTemplate(
             null,
           );
           anchor?.parentNode?.removeChild(anchor);
-          if (
-            mounted &&
-            "dispose" in mounted &&
-            typeof (mounted as any).dispose === "function"
-          ) {
-            disposers.push((mounted as any).dispose);
-          }
+          disposers.push(() => unmountNode(mounted));
         } else {
           disposers.push(bindScalarTextSlot(parent, anchor, value.getter));
         }
@@ -195,13 +190,7 @@ function createLiveTemplate(
             null,
           );
           anchor?.parentNode?.removeChild(anchor);
-          if (
-            mounted &&
-            "dispose" in mounted &&
-            typeof (mounted as any).dispose === "function"
-          ) {
-            disposers.push((mounted as any).dispose);
-          }
+          disposers.push(() => unmountNode(mounted));
         } else {
           disposers.push(bindScalarTextSlot(parent, anchor, value));
         }
@@ -228,13 +217,7 @@ function createLiveTemplate(
           null,
         );
         anchor?.parentNode?.removeChild(anchor);
-        if (
-          mounted &&
-          "dispose" in mounted &&
-          typeof (mounted as any).dispose === "function"
-        ) {
-          disposers.push((mounted as any).dispose);
-        }
+        disposers.push(() => unmountNode(mounted));
       }
     } else {
       const target = slotTargets[dynIdx - 1];

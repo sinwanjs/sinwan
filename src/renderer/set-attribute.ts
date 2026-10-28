@@ -8,6 +8,7 @@
 
 import { domOps } from "./dom-ops.ts";
 import { resolve } from "../reactivity/index.ts";
+import { booleanAttributeValue } from "../common/boolean-attributes.ts";
 
 /** Props that map to DOM properties rather than attributes. */
 export const DOM_PROPERTIES = new Set([
@@ -18,15 +19,6 @@ export const DOM_PROPERTIES = new Set([
   "readOnly",
   "multiple",
   "indeterminate",
-]);
-
-const ENUMERATED_BOOLEAN_ATTRIBUTES = new Set([
-  "draggable",
-  "contentEditable",
-  "contenteditable",
-  "spellcheck",
-  "autocorrect",
-  "writingsuggestions",
 ]);
 
 export interface AttributeBindingState {
@@ -101,10 +93,20 @@ export function setSingleAttribute(
     return;
   }
 
-  if (value == null || value === false) {
-    domOps.removeAttribute(el, key);
+  if (value == null) {
+    clearAttribute(el, key);
+    return;
+  }
+
+  if (typeof value === "boolean") {
+    const attrValue = booleanAttributeValue(key, value);
+    if (attrValue === null) {
+      clearAttribute(el, key);
+      return;
+    }
+    domOps.setAttribute(el, key, attrValue);
     if (DOM_PROPERTIES.has(key)) {
-      domOps.setProperty(el, key, key === "value" ? "" : false);
+      domOps.setProperty(el, key, true);
     }
     return;
   }
@@ -114,21 +116,19 @@ export function setSingleAttribute(
     return;
   }
 
-  if (value === true) {
-    const attrValue = ENUMERATED_BOOLEAN_ATTRIBUTES.has(key) ? "true" : "";
-    domOps.setAttribute(el, key, attrValue);
-    if (DOM_PROPERTIES.has(key)) {
-      domOps.setProperty(el, key, true);
-    }
-    return;
-  }
-
   if (DOM_PROPERTIES.has(key)) {
     domOps.setProperty(el, key, value);
     return;
   }
 
   domOps.setAttribute(el, key, String(value));
+}
+
+function clearAttribute(el: Element, key: string): void {
+  domOps.removeAttribute(el, key);
+  if (DOM_PROPERTIES.has(key)) {
+    domOps.setProperty(el, key, key === "value" ? "" : false);
+  }
 }
 
 function patchStyle(
