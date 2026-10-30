@@ -15,7 +15,7 @@ describe("release metadata", () => {
   it("publishes package version matching package.json and changelog", async () => {
     const pkg = await Bun.file(join(root, "package.json")).json();
     expect(typeof pkg.version).toBe("string");
-    expect(pkg.version).toBe("2.1.0");
+    expect(pkg.version).toBe("2.1.1");
     expect(pkg.exports["./renderer"]).toBeDefined();
     expect(pkg.exports["./control-flow"]).toBeDefined();
 
@@ -28,6 +28,7 @@ describe("release metadata", () => {
    */
   it("keeps prior changelog version headings", async () => {
     const changelog = await Bun.file(join(root, "CHANGELOG.md")).text();
+    expect(changelog).toContain("## [2.1.1]");
     expect(changelog).toContain("## [2.1.0]");
     expect(changelog).toContain("## [2.0.3]");
     expect(changelog).toContain("## [2.0.2]");

@@ -12,6 +12,7 @@ import {
   queueUpdatedHooks,
 } from "../component/instance.ts";
 import { renderNodeToDOM } from "./render-children.ts";
+import { getParentNamespace } from "./render-element.ts";
 import { unmountNode } from "./unmount.ts";
 import { assignClassName, setSingleAttribute } from "./set-attribute.ts";
 import { applyRef } from "./apply-ref.ts";
@@ -61,6 +62,91 @@ interface CachedTemplate {
 }
 
 const templateCache = new WeakMap<Document, Map<TemplateDef, CachedTemplate>>();
+
+/**
+ * SVG element names that have no HTML meaning. A template rooted at one of
+ * them (e.g. `<path>` hoisted from `paths.map((d) => <path d={d} />)`) is
+ * parsed inside `<svg>`; the HTML parser would otherwise create HTML
+ * elements that never paint. Names shared with HTML (`a`, `title`, `script`,
+ * `style`) stay HTML because the markup alone does not say which is meant.
+ */
+const SVG_TEMPLATE_ROOTS: ReadonlySet<string> = new Set([
+  "animate",
+  "animateMotion",
+  "animateTransform",
+  "circle",
+  "clipPath",
+  "defs",
+  "desc",
+  "ellipse",
+  "feBlend",
+  "feColorMatrix",
+  "feComponentTransfer",
+  "feComposite",
+  "feConvolveMatrix",
+  "feDiffuseLighting",
+  "feDisplacementMap",
+  "feDistantLight",
+  "feDropShadow",
+  "feFlood",
+  "feFuncA",
+  "feFuncB",
+  "feFuncG",
+  "feFuncR",
+  "feGaussianBlur",
+  "feImage",
+  "feMerge",
+  "feMergeNode",
+  "feMorphology",
+  "feOffset",
+  "fePointLight",
+  "feSpecularLighting",
+  "feSpotLight",
+  "feTile",
+  "feTurbulence",
+  "filter",
+  "foreignObject",
+  "g",
+  "image",
+  "line",
+  "linearGradient",
+  "marker",
+  "mask",
+  "metadata",
+  "mpath",
+  "path",
+  "pattern",
+  "polygon",
+  "polyline",
+  "radialGradient",
+  "rect",
+  "set",
+  "stop",
+  "switch",
+  "symbol",
+  "text",
+  "textPath",
+  "tspan",
+  "use",
+  "view",
+]);
+
+const TEMPLATE_ROOT_TAG = /^<([A-Za-z][\w-]*)/;
+
+function parseTemplateHtml(html: string): HTMLTemplateElement {
+  const templateEl = document.createElement("template");
+  const rootTag = TEMPLATE_ROOT_TAG.exec(html)?.[1];
+  if (rootTag === undefined || !SVG_TEMPLATE_ROOTS.has(rootTag)) {
+    templateEl.innerHTML = html;
+    return templateEl;
+  }
+  templateEl.innerHTML = `<svg>${html}</svg>`;
+  const content = templateEl.content;
+  const wrapper = content.firstChild!;
+  while (wrapper.firstChild) content.insertBefore(wrapper.firstChild, wrapper);
+  content.removeChild(wrapper);
+  return templateEl;
+}
 
 /**
  * Hydration mode flag. When true, `_$createTemplate` returns a
@@ -121,8 +207,7 @@ function createLiveTemplate(
   }
   let cached = perDocument.get(def);
   if (!cached) {
-    const templateEl = document.createElement("template");
-    templateEl.innerHTML = def.html;
+    const templateEl = parseTemplateHtml(def.html);
     cached = {
       templateEl,
       resolvers: def.slots.map((slot) => compileSlotResolver(slot.path, def)),
@@ -163,6 +248,7 @@ function createLiveTemplate(
       } else {
         continue;
       }
+      const namespace = getParentNamespace(parent);
 
       if (isBindingDescriptor(value) && value.type === "text") {
         const initial = value.getter();
@@ -171,7 +257,7 @@ function createLiveTemplate(
             value.getter as SinwanNode,
             parent,
             anchor,
-            null,
+            namespace,
           );
           anchor?.parentNode?.removeChild(anchor);
           disposers.push(() => unmountNode(mounted));
@@ -187,7 +273,7 @@ function createLiveTemplate(
             value as SinwanNode,
             parent,
             anchor,
-            null,
+            namespace,
           );
           anchor?.parentNode?.removeChild(anchor);
           disposers.push(() => unmountNode(mounted));
@@ -214,7 +300,7 @@ function createLiveTemplate(
           value as SinwanNode,
           parent,
           anchor,
-          null,
+          namespace,
         );
         anchor?.parentNode?.removeChild(anchor);
         disposers.push(() => unmountNode(mounted));

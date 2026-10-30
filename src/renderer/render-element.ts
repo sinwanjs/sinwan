@@ -369,3 +369,14 @@ function getChildNamespace(
   }
   return namespace;
 }
+
+/**
+ * Namespace for nodes rendered into an existing DOM parent, such as a
+ * template child slot inside hoisted `<svg>` or `<math>` markup.
+ */
+export function getParentNamespace(parent: Node): string | null {
+  if (!(parent instanceof Element)) return null;
+  const namespace = parent.namespaceURI;
+  if (namespace !== SVG_NS && namespace !== MATH_NS) return null;
+  return getChildNamespace(parent.localName, namespace);
+}

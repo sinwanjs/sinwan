@@ -2,6 +2,19 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.1] — SVG Children of Compiled Templates Render as SVG
+
+Sinwan 2.1.1 creates SVG elements in the SVG namespace when they come from a compiled template or are rendered into one, so `<svg><g>{paths.map((d) => <path d={d} />)}</g></svg>` paints. Already-compiled apps are fixed by upgrading; no recompile or compiler change is needed.
+
+### Fixed
+
+- **Templates rooted at an SVG element (`renderer/template`)**: The compiler hoists JSX such as the `<path d={d} />` inside a `.map()` into its own template whose markup starts with `<path>`. The runtime parsed that markup with `innerHTML` outside any `<svg>`, so the HTML parser created an HTML `<path>` that browsers never paint, and an icon built from an array rendered as an empty box. Templates whose root is an SVG-only element (`path`, `g`, `circle`, `rect`, `line`, `polygon`, `stop`, `linearGradient`, `use`, `text`, filter primitives, …) are now parsed inside `<svg>` and unwrapped. Tags shared with HTML (`a`, `title`, `script`, `style`) still parse as HTML, because the markup alone cannot say which one is meant. The parsed template stays cached per definition, so render cost is unchanged.
+- **Template child slots keep the parent namespace (`renderer/template`)**: Element objects rendered into a child slot of hoisted `<svg>` or `<math>` markup (`SinwanElement` nodes from a getter, an array or `bindText`) were always created as HTML elements. Child slots now use the namespace of their parent element: SVG inside `<svg>`, HTML again inside `<foreignObject>`, MathML inside `<math>`.
+
+### Changed
+
+- **Release metadata tests**: Assert package version `2.1.1` and keep prior changelog headings including `## [2.1.1]`.
+
 ## [2.1.0] — SVG Presentation Attributes in JSX Types
 
 Sinwan 2.1.0 types SVG presentation attributes under the names the renderer writes, so icons and logos can be written as plain JSX: `<path d="…" fill="url(#g)" stroke-width={2} />`.

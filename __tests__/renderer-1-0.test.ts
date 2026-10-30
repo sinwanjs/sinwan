@@ -7,7 +7,10 @@ import { Window } from "happy-dom";
 import { signal } from "../src/reactivity/signal.ts";
 import { nextTick } from "../src/reactivity/index.ts";
 import { mount } from "../src/renderer/mount.ts";
-import { renderElementToDOM } from "../src/renderer/render-element.ts";
+import {
+  getParentNamespace,
+  renderElementToDOM,
+} from "../src/renderer/render-element.ts";
 import { domOps, resetDOMOps, setDOMOps } from "../src/renderer/dom-ops.ts";
 import { renderNodeToDOM } from "../src/renderer/render-children.ts";
 import {
@@ -490,6 +493,101 @@ describe("template attr slots and walkToSlot", () => {
       [...root.querySelectorAll("button")].map((el) => el.textContent),
     ).toEqual(["File", "Edit", "View"]);
     for (const dispose of result.disposers) dispose();
+  });
+
+  it("renders template child slots in the namespace of their parent", () => {
+    const SVG = "http://www.w3.org/2000/svg";
+    const HTML = "http://www.w3.org/1999/xhtml";
+    const def: TemplateDef = {
+      html:
+        '<div><svg viewBox="0 0 10 10"><g data-slot="static"><!--s:0--></g>' +
+        '<g data-slot="text"><!--s:1--></g><g data-slot="getter"><!--s:2--></g>' +
+        "<foreignObject><!--s:3--></foreignObject></svg><!--s:4--></div>",
+      slots: [
+        { path: [0, 0, 0], type: "child" },
+        { path: [0, 1, 0], type: "child" },
+        { path: [0, 2, 0], type: "child" },
+        { path: [0, 3, 0], type: "child" },
+        { path: [1], type: "child" },
+      ],
+    };
+    const path = (d: string) => ({ tag: "path", props: { d }, children: [] });
+    const result = _$createTemplate(def, [
+      [path("M0 0Z"), path("M1 1Z")],
+      _$bindText(() => path("M2 2Z")),
+      () => path("M3 3Z"),
+      { tag: "div", props: {}, children: ["html"] },
+      { tag: "span", props: {}, children: ["after"] },
+    ]);
+    if (!isTemplateResult(result)) {
+      throw new Error("expected a client template result");
+    }
+    container.appendChild(result.fragment);
+
+    const paths = [...container.querySelectorAll("g > path")];
+    expect(paths.map((el) => el.getAttribute("d"))).toEqual([
+      "M0 0Z",
+      "M1 1Z",
+      "M2 2Z",
+      "M3 3Z",
+    ]);
+    expect(paths.map((el) => el.namespaceURI)).toEqual([SVG, SVG, SVG, SVG]);
+    expect(container.querySelector("foreignObject > div")?.namespaceURI).toBe(
+      HTML,
+    );
+    expect(container.querySelector("div > span")?.namespaceURI).toBe(HTML);
+    for (const dispose of result.disposers) dispose();
+  });
+
+  it("derives the child namespace from an existing parent node", () => {
+    const SVG = "http://www.w3.org/2000/svg";
+    const MATHML = "http://www.w3.org/1998/Math/MathML";
+    expect(getParentNamespace(doc.createElementNS(SVG, "g"))).toBe(SVG);
+    expect(getParentNamespace(doc.createElementNS(SVG, "foreignObject"))).toBeNull();
+    expect(getParentNamespace(doc.createElementNS(MATHML, "math"))).toBe(MATHML);
+    expect(getParentNamespace(doc.createElement("div"))).toBeNull();
+    expect(getParentNamespace(doc.createDocumentFragment())).toBeNull();
+  });
+
+  it("parses templates whose root is an SVG element as SVG", () => {
+    const SVG = "http://www.w3.org/2000/svg";
+    const HTML = "http://www.w3.org/1999/xhtml";
+    const render = (def: TemplateDef, dynamics: unknown[]) => {
+      const result = _$createTemplate(def, dynamics);
+      if (!isTemplateResult(result)) {
+        throw new Error("expected a client template result");
+      }
+      const host = doc.createElement("div");
+      host.appendChild(result.fragment);
+      return host;
+    };
+
+    const path = render(
+      { html: '<path d=""></path>', slots: [{ path: [], type: "attr", name: "d" }] },
+      ["M0 0Z"],
+    ).firstElementChild!;
+    expect(path.namespaceURI).toBe(SVG);
+    expect(path.getAttribute("d")).toBe("M0 0Z");
+
+    const gradient = render(
+      {
+        html: '<linearGradient gradientUnits="userSpaceOnUse"><stop offset="0"></stop></linearGradient>',
+        slots: [],
+      },
+      [],
+    ).firstElementChild!;
+    expect(gradient.namespaceURI).toBe(SVG);
+    expect(gradient.localName).toBe("linearGradient");
+    expect(gradient.getAttribute("gradientUnits")).toBe("userSpaceOnUse");
+    expect(gradient.firstElementChild?.namespaceURI).toBe(SVG);
+
+    const siblings = render({ html: "<circle></circle><rect></rect>", slots: [] }, []);
+    expect([...siblings.children].map((el) => el.namespaceURI)).toEqual([SVG, SVG]);
+
+    const ambiguous = render({ html: '<a href="/x"></a>', slots: [] }, []);
+    expect(ambiguous.firstElementChild?.namespaceURI).toBe(HTML);
+    const html = render({ html: "<div><path></path></div>", slots: [] }, []);
+    expect(html.firstElementChild?.namespaceURI).toBe(HTML);
   });
 
   it("keeps bindText scalar children as live text", async () => {
