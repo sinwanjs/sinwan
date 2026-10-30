@@ -2,6 +2,18 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.2] — Label `htmlFor` Renders as `for`
+
+Sinwan 2.1.2 writes the JSX prop `htmlFor` as the HTML attribute `for` in the browser, so `<label htmlFor="email">` is tied to its control. The server renderer already did this. Pair with **sinwan-compiler 1.1.3** to fix static `htmlFor` values in hoisted templates.
+
+### Fixed
+
+- **`htmlFor` on the client (`renderer/set-attribute`)**: JSX types name the label association prop `htmlFor` (the DOM property), but the client renderer wrote it with `setAttribute("htmlFor", …)`, which creates an `htmlfor` attribute that browsers ignore. Clicking a label did not focus or toggle its control, and assistive technology did not announce the label. `setSingleAttribute`, which templates, the element renderer and hydration all go through, now maps `htmlFor` to `for` for set, update and removal.
+
+### Changed
+
+- **Release metadata tests**: Assert package version `2.1.2` and keep prior changelog headings including `## [2.1.1]`.
+
 ## [2.1.1] — SVG Children of Compiled Templates Render as SVG
 
 Sinwan 2.1.1 creates SVG elements in the SVG namespace when they come from a compiled template or are rendered into one, so `<svg><g>{paths.map((d) => <path d={d} />)}</g></svg>` paints. Already-compiled apps are fixed by upgrading; no recompile or compiler change is needed.

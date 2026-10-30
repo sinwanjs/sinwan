@@ -58,6 +58,10 @@ export function setSingleAttribute(
   value: unknown,
   state?: AttributeBindingState,
 ): void {
+  // JSX writes the label association attribute as htmlFor (the DOM
+  // property); the HTML attribute is `for`. Matches renderServerAttribute.
+  if (key === "htmlFor") key = "for";
+
   if (key === "style") {
     patchStyle(el as HTMLElement, value, state);
     return;
