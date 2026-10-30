@@ -837,13 +837,26 @@ interface ThHTMLAttributes extends HTMLAttributes {
   align?: "left" | "center" | "right" | "justify" | "char" | undefined;
 }
 
+type SVGLength = number | string;
+
+/**
+ * SVG attributes that are not DOM properties, so `NativeProps` cannot derive
+ * them. Keys are the attribute names the renderer writes with
+ * `setAttribute` (`stroke-width`, not `strokeWidth`).
+ */
 interface SVGAttributes extends AriaAttributes {
   role?: AriaRole | undefined;
   crossOrigin?: CrossOrigin;
   // SVG Specific attributes
   accumulate?: "none" | "sum" | undefined;
   additive?: "replace" | "sum" | undefined;
-  alignmentBaseline?:
+  allowReorder?: "no" | "yes" | undefined;
+  d?: string | undefined;
+  externalResourcesRequired?: Booleanish | undefined;
+  focusable?: Booleanish | "auto" | undefined;
+  preserveAlpha?: Booleanish | undefined;
+  // Presentation attributes
+  "alignment-baseline"?:
     | "auto"
     | "baseline"
     | "before-edge"
@@ -858,16 +871,18 @@ interface SVGAttributes extends AriaAttributes {
     | "mathematical"
     | "inherit"
     | undefined;
-  allowReorder?: "no" | "yes" | undefined;
-  arabicForm?: "initial" | "medial" | "terminal" | "isolated" | undefined;
-  autoReverse?: Booleanish | undefined;
-  colorInterpolationFilters?:
+  "clip-path"?: string | undefined;
+  "clip-rule"?: "nonzero" | "evenodd" | "inherit" | undefined;
+  color?: string | undefined;
+  "color-interpolation-filters"?:
     | "auto"
     | "sRGB"
     | "linearRGB"
     | "inherit"
     | undefined;
-  dominantBaseline?:
+  cursor?: string | undefined;
+  display?: string | undefined;
+  "dominant-baseline"?:
     | "auto"
     | "use-script"
     | "no-change"
@@ -882,13 +897,55 @@ interface SVGAttributes extends AriaAttributes {
     | "text-before-edge"
     | "inherit"
     | undefined;
-  externalResourcesRequired?: Booleanish | undefined;
-  fillRule?: "nonzero" | "evenodd" | "inherit" | undefined;
-  focusable?: Booleanish | "auto" | undefined;
-  preserveAlpha?: Booleanish | undefined;
-  strokeLinecap?: "butt" | "round" | "square" | "inherit" | undefined;
-  strokeLinejoin?: "miter" | "round" | "bevel" | "inherit" | undefined;
-  textAnchor?: "start" | "middle" | "end" | "inherit" | undefined;
+  fill?: string | undefined;
+  "fill-opacity"?: SVGLength | undefined;
+  "fill-rule"?: "nonzero" | "evenodd" | "inherit" | undefined;
+  filter?: string | undefined;
+  "flood-color"?: string | undefined;
+  "flood-opacity"?: SVGLength | undefined;
+  "font-family"?: string | undefined;
+  "font-size"?: SVGLength | undefined;
+  "font-style"?: string | undefined;
+  "font-weight"?: SVGLength | undefined;
+  "lighting-color"?: string | undefined;
+  "marker-end"?: string | undefined;
+  "marker-mid"?: string | undefined;
+  "marker-start"?: string | undefined;
+  mask?: string | undefined;
+  opacity?: SVGLength | undefined;
+  overflow?: string | undefined;
+  "paint-order"?: string | undefined;
+  "pointer-events"?: string | undefined;
+  "shape-rendering"?:
+    | "auto"
+    | "optimizeSpeed"
+    | "crispEdges"
+    | "geometricPrecision"
+    | "inherit"
+    | undefined;
+  "stop-color"?: string | undefined;
+  "stop-opacity"?: SVGLength | undefined;
+  stroke?: string | undefined;
+  "stroke-dasharray"?: SVGLength | undefined;
+  "stroke-dashoffset"?: SVGLength | undefined;
+  "stroke-linecap"?: "butt" | "round" | "square" | "inherit" | undefined;
+  "stroke-linejoin"?:
+    | "miter"
+    | "miter-clip"
+    | "round"
+    | "bevel"
+    | "arcs"
+    | "inherit"
+    | undefined;
+  "stroke-miterlimit"?: SVGLength | undefined;
+  "stroke-opacity"?: SVGLength | undefined;
+  "stroke-width"?: SVGLength | undefined;
+  "text-anchor"?: "start" | "middle" | "end" | "inherit" | undefined;
+  "text-rendering"?: string | undefined;
+  transform?: string | undefined;
+  "transform-origin"?: string | undefined;
+  "vector-effect"?: string | undefined;
+  visibility?: "visible" | "hidden" | "collapse" | "inherit" | undefined;
 }
 
 export interface SinwanIntrinsicElements {

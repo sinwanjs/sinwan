@@ -136,15 +136,62 @@ describe("SinwanIntrinsicElements native attribute typing", () => {
   });
 
   it("exposes SVG-specific attributes on <svg> children", () => {
-    assertAttr<SinwanSVGElements["circle"], "fillRule", "evenodd">(
-      "fillRule",
+    assertAttr<SinwanSVGElements["path"], "d", "M0 0 L10 10Z">(
+      "d",
+      "M0 0 L10 10Z",
+    );
+    assertAttr<SinwanSVGElements["g"], "fill", "url(#brand)">(
+      "fill",
+      "url(#brand)",
+    );
+    assertAttr<SinwanSVGElements["circle"], "fill-rule", "evenodd">(
+      "fill-rule",
       "evenodd",
     );
-    assertAttr<SinwanSVGElements["line"], "strokeLinecap", "round">(
-      "strokeLinecap",
+    assertAttr<SinwanSVGElements["line"], "stroke", "currentColor">(
+      "stroke",
+      "currentColor",
+    );
+    assertAttr<SinwanSVGElements["line"], "stroke-width", 2>(
+      "stroke-width",
+      2,
+    );
+    assertAttr<SinwanSVGElements["line"], "stroke-linecap", "round">(
+      "stroke-linecap",
       "round",
     );
+    assertAttr<SinwanSVGElements["stop"], "stop-color", "var(--brand)">(
+      "stop-color",
+      "var(--brand)",
+    );
+    assertAttr<SinwanSVGElements["text"], "text-anchor", "middle">(
+      "text-anchor",
+      "middle",
+    );
+    assertAttr<SinwanSVGElements["text"], "dominant-baseline", "central">(
+      "dominant-baseline",
+      "central",
+    );
+    assertAttr<SinwanSVGElements["path"], "d", () => string>("d", () => "M0 0");
     assertAttr<SinwanSVGElements["svg"], "role", "img">("role", "img");
+  });
+
+  it("does not offer camelCase SVG presentation names the renderer would write verbatim", () => {
+    type Circle = SinwanSVGElements["circle"];
+    type Text = SinwanSVGElements["text"];
+    type Missing<T, K extends string> = K extends keyof T ? false : true;
+    const removed: [
+      Missing<Circle, "fillRule">,
+      Missing<Circle, "strokeLinecap">,
+      Missing<Circle, "strokeLinejoin">,
+      Missing<Text, "textAnchor">,
+      Missing<Text, "dominantBaseline">,
+      Missing<Text, "alignmentBaseline">,
+      Missing<Text, "arabicForm">,
+      Missing<Circle, "colorInterpolationFilters">,
+      Missing<Circle, "autoReverse">,
+    ] = [true, true, true, true, true, true, true, true, true];
+    expect(removed.every(Boolean)).toBe(true);
   });
 
   it("passes native attributes through the jsx runtime", () => {

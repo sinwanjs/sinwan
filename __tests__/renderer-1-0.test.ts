@@ -157,6 +157,41 @@ describe("namespaced DOM creation", () => {
     expect(math.namespaceURI).toBe("http://www.w3.org/1998/Math/MathML");
     expect(mi.namespaceURI).toBe("http://www.w3.org/1998/Math/MathML");
   });
+
+  it("writes SVG presentation attributes under their attribute names", async () => {
+    const shape = signal("M0 0 L10 10Z");
+    renderElementToDOM(
+      el(
+        "svg",
+        { viewBox: "0 0 10 10" },
+        el(
+          "g",
+          { fill: "url(#brand)", "fill-rule": "evenodd" },
+          el("path", {
+            d: () => shape.value,
+            stroke: "currentColor",
+            "stroke-width": 2,
+            "stroke-linecap": "round",
+          }),
+        ),
+      ),
+      container,
+    );
+
+    const g = byTag(container, "g")[0]!;
+    const path = byTag(container, "path")[0]!;
+    expect(path.namespaceURI).toBe("http://www.w3.org/2000/svg");
+    expect(g.getAttribute("fill")).toBe("url(#brand)");
+    expect(g.getAttribute("fill-rule")).toBe("evenodd");
+    expect(path.getAttribute("d")).toBe("M0 0 L10 10Z");
+    expect(path.getAttribute("stroke")).toBe("currentColor");
+    expect(path.getAttribute("stroke-width")).toBe("2");
+    expect(path.getAttribute("stroke-linecap")).toBe("round");
+
+    shape.value = "M1 1 L9 9Z";
+    await nextTick();
+    expect(path.getAttribute("d")).toBe("M1 1 L9 9Z");
+  });
 });
 
 describe("pluggable domOps", () => {

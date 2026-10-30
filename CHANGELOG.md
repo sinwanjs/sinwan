@@ -2,6 +2,22 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] — SVG Presentation Attributes in JSX Types
+
+Sinwan 2.1.0 types SVG presentation attributes under the names the renderer writes, so icons and logos can be written as plain JSX: `<path d="…" fill="url(#g)" stroke-width={2} />`.
+
+### Added
+
+- **SVG attributes (`jsx/jsx-types`)**: `d`, `fill`, `stroke`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`, `stroke-dasharray`, `stroke-dashoffset`, `stroke-miterlimit`, `stroke-opacity`, `fill-opacity`, `fill-rule`, `clip-path`, `clip-rule`, `mask`, `filter`, `opacity`, `transform`, `transform-origin`, `stop-color`, `stop-opacity`, `flood-color`, `flood-opacity`, `lighting-color`, `marker-start` / `-mid` / `-end`, `font-family`, `font-size`, `font-style`, `font-weight`, `text-anchor`, `dominant-baseline`, `alignment-baseline`, `color-interpolation-filters`, `shape-rendering`, `text-rendering`, `paint-order`, `vector-effect`, `pointer-events`, `visibility`, `display`, `overflow`, `cursor` and `color`. Like other attributes, they accept getters, Signals and Computeds. Before, these were missing because they are not DOM properties, and `<path d>` or `<g fill>` failed typecheck.
+
+### Removed
+
+- **CamelCase SVG names (`jsx/jsx-types`)**: `alignmentBaseline`, `arabicForm`, `autoReverse`, `colorInterpolationFilters`, `dominantBaseline`, `fillRule`, `strokeLinecap`, `strokeLinejoin` and `textAnchor`. The renderer sets attributes by their exact name and converts camelCase only for `style`, so these typechecked but wrote attributes that browsers ignore (`strokeLinecap="round"` had no effect). Use the attribute names above. Real camelCase SVG attributes such as `viewBox`, `gradientUnits` and `preserveAspectRatio` are unchanged.
+
+### Changed
+
+- **Release metadata tests**: Assert package version `2.1.0` and keep prior changelog headings including `## [2.1.0]`.
+
 ## [2.0.3] — Virtual Empty Fallback Survives Clear → Refilter
 
 Sinwan 2.0.3 keeps a single `<Virtual>` empty fallback across filter cycles: empty→empty keystrokes, clear (rows return), and a second empty filter all show one “No results.” state.
