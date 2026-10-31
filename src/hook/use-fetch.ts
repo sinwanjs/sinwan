@@ -450,6 +450,10 @@ export function useFetch<T>(
 
     executeCounter += 1;
     const currentExecuteCounter = executeCounter;
+    // A later execute() aborts this request and owns the state from then on:
+    // this one must not write data, response, status or error, nor fire
+    // response/error events, once it is no longer the latest.
+    const isLatest = () => currentExecuteCounter === executeCounter;
     const defaultFetchOptions: RequestInit = {
       method: config.method,
       headers: {},
@@ -511,9 +515,11 @@ export function useFetch<T>(
       },
     })
       .then(async (fetchResponse) => {
+        if (!isLatest()) return fetchResponse;
         response.value = fetchResponse;
         statusCode.value = fetchResponse.status;
         responseData = await fetchResponse.clone()[config.type]();
+        if (!isLatest()) return fetchResponse;
         if (!fetchResponse.ok) {
           data.value = options.initialData ?? null;
           throw new Error(fetchResponse.statusText);
@@ -525,6 +531,7 @@ export function useFetch<T>(
             context,
             execute,
           }));
+          if (!isLatest()) return fetchResponse;
         }
         data.value = responseData;
         responseEvent.trigger(fetchResponse);
@@ -542,6 +549,11 @@ export function useFetch<T>(
         return fetchResponse;
       })
       .catch(async (fetchError) => {
+        const replaced = () => {
+          if (throwOnFailed) throw fetchError;
+          return null;
+        };
+        if (!isLatest()) return replaced();
         let errorData = fetchError.message || fetchError.name;
         if (options.onFetchError) {
           ({ error: errorData, data: responseData } =
@@ -552,6 +564,7 @@ export function useFetch<T>(
               context,
               execute,
             }));
+          if (!isLatest()) return replaced();
         }
         error.value = errorData;
         if (options.updateDataOnError) data.value = responseData;
@@ -571,7 +584,7 @@ export function useFetch<T>(
         return null;
       })
       .finally(() => {
-        if (currentExecuteCounter === executeCounter) isLoading.value = false;
+        if (isLatest()) isLoading.value = false;
         if (timer) timer.stop();
         finallyEvent.trigger(null);
       });

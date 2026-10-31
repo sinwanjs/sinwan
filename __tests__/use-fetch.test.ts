@@ -257,6 +257,185 @@ describe("useFetch", () => {
     expect(fetcher.isFinished.value).toBe(true);
   });
 
+  it("a request replaced by a newer execute() does not overwrite its error or events", async () => {
+    let calls = 0;
+    const fetch = (_input: string | URL | Request, init?: RequestInit) => {
+      calls += 1;
+      if (calls === 1) {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError")),
+          );
+        });
+      }
+      return Promise.resolve(jsonResponse({ fresh: true }));
+    };
+    const mapped: unknown[] = [];
+    const errors: unknown[] = [];
+    const responses: Response[] = [];
+
+    const fetcher = useFetch<{ fresh: boolean }>("/api/list", {
+      fetch: asFetch(fetch),
+      immediate: false,
+      onFetchError: (ctx) => {
+        mapped.push(ctx.error);
+        return { error: "mapped", data: null };
+      },
+    }).json();
+    fetcher.onFetchError((error) => errors.push(error));
+    fetcher.onFetchResponse((response) => responses.push(response));
+
+    const first = fetcher.execute();
+    await Promise.resolve();
+    await fetcher.execute();
+    expect(await first).toBeNull();
+
+    expect(fetcher.data.value).toEqual({ fresh: true });
+    expect(fetcher.error.value).toBeNull();
+    expect(fetcher.statusCode.value).toBe(200);
+    expect(mapped).toEqual([]);
+    expect(errors).toEqual([]);
+    expect(responses).toHaveLength(1);
+    expect(fetcher.isFinished.value).toBe(true);
+  });
+
+  it("a replaced request rejects execute(true) for its own caller only", async () => {
+    let calls = 0;
+    const fetch = (_input: string | URL | Request, init?: RequestInit) => {
+      calls += 1;
+      if (calls === 1) {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError")),
+          );
+        });
+      }
+      return Promise.resolve(jsonResponse({ fresh: true }));
+    };
+    const fetcher = useFetch("/api/list", { fetch: asFetch(fetch), immediate: false }).json();
+
+    const first = fetcher.execute(true);
+    await Promise.resolve();
+    await fetcher.execute();
+    await expect(first).rejects.toThrow("Aborted");
+    expect(fetcher.error.value).toBeNull();
+    expect(fetcher.data.value).toEqual({ fresh: true });
+  });
+
+  it("a replaced request that still answers late does not overwrite the newer data", async () => {
+    let releaseFirst: () => void = () => {};
+    let calls = 0;
+    // Ignores the abort signal, like a transport without abort support.
+    const fetch = () => {
+      calls += 1;
+      if (calls === 1) {
+        return new Promise<Response>((resolve) => {
+          releaseFirst = () => resolve(jsonResponse({ n: 1 }, { status: 203 }));
+        });
+      }
+      return Promise.resolve(jsonResponse({ n: 2 }));
+    };
+    const responses: Response[] = [];
+    const fetcher = useFetch("/api/list", { fetch: asFetch(fetch), immediate: false }).json();
+    fetcher.onFetchResponse((response) => responses.push(response));
+
+    const first = fetcher.execute();
+    await Promise.resolve();
+    await fetcher.execute();
+    releaseFirst();
+    const late = await first;
+
+    expect(late?.status).toBe(203);
+    expect(fetcher.data.value).toEqual({ n: 2 });
+    expect(fetcher.statusCode.value).toBe(200);
+    expect(fetcher.response.value?.status).toBe(200);
+    expect(responses.map((response) => response.status)).toEqual([200]);
+  });
+
+  it("a request replaced while its body is read does not overwrite the newer data", async () => {
+    let calls = 0;
+    let releaseBody: () => void = () => {};
+    const fetch = () => {
+      calls += 1;
+      if (calls === 1) {
+        // Headers arrive at once; the body only when released.
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            releaseBody = () => {
+              controller.enqueue(new TextEncoder().encode('{"n":1}'));
+              controller.close();
+            };
+          },
+        });
+        return Promise.resolve(new Response(body, { headers: { "Content-Type": "application/json" } }));
+      }
+      return Promise.resolve(jsonResponse({ n: 2 }));
+    };
+    const fetcher = useFetch("/api/list", { fetch: asFetch(fetch), immediate: false }).json();
+
+    const first = fetcher.execute();
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    await fetcher.execute();
+    releaseBody();
+    await first;
+
+    expect(fetcher.data.value).toEqual({ n: 2 });
+  });
+
+  it("a request replaced while its async afterFetch runs keeps the newer data", async () => {
+    let calls = 0;
+    let openGate: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (openGate = resolve));
+    const fetcher = useFetch<{ n: number }>("/api/list", {
+      fetch: asFetch(() => {
+        calls += 1;
+        return Promise.resolve(jsonResponse({ n: calls }));
+      }),
+      immediate: false,
+      afterFetch: async (ctx) => {
+        if (ctx.data.n === 1) await gate;
+        return ctx;
+      },
+    }).json();
+
+    const first = fetcher.execute();
+    while (calls < 1) await Promise.resolve();
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    await fetcher.execute();
+    openGate();
+    await first;
+    expect(fetcher.data.value).toEqual({ n: 2 });
+  });
+
+  it("a request replaced while its async onFetchError runs keeps the newer state and still rejects execute(true)", async () => {
+    let calls = 0;
+    let openGate: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (openGate = resolve));
+    const errors: unknown[] = [];
+    const fetcher = useFetch<{ n: number }>("/api/list", {
+      fetch: asFetch(() => {
+        calls += 1;
+        return Promise.resolve(calls === 1 ? jsonResponse({}, { status: 500 }) : jsonResponse({ n: calls }));
+      }),
+      immediate: false,
+      onFetchError: async (ctx) => {
+        await gate;
+        return { error: "mapped", data: ctx.data };
+      },
+    }).json();
+    fetcher.onFetchError((error) => errors.push(error));
+
+    const first = fetcher.execute(true);
+    while (calls < 1) await Promise.resolve();
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    await fetcher.execute();
+    openGate();
+    await expect(first).rejects.toThrow();
+    expect(fetcher.data.value).toEqual({ n: 2 });
+    expect(fetcher.error.value).toBeNull();
+    expect(errors).toEqual([]);
+  });
+
   it("aborts requests after timeout", async () => {
     const fetch = (_input: string | URL | Request, init?: RequestInit) => {
       return new Promise<Response>((_resolve, reject) => {

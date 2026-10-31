@@ -2,6 +2,18 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.3] — `useFetch` Keeps the Latest Request's State
+
+Sinwan 2.1.3 stops a `useFetch` request that a newer `execute()` replaced from writing over the newer request's result. Refetching while a request is in flight (a `refetch` URL change, a manual `execute()` after a reconnect, quick filter changes) no longer leaves a stale error or stale data behind.
+
+### Fixed
+
+- **Replaced requests overwrote the latest state (`hook/use-fetch`)**: every `execute()` aborts the previous request, but the aborted request's `catch` still ran afterwards and set `error` (through `onFetchError` too) and fired `onFetchError` listeners, after the newer request had already reset them. The page then showed an error (for example "network error") next to data that loaded fine. A replaced request that answered anyway (late response, body still streaming, or an async `afterFetch`) likewise overwrote `data`, `response` and `statusCode` and fired `onFetchResponse`. Only the latest `execute()` now writes state and fires `onFetchResponse` / `onFetchError`, the same rule `isFinished` already followed. A replaced `execute(true)` still rejects for its own caller, and `abort()` and `timeout` (no newer request) report the abort as before.
+
+### Changed
+
+- **Release metadata tests**: Assert package version `2.1.3` and keep prior changelog headings including `## [2.1.2]`.
+
 ## [2.1.2] — Label `htmlFor` Renders as `for`
 
 Sinwan 2.1.2 writes the JSX prop `htmlFor` as the HTML attribute `for` in the browser, so `<label htmlFor="email">` is tied to its control. The server renderer already did this. Pair with **sinwan-compiler 1.1.3** to fix static `htmlFor` values in hoisted templates.
