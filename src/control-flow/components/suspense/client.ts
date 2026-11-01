@@ -16,6 +16,7 @@ import { SUSPENSE_TYPE } from "../../const.ts";
 import { Suspense as SuspenseFactory } from "../../identity.ts";
 import { registerControlFlowBlock } from "../../registry.ts";
 import { fireMountedAndQueueUpdated } from "../../shared/fireMountedAndQueueUpdated.ts";
+import { resolveFallbackDelay } from "../../shared/resolveFallbackDelay.ts";
 import { withOptionalInstance } from "../../shared/withOptionalInstance.ts";
 
 export { isSuspenseElement, type SuspenseProps } from "../../identity.ts";
@@ -27,7 +28,9 @@ function noop(): void {}
 noop();
 
 /**
- * Client render path for `<Suspense>`.
+ * Client render path for `<Suspense>`. With `fallbackDelay`, a suspension
+ * renders nothing until the delay has passed, then the fallback; children
+ * that resolve first replace the empty slot directly.
  */
 export function renderSuspenseBlock(
   element: SinwanElement,
@@ -43,16 +46,27 @@ export function renderSuspenseBlock(
   let initialized = false;
   let disposed = false;
   const asyncComponentResults = new Map<Function, unknown>();
+  const props = element.props as { fallback?: SinwanNode; fallbackDelay?: unknown };
+  const delay = resolveFallbackDelay(props.fallbackDelay);
+  let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const renderFallback = () => {
+    fallbackNode = withOptionalInstance(owner, () =>
+      renderNodeToDOM(props.fallback, parent, block.endAnchor, namespace),
+    );
+  };
+  const cancelFallbackTimer = () => {
+    clearTimeout(fallbackTimer);
+    fallbackTimer = undefined;
+  };
 
   const disposeEffect = effect(() => {
     void retrySignal.value; // establish dependency for re-runs
 
-    // On the very first effect run, render fallback as placeholder.
+    // On the very first effect run, render fallback as placeholder
+    // (not with a delay: an immediate render would flash it).
     if (!initialized) {
-      const fallback = (element.props as { fallback?: SinwanNode }).fallback;
-      fallbackNode = withOptionalInstance(owner, () =>
-        renderNodeToDOM(fallback, parent, block.endAnchor, namespace),
-      );
+      if (delay === 0) renderFallback();
       block.children = fallbackNode ? [fallbackNode] : [];
       initialized = true;
     }
@@ -108,6 +122,7 @@ export function renderSuspenseBlock(
       }
 
       popSuspenseBoundary();
+      cancelFallbackTimer();
 
       // Success! Remove fallback, show content.
       if (fallbackNode) {
@@ -140,10 +155,18 @@ export function renderSuspenseBlock(
         boundary.promises.add(promise);
 
         if (!fallbackNode) {
-          const fallback = (element.props as { fallback?: SinwanNode }).fallback;
-          fallbackNode = withOptionalInstance(owner, () =>
-            renderNodeToDOM(fallback, parent, block.endAnchor, namespace),
-          );
+          if (delay === 0) {
+            renderFallback();
+          } else {
+            // Started once per suspension: retries while waiting keep the timer.
+            fallbackTimer ??= setTimeout(() => {
+              fallbackTimer = undefined;
+              if (disposed || hasContent || fallbackNode) return;
+              renderFallback();
+              block.children = fallbackNode ? [fallbackNode] : [];
+              fireMountedAndQueueUpdated(owner);
+            }, delay);
+          }
           block.children = fallbackNode ? [fallbackNode] : [];
         }
 
@@ -164,6 +187,7 @@ export function renderSuspenseBlock(
 
   return () => {
     disposed = true;
+    cancelFallbackTimer();
     disposeEffect();
   };
 }

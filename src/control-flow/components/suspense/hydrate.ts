@@ -14,10 +14,13 @@ import {
   hydrateNode,
   type HydrationCursor,
 } from "../../../hydration/walk.ts";
+import { resolveFallbackDelay } from "../../shared/resolveFallbackDelay.ts";
 import { fireMountedAndQueueUpdated } from "../../shared/fireMountedAndQueueUpdated.ts";
 
 /**
  * Hydrate a `<Suspense>` boundary from SSR children (or fallback on throw).
+ * The first pass adopts the server HTML; with `fallbackDelay`, later
+ * suspensions render nothing until the delay has passed, then the fallback.
  */
 export function hydrateSuspense(
   element: SinwanElement,
@@ -26,6 +29,13 @@ export function hydrateSuspense(
   const props = element.props as {
     fallback: SinwanNode;
     children?: SinwanNode;
+    fallbackDelay?: unknown;
+  };
+  const delay = resolveFallbackDelay(props.fallbackDelay);
+  let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+  const cancelFallbackTimer = () => {
+    clearTimeout(fallbackTimer);
+    fallbackTimer = undefined;
   };
   const retrySignal = signal(0);
   const owner = getCurrentInstance();
@@ -92,6 +102,7 @@ export function hydrateSuspense(
           }
         }
         popSuspenseBoundary();
+        cancelFallbackTimer();
         if (fallbackNode) {
           removeMountedNode(fallbackNode);
           fallbackNode = null;
@@ -109,13 +120,22 @@ export function hydrateSuspense(
           typeof (err as { then?: unknown }).then === "function"
         ) {
           boundary.promises.add(err as PromiseLike<unknown>);
-          if (!fallbackNode) {
+          if (!fallbackNode && delay === 0) {
             fallbackNode = renderNodeToDOM(
               props.fallback,
               parent,
               endAnchor,
               null,
             );
+          } else if (!fallbackNode) {
+            // Started once per suspension: retries while waiting keep the timer.
+            fallbackTimer ??= setTimeout(() => {
+              fallbackTimer = undefined;
+              if (disposed || fallbackNode) return;
+              fallbackNode = renderNodeToDOM(props.fallback, parent, endAnchor, null);
+              block.children = fallbackNode ? [fallbackNode] : [];
+              fireMountedAndQueueUpdated(owner);
+            }, delay);
           }
           block.children = fallbackNode ? [fallbackNode] : [];
         } else {
@@ -192,6 +212,7 @@ export function hydrateSuspense(
 
   attachDispose(() => {
     disposed = true;
+    cancelFallbackTimer();
     dispose();
   });
   return block;

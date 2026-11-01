@@ -36,6 +36,14 @@ function elementProps(props: object): Record<string, unknown> {
 export interface ShowProps<T> {
   when: Reactive<T | false | null | undefined>;
   fallback?: SinwanNode;
+  /**
+   * Wait this many milliseconds after `when` turns falsy before rendering
+   * `fallback`; nothing renders meanwhile, and if `when` turns truthy first
+   * the fallback never appears (no loading flash on fast loads). Each falsy
+   * period waits again. Client only: server rendering and the hydrated first
+   * paint show the fallback at once. Default 0.
+   */
+  fallbackDelay?: number;
   children?: SinwanNode | ((value: NonNullable<T>) => SinwanNode);
 }
 
@@ -200,6 +208,13 @@ export function isErrorBoundaryElement(element: SinwanElement): boolean {
 
 export interface SuspenseProps {
   fallback: SinwanNode;
+  /**
+   * Wait this many milliseconds after the children suspend before rendering
+   * `fallback`; nothing renders meanwhile, and if they resolve first the
+   * fallback never appears. Each new suspension waits again. Client only:
+   * server rendering awaits the children. Default 0.
+   */
+  fallbackDelay?: number;
   children?: SinwanNode;
 }
 

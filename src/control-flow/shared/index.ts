@@ -14,6 +14,7 @@ export { isElementLike } from "./isElementLike.ts";
 export { isValueRenderProp } from "./isValueRenderProp.ts";
 export { normalizeContent } from "./normalizeContent.ts";
 export { renderBlockContent } from "./renderBlockContent.ts";
+export { resolveFallbackDelay } from "./resolveFallbackDelay.ts";
 export { softHideMountedTree } from "./softHideMountedTree.ts";
 export { softShowMountedTree } from "./softShowMountedTree.ts";
 export { withOptionalInstance } from "./withOptionalInstance.ts";

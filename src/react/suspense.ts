@@ -9,6 +9,8 @@ import { REACT_SUSPENSE_TYPE } from "./_internal/symbols.ts";
 export interface SuspenseProps {
   fallback: ReactNode;
   children?: ReactNode;
+  /** Milliseconds to wait before showing `fallback`; see the core `SuspenseProps.fallbackDelay`. */
+  fallbackDelay?: number;
 }
 
 /**

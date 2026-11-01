@@ -80,6 +80,27 @@ mount(Counter, document.getElementById("app")!);
 - Hydration: reuse server-rendered DOM with `hydrate`
 - Hooks (`sinwan/hook`): `useFetch`; realtime `useWebSocket`, `useWebRTC` (calls, screen share, data-channel messages and files), `useUserMedia`, `useMediaRecorder`
 
+## Loading fallbacks without flashes
+
+`<Show>` and `<Suspense>` can wait before showing their fallback. Loads that finish within the delay go straight from nothing to the content; slower ones show the fallback until the content is ready.
+
+```tsx
+import { Show } from "sinwan/control-flow";
+import { Suspense } from "sinwan/react";
+
+// The skeleton appears only if the data takes longer than 300 ms.
+<Show when={orders.data.value} fallback={<OrdersSkeleton />} fallbackDelay={300}>
+  {(page) => <OrdersTable page={page} />}
+</Show>
+
+// Same for lazy components and other async children.
+<Suspense fallback={<Spinner />} fallbackDelay={300}>
+  <Reports />
+</Suspense>
+```
+
+Each new falsy period (or suspension) waits again. Server rendering ignores the delay and renders as before; hydration adopts the server HTML.
+
 ## Realtime hooks
 
 `sinwan/hook` covers WebSockets, WebRTC calls and media. Every hook returns signals, works outside components, and cleans up when the calling component unmounts.

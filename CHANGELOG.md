@@ -2,6 +2,21 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] — Delayed Fallbacks for Show and Suspense
+
+Sinwan 2.3.0 lets `<Show>` and `<Suspense>` wait before showing their fallback, so a loading state that ends quickly shows nothing instead of flashing a skeleton or spinner for a frame or two.
+
+### Added
+
+- **`<Show fallbackDelay={ms}>`**: when `when` turns falsy, nothing renders until `ms` milliseconds have passed, then `fallback`. If `when` turns truthy first, the fallback never appears. Each falsy period waits again; changing between falsy values (`null` → `false`) keeps the running wait. Unchanged truthy values still skip re-rendering, as before.
+- **`<Suspense fallbackDelay={ms}>`**: when the children suspend, nothing renders until `ms` milliseconds have passed, then `fallback`; children that resolve first replace the empty slot directly. Retries that suspend again while waiting keep the same wait. Available from `sinwan/react` (`import { Suspense } from "sinwan/react"`), which forwards the prop to the core boundary.
+- Both accept a number, a getter or a signal (read once per wait, untracked); `0`, a negative or a non-finite value keeps the immediate fallback (the default). Components inside a delayed fallback get their mounted hooks when it appears. Unmounting during a wait cancels it.
+
+### Notes
+
+- Client only. Server rendering is unchanged: `<Show>` renders the fallback for a falsy `when`, and `<Suspense>` awaits its children. Hydration adopts the server HTML (a server-rendered `<Show>` fallback counts as shown); the delay applies to later falsy periods and suspensions in the browser.
+- No compiler change: `fallbackDelay={300}` is a plain prop, and a reactive expression is wrapped like any other prop.
+
 ## [2.2.0] — Realtime Hooks: WebSocket, WebRTC Calls, Media and Files
 
 Sinwan 2.2.0 adds realtime hooks to `sinwan/hook`: a WebSocket client, one-to-one WebRTC calls with data channels, camera and microphone access, recording, and one file-transfer protocol for both channels. Every hook returns signals, works outside components (and during server rendering, where it stays idle), and cleans up when the calling component unmounts.

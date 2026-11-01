@@ -14,3 +14,7 @@ export function resolveShowChildren(
   }
   return children;
 }
+
+/** Render keys for a falsy `when`: the fallback is showing, or its `fallbackDelay` is still running. */
+export const SHOW_FALLBACK: unique symbol = Symbol("show-fallback");
+export const SHOW_WAITING: unique symbol = Symbol("show-waiting");
