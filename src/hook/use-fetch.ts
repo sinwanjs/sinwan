@@ -10,10 +10,11 @@ import {
 import { getSSRContext } from "../event/ssr-context.ts";
 import { getSinwanData } from "../hydration/index.ts";
 
-export type Fn = () => void;
+import { createEventHook, type EventHookOn, type Fn } from "./shared.ts";
+
+export type { EventHookOn, Fn };
 export type Stoppable = { stop: Fn; start: Fn; isPending: Signal<boolean> };
 export type MaybeReactive<T> = T | Signal<T> | Computed<T> | (() => T);
-export type EventHookOn<T = unknown> = (fn: (param: T) => void) => Fn;
 
 export interface UseFetchReturn<T> {
   isFinished: Computed<boolean>;
@@ -162,19 +163,6 @@ function headersToObject(headers: HeadersInit | undefined) {
     return Object.fromEntries(headers.entries());
   if (Array.isArray(headers)) return Object.fromEntries(headers);
   return headers;
-}
-
-function createEventHook<T = unknown>() {
-  const fns = new Set<(param: T) => void>();
-  return {
-    on(fn: (param: T) => void) {
-      fns.add(fn);
-      return () => fns.delete(fn);
-    },
-    trigger(param: T) {
-      for (const fn of fns) fn(param);
-    },
-  };
 }
 
 function useTimeoutFn(fn: Fn, interval: number): Stoppable {

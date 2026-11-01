@@ -78,6 +78,50 @@ mount(Counter, document.getElementById("app")!);
 - DOM renderer: reactive text, attributes, events, refs, namespaces, and cleanup
 - Server rendering: `renderToString`, `streamPage`, hydratable strings and streams
 - Hydration: reuse server-rendered DOM with `hydrate`
+- Hooks (`sinwan/hook`): `useFetch`; realtime `useWebSocket`, `useWebRTC` (calls, screen share, data-channel messages and files), `useUserMedia`, `useMediaRecorder`
+
+## Realtime hooks
+
+`sinwan/hook` covers WebSockets, WebRTC calls and media. Every hook returns signals, works outside components, and cleans up when the calling component unmounts.
+
+```tsx
+import { useWebSocket, useWebRTC, useUserMedia, useMediaRecorder, webSocketSignaling } from "sinwan/hook";
+import { effect } from "sinwan/reactivity";
+
+// WebSocket: status, last message, queued sends, reconnect, heartbeat, files.
+const socket = useWebSocket("wss://example.com/ws", {
+  autoReconnect: true, // 1 s, 2 s, 4 s… up to 30 s
+  heartbeat: { message: "ping", responseMessage: "pong" },
+  parse: (message) => JSON.parse(String(message)), // validate untrusted input here
+});
+socket.sendJson({ type: "hello" }); // queued until the socket opens
+socket.onMessage((message) => console.log(message));
+await socket.sendFile(imageFile); // chunked, with progress in socket.transfers
+socket.onFile((file) => show(URL.createObjectURL(file.blob!)));
+
+// WebRTC: 1:1 audio/video calls; signaling over the socket above.
+const call = useWebRTC({
+  signaling: webSocketSignaling(socket), // or your own { send, onSignal }
+  polite: isCallee, // exactly one side of a call is polite
+  configuration: { iceServers: [{ urls: "stun:stun.example.com" }] },
+});
+call.onIncoming(() => call.answer({ audio: true, video: true })); // callState: "ringing"
+await call.start({ audio: true, video: true }); // or start() for data only
+call.toggleAudio();
+await call.shareScreen();
+call.send("hi"); // data-channel message
+await call.sendFile(photo); // peer to peer, chunked
+call.hangUp();
+// Show it: <video ref={(el) => effect(() => { if (el) el.srcObject = call.remoteStream.value; })} autoplay playsinline />
+
+// Media: camera/microphone and voice notes.
+const media = useUserMedia();
+const recorder = useMediaRecorder({ mimeType: ["audio/webm;codecs=opus", "audio/mp4"] });
+recorder.start((await media.start({ audio: true }))!);
+const note = await recorder.stop(); // Blob, ready for sendFile
+```
+
+Files travel as one protocol on both channels (a start frame, binary chunks, an end frame), so a file sent by one Sinwan client is rebuilt by another. Receivers cap the file size (`files.maxFileSize`, default 50 MiB) and the number of files in flight (`files.maxIncoming`, default 4).
 
 ## SSR and Hydration
 

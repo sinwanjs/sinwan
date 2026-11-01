@@ -2,6 +2,22 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.2.0] — Realtime Hooks: WebSocket, WebRTC Calls, Media and Files
+
+Sinwan 2.2.0 adds realtime hooks to `sinwan/hook`: a WebSocket client, one-to-one WebRTC calls with data channels, camera and microphone access, recording, and one file-transfer protocol for both channels. Every hook returns signals, works outside components (and during server rendering, where it stays idle), and cleans up when the calling component unmounts.
+
+### Added
+
+- **`useWebSocket(url, options)`**: `status`, `isOpen`, last `data` (through an optional `parse` for validation), `error`, `send` / `sendJson` with a queue while not open (`bufferLimit`), `open` / `close`, auto-reconnect with backoff (`autoReconnect: { retries, delay, onFailed }`), heartbeat with pong timeout (`heartbeat: { message, interval, pongTimeout, responseMessage }`), a reactive URL that reconnects when it changes, `binaryType` (default `"arraybuffer"`), and `onOpen` / `onMessage` / `onClose` / `onError` hooks.
+- **`useWebRTC({ signaling, polite, configuration })`**: 1:1 calls with the "perfect negotiation" pattern (either side may start or renegotiate; simultaneous calls connect). `callState` (`idle`, `ringing`, `calling`, `connecting`, `connected`, `reconnecting`, `ended`, `failed`), `start` / `answer` / `reject` / `hangUp` (the other side gets `onRemoteHangUp`), `localStream`, `remoteStream`, `remoteTracks`, mute and camera toggles, `shareScreen` / `stopScreenShare`, `switchDevice` during a call, one ICE restart on failure, and pre-negotiated data channels for messages (`send`, `sendJson`, `onMessage`) and files (`sendFile`, `transfers`, `onFile`). Signaling is any `{ send, onSignal }` channel; `webSocketSignaling(socket)` uses a `useWebSocket` connection, and `isRTCSignal` validates incoming signals.
+- **`useUserMedia()`**: `stream`, `start(constraints)` (prompts only when called, unless `immediate`), `stop`, `devices` kept current on `devicechange`, `error` (for example `NotAllowedError`). `stopStream(stream)` releases a stream's devices.
+- **`useMediaRecorder()`**: records a stream into a `Blob` (voice notes, video messages), with `pause` / `resume`, a live `duration`, the first supported type from a `mimeType` list (`pickMimeType`), and `onData` / `onStop`.
+- **File transfer on both channels** (`sendFile`, `transfers`, `cancelTransfer`, `clearTransfers`, `onFile`): chunked, with backpressure (it waits for the socket or data channel buffer to drain), progress updates about once per percent, cancellation in both directions, and receiver limits (`files: { maxFileSize, maxIncoming, chunkSize }`; default 50 MiB and 4 files).
+
+### Changed
+
+- **Release metadata tests**: Assert package version `2.2.0` and keep prior changelog headings including `## [2.1.3]`.
+
 ## [2.1.3] — `useFetch` Keeps the Latest Request's State
 
 Sinwan 2.1.3 stops a `useFetch` request that a newer `execute()` replaced from writing over the newer request's result. Refetching while a request is in flight (a `refetch` URL change, a manual `execute()` after a reconnect, quick filter changes) no longer leaves a stale error or stale data behind.
