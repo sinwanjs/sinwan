@@ -36,6 +36,7 @@ import {
   isBindingDescriptor,
   type SinwanTemplateResult,
 } from "./template-identity.ts";
+import { templateToMount } from "./template.ts";
 import { getActiveSuspenseBoundary } from "./suspense-boundary.ts";
 
 /** Client reactive-function anchors (inlined to avoid importing hydration). */
@@ -92,7 +93,7 @@ export function renderNodeToDOM(
 
   // Compiler-generated template result
   if (isTemplateResult(node)) {
-    return renderTemplateResultToDOM(node, parent, anchor);
+    return renderTemplateResultToDOM(templateToMount(node), parent, anchor);
   }
 
   // Binding descriptor (from explicitBindings mode in non-hoisted JSX).

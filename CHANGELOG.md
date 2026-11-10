@@ -2,6 +2,12 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.1] — Compiled JSX Mounts Again After Its First Mount
+
+### Fixed
+
+- **A compiled JSX value mounted a second time rendered nothing.** A static `fallback={<p>…</p>}` compiles to one template result, created once. Mounting a template result moves its nodes out of its fragment, so after `<Show when>` turned truthy and then falsy again, the fallback came back empty, with no error. The same happened to any one JSX value placed in two spots. A template result now keeps the template and values it was built from: its first mount uses it as before, and every later mount (client render or hydration) builds a fresh copy with its own bindings. Unmounting one copy disposes only that copy's effects. Components and plain elements were never affected.
+
 ## [2.3.0] — Delayed Fallbacks for Show and Suspense
 
 Sinwan 2.3.0 lets `<Show>` and `<Suspense>` wait before showing their fallback, so a loading state that ends quickly shows nothing instead of flashing a skeleton or spinner for a frame or two.

@@ -31,6 +31,7 @@ import {
   isBindingDescriptor,
   setHydrationMode,
   _$createTemplate,
+  templateToMount,
   walkToSlot,
   type SinwanTemplateResult,
   type SinwanServerTemplateResult,
@@ -191,7 +192,7 @@ export function hydrateNode(
   // Compiler-generated template result (live fragment from CSR).
   if (isTemplateResult(node as unknown)) {
     return hydrateTemplateResult(
-      node as unknown as SinwanTemplateResult,
+      templateToMount(node as unknown as SinwanTemplateResult),
       cursor,
     );
   }

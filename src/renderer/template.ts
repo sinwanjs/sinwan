@@ -184,12 +184,42 @@ export function _$createTemplate(
     };
   }
 
+  return buildLiveTemplate(def, dynamics);
+}
+
+function buildLiveTemplate(
+  def: TemplateDef,
+  dynamics: unknown[],
+): SinwanTemplateResult {
   const prevScope = setActiveEffectScope(null);
   try {
-    return createLiveTemplate(def, dynamics);
+    const result = createLiveTemplate(def, dynamics);
+    result.def = def;
+    result.dynamics = dynamics;
+    return result;
   } finally {
     setActiveEffectScope(prevScope);
   }
+}
+
+/**
+ * The template result to put in the page: the result itself on its first
+ * mount, then a fresh copy built from the same template and values. Mounting
+ * moves the fragment's nodes out, so a result mounted again (a `Show`
+ * fallback after the condition toggled, one JSX value rendered in two
+ * places) would otherwise insert nothing.
+ */
+export function templateToMount(
+  result: SinwanTemplateResult,
+): SinwanTemplateResult {
+  if (!result.mounted) {
+    result.mounted = true;
+    return result;
+  }
+  if (!result.def || !result.dynamics) return result;
+  const fresh = buildLiveTemplate(result.def, result.dynamics);
+  fresh.mounted = true;
+  return fresh;
 }
 
 function createLiveTemplate(

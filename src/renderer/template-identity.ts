@@ -8,6 +8,11 @@ export interface SinwanTemplateResult {
   [SINWAN_TEMPLATE]: true;
   fragment: DocumentFragment;
   disposers: CleanupFn[];
+  /** The template and values it was built from, so a later mount can build a fresh copy. */
+  def?: TemplateDef;
+  dynamics?: unknown[];
+  /** Set by its first mount, which moves the fragment's nodes into the page. */
+  mounted?: boolean;
 }
 
 /** Runtime symbol identifying a server-side template result (no live DOM). */
