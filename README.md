@@ -144,6 +144,66 @@ const note = await recorder.stop(); // Blob, ready for sendFile
 
 Files travel as one protocol on both channels (a start frame, binary chunks, an end frame), so a file sent by one Sinwan client is rebuilt by another. Receivers cap the file size (`files.maxFileSize`, default 50 MiB) and the number of files in flight (`files.maxIncoming`, default 4).
 
+## Optimized images with `<Img>` (Bun)
+
+`<Img>` from `sinwan/image` renders an `<img>` whose files are optimized by Bun's native `Bun.Image`. It needs the Bun runtime: `bun-plugin-sinwan` 1.1, or Vite started on Bun with `vite-plugin-sinwan` 1.1, both on `sinwan-compiler` 1.3.
+
+```tsx
+import { Img } from "sinwan/image";
+import shop from "./assets/shop.jpg";
+
+// Optimized at build time (and in the dev server): hashed WebP files, srcset, blur preview.
+<Img src="./assets/hero.jpg" alt="Our shop" width={1200} height={800} priority placeholder="blur" />
+<Img src={shop} alt="" sizes="(min-width: 1024px) 50vw, 100vw" quality={60} />
+<Img src="/photos/team.jpg" alt="The team" width={400} fit="contain" format="avif" />
+
+// Optimized on demand (the src is only known at runtime).
+<Img src={product.photoUrl} alt={product.name} width={160} height={160} />
+```
+
+**Static sources** are a string literal or an imported image file (JPEG, PNG, WebP, AVIF, HEIC):
+
+- `./x.jpg` is relative to the file, `/x.jpg` is in `public/`, and `@/x.jpg` goes through your aliases.
+- Their optimization props must be literals; the compiler reports anything else with its file and line.
+- Optimized files are cached in `.sinwan/images/`, so an unchanged image is never processed twice. Bun's bundler emits them with content hashes, so they can be cached forever.
+
+**Runtime sources** (any other string) get a `srcset` that points at the on-demand handler. Add it to your Bun server:
+
+```ts
+import { createImageHandler } from "sinwan-compiler/image";
+
+Bun.serve({
+  routes: {
+    "/_sinwan/image": createImageHandler({
+      remotePatterns: [{ protocol: "https", hostname: "cdn.example.com" }],
+    }),
+  },
+});
+```
+
+Use `configureImages({ path, deviceSizes, imageSizes, quality })` when the route or sizes differ, or pass a `loader` to use another optimizer.
+
+| Prop | Default | Notes |
+| --- | --- | --- |
+| `alt` | required | `""` for decorative images. |
+| `width`, `height` | from the image | CSS pixels. A runtime source needs `width` (or `fill`). |
+| `quality` | `75` | 1–100. |
+| `format` | `"auto"` | `auto` is WebP at build and follows `Accept` on demand. Also `webp`, `avif` (needs an OS AV1 encoder), `jpeg`, `png`. |
+| `fit` | `"cover"` | `cover`, `contain`, `fill`, `inside`, `outside`. Bun.Image does not crop pixels; `cover` is cropped by `object-fit`. |
+| `sizes` | none | Switches to width descriptors (`640w`, …). The image then gets `max-width:100%;height:auto`. |
+| `densities` | `[1, 2]` | `x` descriptors when `sizes` is not set. |
+| `placeholder` | `"empty"` | `"blur"` paints a ~1.7 KB preview until the image loads. Runtime sources pass `blurDataURL`. |
+| `aspectRatio` | none | `1.5`, `"3/2"`, `"3:2"`. |
+| `priority` | `false` | Eager, `fetchpriority="high"`, preloaded. Use it for the image at the top of the page. |
+| `loading`, `decoding` | `"lazy"`, `"async"` | |
+| `fill` | `false` | Fills the positioned parent. |
+| `unoptimized` | `false` | Renders `src` as given (SVG, GIF). |
+| `loader` | handler | `({ src, width, quality, format }) => url`. |
+
+Type image imports once (for example in `src/env.d.ts`): `declare module "*.jpg" { const src: string; export default src; }`.
+
+With Vite, start it on Bun (`bunx --bun vite`, `bunx --bun vite build`): `vite-plugin-sinwan` 1.1 then runs the same pipeline. Vite on Node fails with an error that says so.
+
 ## SSR and Hydration
 
 ```tsx

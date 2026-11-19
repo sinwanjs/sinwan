@@ -22,6 +22,11 @@ import { fireMountedAndQueueUpdated } from "../../shared/fireMountedAndQueueUpda
  * The first pass adopts the server HTML; with `fallbackDelay`, later
  * suspensions render nothing until the delay has passed, then the fallback.
  */
+/** Suspense children as a list (none, one node or an array). */
+function toChildArray(children: SinwanNode | undefined): SinwanNode[] {
+  return children == null ? [] : Array.isArray(children) ? children : [children];
+}
+
 export function hydrateSuspense(
   element: SinwanElement,
   cursor: HydrationCursor,
@@ -86,13 +91,7 @@ export function hydrateSuspense(
 
       pushSuspenseBoundary(boundary);
 
-      const children = props.children;
-      const childArray =
-        children != null
-          ? Array.isArray(children)
-            ? children
-            : [children]
-          : [];
+      const childArray = toChildArray(props.children);
       const nodes: MountedNode[] = [];
 
       try {
@@ -152,9 +151,7 @@ export function hydrateSuspense(
       return;
     }
 
-    const children = props.children;
-    const childArray =
-      children != null ? (Array.isArray(children) ? children : [children]) : [];
+    const childArray = toChildArray(props.children);
     const nodes: MountedNode[] = [];
 
     let retryScheduled = false;

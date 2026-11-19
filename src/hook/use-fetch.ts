@@ -332,31 +332,22 @@ export function useFetch<T>(
   if (args.length > 1 && isFetchOptions(args[1]))
     options = { ...options, ...args[1] };
 
-  function getClientFetchCache(): Map<string, any> | undefined {
+  /**
+   * Takes the server-fetched value for `key` from the hydration payload
+   * (`#__SINWAN_DATA__`) and removes it there, so a later fetch goes to the
+   * network. The payload is parsed once (`getSinwanData` already returns `{}`
+   * for a missing or invalid script).
+   */
+  function consumeClientCachedData(key: string): any {
     if (typeof window === "undefined") return undefined;
     const sinwanData = getSinwanData();
-    if (!sinwanData?.fetchData) return undefined;
-    return new Map(Object.entries(sinwanData.fetchData));
-  }
-
-  function consumeClientCachedData(key: string): any {
-    const cache = getClientFetchCache();
-    if (!cache) return undefined;
-    const value = cache.get(key);
+    const fetchData = sinwanData?.fetchData;
+    if (!fetchData || !Object.hasOwn(fetchData, key)) return undefined;
+    const value = fetchData[key];
     if (value !== undefined) {
-      cache.delete(key);
+      delete fetchData[key];
       const script = document.getElementById("__SINWAN_DATA__");
-      if (script) {
-        try {
-          const sinwanData = JSON.parse(script.textContent || "{}");
-          if (sinwanData.fetchData && key in sinwanData.fetchData) {
-            delete sinwanData.fetchData[key];
-            script.textContent = JSON.stringify(sinwanData);
-          }
-        } catch {
-          /* ignore */
-        }
-      }
+      if (script) script.textContent = JSON.stringify(sinwanData);
     }
     return value;
   }

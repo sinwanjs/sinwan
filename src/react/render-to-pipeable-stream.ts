@@ -111,11 +111,9 @@ export function renderToPipeableStream(
     },
     abort(reason?: unknown) {
       aborted = true;
-      try {
-        reader?.cancel(reason);
-      } catch {
-        /* ignore */
-      }
+      // The inner stream has no `cancel` hook and this reader is never
+      // released, so cancelling always resolves.
+      void reader?.cancel(reason);
       try {
         writable?.end();
       } catch {

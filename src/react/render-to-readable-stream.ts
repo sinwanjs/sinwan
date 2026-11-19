@@ -48,11 +48,9 @@ export async function renderToReadableStream(
   let abortHandler: (() => void) | undefined;
   if (options.signal) {
     abortHandler = () => {
-      try {
-        reader.cancel(options.signal!.reason);
-      } catch {
-        /* ignore */
-      }
+      // The inner stream has no `cancel` hook and this reader is never
+      // released, so cancelling always resolves.
+      void reader.cancel(options.signal!.reason);
     };
     options.signal.addEventListener("abort", abortHandler);
   }

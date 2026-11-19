@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as component from "../src/component/index.ts";
 import * as controlFlow from "../src/control-flow/index.ts";
+import * as image from "../src/image/index.ts";
 import { For as ForClient } from "../src/control-flow/components/for/client.ts";
 import { For as ForIdentity } from "../src/control-flow/identity.ts";
 
@@ -36,5 +37,18 @@ describe("public entries", () => {
     for (const name of CONTROL_FLOW) {
       expect(exported.has(name)).toBe(false);
     }
+  });
+
+  it("sinwan/image exports Img and its helpers", () => {
+    expect(Object.keys(image).sort()).toEqual([
+      "DEFAULT_IMAGE_CONFIG",
+      "ImageUsageError",
+      "Img",
+      "configureImages",
+      "defaultLoader",
+      "getImageConfig",
+      "getImageProps",
+    ]);
+    expect(typeof image.Img).toBe("function");
   });
 });

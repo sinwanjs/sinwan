@@ -29,10 +29,11 @@ export function captureOwnerStack(): string | null {
   // the current one via JSX).
   let current: typeof instance | null = instance.parent;
   while (current) {
+    // `||`, not `??`: an anonymous function's `name` is "" (never nullish).
     const name =
       (current.component as { _displayName?: string; name?: string })
-        ._displayName ??
-      (current.component as { name?: string }).name ??
+        ._displayName ||
+      (current.component as { name?: string }).name ||
       "Anonymous";
     frames.push(`    at ${name}`);
     current = current.parent;

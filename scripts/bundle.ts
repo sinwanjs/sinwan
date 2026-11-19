@@ -54,6 +54,7 @@ const ENTRYPOINTS = [
   `${SRC}/event/index.ts`,
   `${SRC}/hook/index.ts`,
   `${SRC}/hydration/index.ts`,
+  `${SRC}/image/index.ts`,
   `${SRC}/react/index.ts`,
   `${SRC}/jsx/jsx-runtime.ts`,
   `${SRC}/jsx/jsx-dev-runtime.ts`,

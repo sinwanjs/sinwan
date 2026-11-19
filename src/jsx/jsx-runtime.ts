@@ -177,13 +177,10 @@ function buildElement(
   // single owner of component-instance creation and lifecycle dispatch.
   // Calling the function eagerly here would bypass instance management
   // and break `onMounted`, `provide`/`inject`, and the parent/child tree.
+  // `children` always comes from `props.children`, so components already
+  // receive their children in props.
   if (typeof type === "function") {
-    const finalProps = props ?? {};
-    // Only mirror children into props for components (not intrinsic tags).
-    if (children.length > 0 && finalProps.children === undefined) {
-      finalProps.children = children.length === 1 ? children[0] : children;
-    }
-    return { tag: type, props: finalProps, children };
+    return { tag: type, props: props ?? {}, children };
   }
 
   if (typeof type === "string") {

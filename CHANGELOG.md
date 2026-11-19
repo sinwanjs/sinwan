@@ -2,6 +2,39 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] — `<Img>`: Optimized Images (Bun)
+
+### Added
+
+- **`sinwan/image`**: `<Img>`, an `<img>` whose files are optimized by Bun's native `Bun.Image`.
+  - **Static sources**: a string literal or an imported image file is rewritten by `sinwan-compiler` 1.3 and optimized by `bun-plugin-sinwan` 1.1 at build and in the dev server. The result is hashed WebP/AVIF/JPEG/PNG files, a ready `srcset`, the rendered size and an optional inlined blur.
+  - **Runtime sources**: get a `srcset` from the loader. By default it points at `createImageHandler` from `sinwan-compiler/image`; `configureImages({ path, deviceSizes, imageSizes, quality })` changes that, and the `loader` prop replaces it per image.
+  - **Props**:
+    - `alt` (required by the types)
+    - `width`, `height`, `quality`, `format`, `fit`, `aspectRatio`
+    - `sizes` / `densities`, `placeholder` / `blurDataURL`
+    - `priority`: eager, `fetchpriority="high"`, preloaded in `<head>` on the client
+    - `loading` (default `lazy`), `decoding` (default `async`), `fetchPriority`
+    - `fill`, `unoptimized`
+    - native attributes (`class`, `id`, `aria-*`, `data-*`, `onload`, …) pass through
+  - Responsive (`sizes`) images get `max-width:100%;height:auto`, so they follow their container.
+  - In development, a missing `alt`, a runtime source without `width` or `fill`, or a runtime blur without `blurDataURL` is reported as `ImageUsageError`.
+  - `getImageProps()` returns the plain attributes, for `<picture>` or CSS.
+- **Vite**: run it on Bun (`bunx --bun vite`); `vite-plugin-sinwan` 1.1 then optimizes `<Img>` the same way. Vite on Node, or any other non-Bun host, fails with a clear error.
+
+### Fixed
+
+- **`captureOwnerStack()`**: an anonymous component (empty function name, no display name) is now listed as `at Anonymous`. Before, the frame was empty, because the fallback used `??` and an empty name is not nullish.
+
+### Changed
+
+- **Internal, no behaviour change**: branches that could not run were removed while covering every line with tests.
+  - `<title>` reuses `normalizeChildren` (enhancers already receive normalized children).
+  - `useFetch` parses the hydration payload once.
+  - Suspense hydration shares one child-list helper.
+  - JSX no longer copies children into component props (they are already there).
+  - Stream aborts call `reader.cancel()` without a `try` that could never catch: the inner stream has no cancel hook, so it always resolves.
+
 ## [2.3.1] — Compiled JSX Mounts Again After Its First Mount
 
 ### Fixed

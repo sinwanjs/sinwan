@@ -19,7 +19,7 @@
  */
 
 import type { SinwanElement } from "../types.ts";
-import { registerEnhancedElements } from "./jsx-runtime.ts";
+import { normalizeChildren, registerEnhancedElements } from "./jsx-runtime.ts";
 import { effect } from "../reactivity/index.ts";
 import { isReactive, resolve } from "../reactivity/index.ts";
 import { isServer } from "../react/_internal/is-server.ts";
@@ -435,12 +435,9 @@ function enhanceTitle(props: Record<string, unknown>): Record<string, unknown> {
     return { itemProp, children, ...rest };
   }
 
-  const normalized =
-    children == null || typeof children === "boolean"
-      ? []
-      : Array.isArray(children)
-        ? (children as any[]).flat(Infinity)
-        : [children];
+  // Enhancers receive `normalizeChildren` output already; normalizing again
+  // keeps direct calls (with raw children) consistent.
+  const normalized = normalizeChildren(children);
 
   if (normalized.length > 1) {
     throw new Error(

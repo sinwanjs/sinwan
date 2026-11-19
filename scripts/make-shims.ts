@@ -40,6 +40,7 @@ const ENTRIES: PublicEntry[] = [
   { name: "event", internal: "event/index", types: "event/index" },
   { name: "hook", internal: "hook/index", types: "hook/index" },
   { name: "hydration", internal: "hydration/index", types: "hydration/index" },
+  { name: "image", internal: "image/index", types: "image/index" },
   {
     name: "react",
     internal: "react/index",
