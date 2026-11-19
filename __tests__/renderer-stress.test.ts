@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Window } from "happy-dom";
 import {
   signal,
@@ -22,6 +22,16 @@ import type { SinwanElement, SinwanNode } from "../src/types.ts";
 let win: InstanceType<typeof Window>;
 let doc: Document;
 let container: HTMLElement;
+
+const domGlobals = ["window", "document", "Node", "Element", "HTMLElement", "CustomEvent", "Event", "SyntaxError"];
+const originalGlobals = new Map(domGlobals.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+
+afterEach(() => {
+  for (const [name, descriptor] of originalGlobals) {
+    if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+    else Reflect.deleteProperty(globalThis, name);
+  }
+});
 
 beforeEach(() => {
   win = new Window({ url: "http://localhost" });

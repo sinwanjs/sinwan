@@ -34,6 +34,7 @@ All notable changes to **Sinwan** are documented in this file. The format follow
   - Suspense hydration shares one child-list helper.
   - JSX no longer copies children into component props (they are already there).
   - Stream aborts call `reader.cancel()` without a `try` that could never catch: the inner stream has no cancel hook, so it always resolves.
+- **Tests only**: the `<Img>` and renderer stress tests restore the DOM globals (`Event`, `Node`, …) they replace with happy-dom's. The leaked `Event` failed nine `useWebRTC`/`useUserMedia` tests on CI, where those files run first.
 
 ## [2.3.1] — Compiled JSX Mounts Again After Its First Mount
 

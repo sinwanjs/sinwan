@@ -42,10 +42,12 @@ const responsive: ImageAsset = Object.freeze({
 let win: InstanceType<typeof Window>;
 let container: HTMLElement;
 const globals = globalThis as Record<string, unknown>;
+const domGlobals = ["document", "Element", "Comment", "Text", "DocumentFragment", "Node", "HTMLElement", "Event"];
+const originalGlobals = new Map(domGlobals.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
 
 beforeEach(() => {
   win = new Window({ url: "http://localhost" });
-  for (const name of ["document", "Element", "Comment", "Text", "DocumentFragment", "Node", "HTMLElement", "Event"]) {
+  for (const name of domGlobals) {
     globals[name] = name === "document" ? win.document : Reflect.get(win, name);
   }
   globals.window = win;
@@ -54,8 +56,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const [name, descriptor] of originalGlobals) {
+    if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+    else delete globals[name];
+  }
   delete globals.window;
-  delete globals.document;
   delete globals.__DEV__;
   resetImageConfig();
 });
