@@ -2315,25 +2315,21 @@ describe("render-control-flow coverage > Dynamic same-tag reactive skip", () => 
 
 // ─── Suspense: re-suspend with reactive child ──────────────
 
-describe("render-control-flow coverage > Suspense re-suspend via reactive child", () => {
-  it("removes old content and re-creates fallback when child re-throws promise", async () => {
+describe("render-control-flow coverage > Suspense setup reads", () => {
+  it("keeps resolved content when a signal read during setup changes", async () => {
     const step = signal(0);
-    const pending1 = Promise.withResolvers<void>();
-    const pending2 = Promise.withResolvers<void>();
-    let hasThrown1 = false;
-    let hasThrown2 = false;
+    const pending = Promise.withResolvers<void>();
+    let hasThrown = false;
+    let setups = 0;
 
     const AsyncChild = cc(() => {
+      setups++;
       const s = step.value;
-      if (s === 0 && !hasThrown1) {
-        hasThrown1 = true;
-        throw pending1.promise;
+      if (!hasThrown) {
+        hasThrown = true;
+        throw pending.promise;
       }
-      if (s === 2 && !hasThrown2) {
-        hasThrown2 = true;
-        throw pending2.promise;
-      }
-      return el("p", { id: "suspense-content" }, "content");
+      return el("p", { id: "suspense-content" }, `content ${s}`);
     });
 
     const App = cc(() =>
@@ -2342,33 +2338,27 @@ describe("render-control-flow coverage > Suspense re-suspend via reactive child"
         children: el(AsyncChild),
       }),
     );
-    mount(App, container);
+    const app = mount(App, container);
     await nextTick();
-    // First render: promise thrown → fallback shown
     expect(container.querySelector("#susp-fb")).toBeTruthy();
-    // Resolve first promise → effect re-runs → content shown (hasThrown1=true)
-    pending1.resolve();
+
+    pending.resolve();
     await nextTick();
     await nextTick();
-    expect(container.querySelector("#suspense-content")).toBeTruthy();
+    const content = container.querySelector("#suspense-content");
+    expect(content?.textContent).toBe("content 0");
     expect(container.querySelector("#susp-fb")).toBeNull();
-    // Change step to 1 → effect re-runs (step is tracked via child render)
-    // Old content is removed (line 1564), new content rendered
+    expect(setups).toBe(2);
+
+    // Setup runs once: a signal it read does not re-render the boundary.
     step.value = 1;
     await nextTick();
     await nextTick();
-    expect(container.querySelector("#suspense-content")).toBeTruthy();
-    // Change step to 2 → child throws new promise
-    // Old content removed (line 1564), fallback re-created (lines 1645-1649)
-    step.value = 2;
-    await nextTick();
-    await nextTick();
-    expect(container.querySelector("#susp-fb")).toBeTruthy();
-    // Resolve second promise → content shown again
-    pending2.resolve();
-    await nextTick();
-    await nextTick();
-    expect(container.querySelector("#suspense-content")).toBeTruthy();
+    expect(container.querySelector("#suspense-content")).toBe(content);
+    expect(content?.textContent).toBe("content 0");
+    expect(container.querySelector("#susp-fb")).toBeNull();
+    expect(setups).toBe(2);
+    app.unmount();
   });
 });
 

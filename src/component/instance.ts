@@ -16,6 +16,7 @@ import type { CleanupFn } from "../reactivity/index.ts";
 import { nextTick } from "../reactivity/scheduler.ts";
 import {
   setActiveEffectScope,
+  untrack,
   type EffectScope,
 } from "../reactivity/effect.ts";
 
@@ -193,7 +194,7 @@ export function runComponentSetup<T>(
 ): { result: T; prevScope: EffectScope | null } {
   const prevScope = setActiveEffectScope(instance as unknown as EffectScope);
   try {
-    const result = fn();
+    const result = untrack(fn);
     // Clear the scope for the render phase — renderer-internal effects
     // (reactive text/attribute bindings) must NOT auto-register here.
     setActiveEffectScope(null);

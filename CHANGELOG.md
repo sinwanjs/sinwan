@@ -2,6 +2,16 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.4.1] — Component Setup Runs Untracked
+
+### Fixed
+
+- **A component built inside a reactive getter could loop forever.** Compiled JSX builds a template, and the components in it, while the getter that returns it is still tracking. A setup that read a signal and later wrote it (a fetch hook reading `isFetching`, then starting a request) therefore re-ran the getter, which remounted the component, which fetched again, and the tab froze. A render prop returning an element that holds components (`content={(c) => <div><A /><B /></div>}`) hit this; one returning a single component did not. Component setup (`runComponentSetup`) and template construction (`_$createTemplate`) now run untracked, so setup runs once wherever the component is built. Effects created in setup still track their own reads, and a getter still re-renders when the values it reads itself change. Template `ref` callbacks no longer subscribe the enclosing getter either.
+
+### Changed
+
+- **`<Suspense>` re-renders only to retry a suspension.** Its render attempt runs untracked, so a signal read during a child's setup or lifecycle hooks no longer re-renders resolved content (before, it remounted the children and could suspend again). The branches that removed old content and re-showed the fallback after a successful render could no longer run and were removed.
+
 ## [2.4.0] — `<Img>`: Optimized Images (Bun)
 
 ### Added

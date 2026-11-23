@@ -4,7 +4,7 @@ import type {
   MountedNode,
   MountedReactiveBlock,
 } from "../../../renderer/types.ts";
-import { effect } from "../../../reactivity/effect.ts";
+import { effect, untrack } from "../../../reactivity/effect.ts";
 import { signal } from "../../../reactivity/index.ts";
 import {
   pushSuspenseBoundary,
@@ -41,7 +41,6 @@ export function renderSuspenseBlock(
 ): () => void {
   const retrySignal = signal(0);
   let hasContent = false;
-  let contentNodes: MountedNode[] = [];
   let fallbackNode: MountedNode | null = null;
   let initialized = false;
   let disposed = false;
@@ -60,9 +59,7 @@ export function renderSuspenseBlock(
     fallbackTimer = undefined;
   };
 
-  const disposeEffect = effect(() => {
-    void retrySignal.value; // establish dependency for re-runs
-
+  const attemptRender = () => {
     // On the very first effect run, render fallback as placeholder
     // (not with a delay: an immediate render would flash it).
     if (!initialized) {
@@ -70,12 +67,6 @@ export function renderSuspenseBlock(
       block.children = fallbackNode ? [fallbackNode] : [];
       initialized = true;
     }
-
-    // Remove old content before attempting a fresh render.
-    for (const node of contentNodes) {
-      removeMountedNode(node);
-    }
-    contentNodes = [];
 
     // Attempt to render children under this Suspense boundary.
     const boundary = {
@@ -131,7 +122,6 @@ export function renderSuspenseBlock(
       }
 
       block.children = nodes;
-      contentNodes = nodes;
       hasContent = true;
 
       if (initialized) {
@@ -155,19 +145,15 @@ export function renderSuspenseBlock(
         boundary.promises.add(promise);
 
         if (!fallbackNode) {
-          if (delay === 0) {
+          // Started once per suspension: retries while waiting keep the timer.
+          fallbackTimer ??= setTimeout(() => {
+            fallbackTimer = undefined;
+            if (disposed || hasContent || fallbackNode) return;
             renderFallback();
-          } else {
-            // Started once per suspension: retries while waiting keep the timer.
-            fallbackTimer ??= setTimeout(() => {
-              fallbackTimer = undefined;
-              if (disposed || hasContent || fallbackNode) return;
-              renderFallback();
-              block.children = fallbackNode ? [fallbackNode] : [];
-              fireMountedAndQueueUpdated(owner);
-            }, delay);
-          }
-          block.children = fallbackNode ? [fallbackNode] : [];
+            block.children = fallbackNode ? [fallbackNode] : [];
+            fireMountedAndQueueUpdated(owner);
+          }, delay);
+          block.children = [];
         }
 
         hasContent = false;
@@ -183,6 +169,11 @@ export function renderSuspenseBlock(
       promise.then(() => boundary.onResolved());
     }
     boundary.promises.clear();
+  };
+
+  const disposeEffect = effect(() => {
+    void retrySignal.value; // establish dependency for re-runs
+    untrack(attemptRender);
   });
 
   return () => {

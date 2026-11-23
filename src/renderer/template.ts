@@ -193,7 +193,7 @@ function buildLiveTemplate(
 ): SinwanTemplateResult {
   const prevScope = setActiveEffectScope(null);
   try {
-    const result = createLiveTemplate(def, dynamics);
+    const result = untrack(() => createLiveTemplate(def, dynamics));
     result.def = def;
     result.dynamics = dynamics;
     return result;
