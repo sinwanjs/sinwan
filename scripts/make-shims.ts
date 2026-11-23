@@ -37,6 +37,7 @@ const ENTRIES: PublicEntry[] = [
     internal: "control-flow/index",
     types: "control-flow/index",
   },
+  { name: "dev", internal: "dev/index", types: "dev/index" },
   { name: "event", internal: "event/index", types: "event/index" },
   { name: "hook", internal: "hook/index", types: "hook/index" },
   { name: "hydration", internal: "hydration/index", types: "hydration/index" },

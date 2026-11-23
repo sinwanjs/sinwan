@@ -12,6 +12,8 @@ import { hostOf } from "../../shared/hostOf.ts";
 import { renderBlockContent } from "../../shared/renderBlockContent.ts";
 import { resolveFallbackDelay } from "../../shared/resolveFallbackDelay.ts";
 import { withOptionalInstance } from "../../shared/withOptionalInstance.ts";
+import { isValueRenderProp } from "../../shared/isValueRenderProp.ts";
+import { warnObjectWhenRebuild } from "../../shared/warnObjectWhenRebuild.ts";
 import { resolveShowChildren, SHOW_FALLBACK, SHOW_WAITING } from "./resolve.ts";
 
 export { isShowElement, type ShowProps } from "../../identity.ts";
@@ -65,6 +67,17 @@ export function renderShowBlock(
     // Skip re-rendering if 'when' hasn't changed (optimization for large lists)
     if (initialized && Object.is(key, prevKey)) {
       return;
+    }
+    if (typeof __DEV__ !== "undefined" && __DEV__ && initialized && when) {
+      const children =
+        (element.props as { children?: unknown }).children ?? element.children;
+      warnObjectWhenRebuild(
+        "Show",
+        prevKey,
+        key,
+        isValueRenderProp(children),
+        owner,
+      );
     }
     prevKey = key;
 

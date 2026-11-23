@@ -2,6 +2,14 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.5.0] — Development Warnings
+
+### Added
+
+- **`sinwan/dev`**: `devWarn(code, message)` prints `[Sinwan] SW2xx: message` once per code and message, and `isDev()` says whether the development bundle is running. Both are no-ops in the production bundle (`__DEV__` is false there), so libraries such as sinwan-ui-core can report misuse without shipping the checks.
+- **SW201, `<Show>` rebuilt its content for nothing**: in development, a `<Show>` whose `when` changes from one object to another warns when the rebuild was avoidable: the children do not receive the value (static children), or the new value is an equal copy (for example after a refetch). The message names the owning component. Focus and local state inside a rebuilt `<Show>` are lost, which before this showed up only as a UI bug.
+- **`DIAGNOSTICS.md`** (in the package): every compiler (`SW1xx`, sinwan-compiler 1.4) and runtime (`SW2xx`) diagnostic, with its cause and fix.
+
 ## [2.4.2] — Reactive Template Slots Run Once
 
 ### Fixed

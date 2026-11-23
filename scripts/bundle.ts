@@ -51,6 +51,7 @@ const CONTROL_FLOW_CLIENTS = [
 const ENTRYPOINTS = [
   `${SRC}/component/index.ts`,
   ...CONTROL_FLOW_CLIENTS,
+  `${SRC}/dev/index.ts`,
   `${SRC}/event/index.ts`,
   `${SRC}/hook/index.ts`,
   `${SRC}/hydration/index.ts`,
