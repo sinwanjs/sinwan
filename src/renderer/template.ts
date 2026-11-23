@@ -10,8 +10,13 @@ import { setActiveEffectScope } from "../reactivity/effect.ts";
 import {
   getCurrentInstance,
   queueUpdatedHooks,
+  withInstance,
 } from "../component/instance.ts";
-import { renderNodeToDOM } from "./render-children.ts";
+import {
+  createReactiveBlock,
+  renderNodeToDOM,
+  type ReactiveBlockHandle,
+} from "./render-children.ts";
 import { getParentNamespace } from "./render-element.ts";
 import { unmountNode } from "./unmount.ts";
 import { assignClassName, setSingleAttribute } from "./set-attribute.ts";
@@ -281,35 +286,13 @@ function createLiveTemplate(
       const namespace = getParentNamespace(parent);
 
       if (isBindingDescriptor(value) && value.type === "text") {
-        const initial = value.getter();
-        if (initial != null && typeof initial === "object") {
-          const mounted = renderNodeToDOM(
-            value.getter as SinwanNode,
-            parent,
-            anchor,
-            namespace,
-          );
-          anchor?.parentNode?.removeChild(anchor);
-          disposers.push(() => unmountNode(mounted));
-        } else {
-          disposers.push(bindScalarTextSlot(parent, anchor, value.getter));
-        }
+        disposers.push(
+          bindReactiveChildSlot(parent, anchor, value.getter, namespace),
+        );
       } else if (isScalarReactiveChild(value)) {
         // Solid-style: reactive string/number children bind textContent
         // without comment-anchored reactive blocks (no sinwan-r pairs).
-        const peek = untrack(() => resolve(value as () => unknown));
-        if (peek != null && typeof peek === "object") {
-          const mounted = renderNodeToDOM(
-            value as SinwanNode,
-            parent,
-            anchor,
-            namespace,
-          );
-          anchor?.parentNode?.removeChild(anchor);
-          disposers.push(() => unmountNode(mounted));
-        } else {
-          disposers.push(bindScalarTextSlot(parent, anchor, value));
-        }
+        disposers.push(bindReactiveChildSlot(parent, anchor, value, namespace));
       } else if (
         value == null ||
         typeof value === "boolean" ||
@@ -404,28 +387,56 @@ function isScalarReactiveChild(value: unknown): boolean {
 }
 
 /**
- * Bind a live text node into a child slot (Solid insertExpression).
- * `anchor` is the `<!--s:N-->` marker when present; null for parent-fill slots.
+ * Bind a reactive child slot with one effect, so its source is resolved once
+ * per update. The first value decides the mode: an object becomes a
+ * comment-anchored node block; anything else binds a live text node
+ * (Solid insertExpression). `anchor` is the `<!--s:N-->` marker when
+ * present; null for parent-fill slots.
  */
-function bindScalarTextSlot(
+function bindReactiveChildSlot(
   parent: Node,
   anchor: Comment | null,
   source: unknown,
+  namespace: string | null,
 ): CleanupFn {
-  const textNode = domOps.createTextNode("");
-  if (anchor) {
-    parent.insertBefore(textNode, anchor);
-    parent.removeChild(anchor);
-  } else {
-    parent.appendChild(textNode);
-  }
   const owner = getCurrentInstance();
+  let textNode: Text | null = null;
+  let nodes: ReactiveBlockHandle | null = null;
   let initialized = false;
+  const read = () => resolve(source as () => unknown) as SinwanNode;
   // Fixed effect: Update-every-10th re-runs ~1100 text bindings without
   // full cleanupDeps/retrack. queueUpdatedHooks is skipped when unused.
-  return effect(
+  const dispose = effect(
     () => {
-      const resolved = resolve(source as () => unknown);
+      if (nodes) {
+        const handle = nodes;
+        handle.clear();
+        const render = () => handle.mount(read());
+        if (owner) {
+          withInstance(owner, render);
+        } else {
+          render();
+        }
+        return;
+      }
+      const resolved = read();
+      if (!textNode) {
+        if (resolved != null && typeof resolved === "object") {
+          nodes = createReactiveBlock(parent, anchor, namespace, owner, () =>
+            dispose(),
+          );
+          anchor?.parentNode?.removeChild(anchor);
+          nodes.mount(resolved);
+          return;
+        }
+        textNode = domOps.createTextNode("");
+        if (anchor) {
+          parent.insertBefore(textNode, anchor);
+          parent.removeChild(anchor);
+        } else {
+          parent.appendChild(textNode);
+        }
+      }
       const next =
         resolved == null || typeof resolved === "boolean"
           ? ""
@@ -444,6 +455,13 @@ function bindScalarTextSlot(
     },
     { fixed: true },
   );
+  return () => {
+    if (nodes) {
+      unmountNode(nodes.block);
+    } else {
+      dispose();
+    }
+  };
 }
 
 /**

@@ -259,7 +259,7 @@ describe("component setup inside a reactive getter", () => {
 
 describe("compiled render-prop content", () => {
   testWithCompiler(
-    "does not loop on components nested in an element",
+    "sets up components nested in an element once",
     async () => {
       const probe: FetchProbe = { isFetching: signal(false), setups: 0 };
       const App = compileGate(
@@ -268,10 +268,7 @@ describe("compiled render-prop content", () => {
       );
       const app = mount(App, container);
       await settle();
-      const afterFirstRender = probe.setups;
-      expect(afterFirstRender).toBeLessThan(SETUP_LIMIT);
-      await settle();
-      expect(probe.setups).toBe(afterFirstRender);
+      expect(probe.setups).toBe(2);
       expect(container.querySelectorAll("p").length).toBe(2);
       app.unmount();
     },

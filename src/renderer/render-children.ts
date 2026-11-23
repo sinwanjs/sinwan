@@ -29,6 +29,7 @@ import {
   queueUpdatedHooks,
   fireMountedHooks,
   withInstance,
+  type ComponentInstance,
 } from "../component/instance.ts";
 import { removeMountedNode } from "./unmount.ts";
 import {
@@ -299,6 +300,74 @@ export function renderChildrenToDOM(
   return mounted;
 }
 
+/** A comment-anchored block whose content is replaced on every update. */
+export interface ReactiveBlockHandle {
+  block: MountedReactiveBlock;
+  /** Remove the current content, before the next value is resolved. */
+  clear(): void;
+  /** Render an already resolved value untracked; later mounts fire the owner's hooks. */
+  mount(resolved: SinwanNode): void;
+}
+
+/**
+ * Anchors for a reactive block, inserted before `anchor`. The caller owns the
+ * effect that resolves values and passes its disposer as `dispose`.
+ */
+export function createReactiveBlock(
+  parent: Node,
+  anchor: Node | null,
+  namespace: string | null,
+  owner: ComponentInstance | null,
+  dispose: () => void,
+): ReactiveBlockHandle {
+  const startAnchor = domOps.createComment(FUNCTION_MARKER_OPEN);
+  const endAnchor = domOps.createComment(FUNCTION_MARKER_CLOSE);
+  insertNode(parent, startAnchor, anchor);
+  insertNode(parent, endAnchor, anchor);
+
+  let mountedContent: MountedNode | null = null;
+  let initialized = false;
+
+  const block: MountedReactiveBlock = {
+    type: "reactive-block",
+    startAnchor,
+    endAnchor,
+    children: [],
+    dispose,
+  };
+
+  return {
+    block,
+    clear() {
+      if (mountedContent) {
+        removeMountedNode(mountedContent);
+      }
+    },
+    mount(resolved) {
+      // Rendering is untracked to prevent setup-time signal reads (e.g.
+      // parent signal mutated by registration) from subscribing this block
+      // and causing a self-triggering loop. Re-read the live parent: a
+      // For/Index fragment mount moves these anchors out of the fragment
+      // before the next update.
+      mountedContent = untrack(() =>
+        renderNodeToDOM(
+          resolved,
+          hostOf(parent, endAnchor),
+          endAnchor,
+          namespace,
+        ),
+      );
+      block.children = [mountedContent];
+
+      if (initialized) {
+        if (owner) fireMountedHooks(owner);
+        queueUpdatedHooks(owner);
+      }
+      initialized = true;
+    },
+  };
+}
+
 /**
  * Render a reactive node (Signal, Computed, or Function) that can resolve to any SinwanNode.
  * Uses comment anchors to allow swapping between different types of content (text, elements, etc.).
@@ -309,60 +378,28 @@ function renderReactiveNodeToDOM(
   anchor: Node | null,
   namespace: string | null,
 ): MountedNode {
-  const startAnchor = domOps.createComment(FUNCTION_MARKER_OPEN);
-  const endAnchor = domOps.createComment(FUNCTION_MARKER_CLOSE);
-  insertNode(parent, startAnchor, anchor);
-  insertNode(parent, endAnchor, anchor);
-
   const owner = getCurrentInstance();
-  let mountedContent: MountedNode | null = null;
-  let initialized = false;
   let disposeEffect: (() => void) | undefined;
-
-  const block: MountedReactiveBlock = {
-    type: "reactive-block",
-    startAnchor,
-    endAnchor,
-    children: [],
-    dispose: () => disposeEffect?.(),
-  };
+  const handle = createReactiveBlock(parent, anchor, namespace, owner, () =>
+    disposeEffect?.(),
+  );
 
   disposeEffect = effect(() => {
     // 1. Cleanup previous content
-    if (mountedContent) {
-      removeMountedNode(mountedContent);
-    }
+    handle.clear();
 
     // 2. Resolve (tracked) and render (untracked) inside withInstance so
     //    async re-runs preserve the correct owner for child component
-    //    injection. Rendering is untracked to prevent setup-time signal
-    //    reads (e.g. parent signal mutated by registration) from
-    //    subscribing this block and causing a self-triggering loop.
-    const render = () => {
-      const resolved = resolve(reactive) as SinwanNode;
-      // Re-read the live parent. A For/Index fragment mount moves these
-      // anchors out of the fragment before the next update.
-      return untrack(() =>
-        renderNodeToDOM(
-          resolved,
-          hostOf(parent, endAnchor),
-          endAnchor,
-          namespace,
-        ),
-      );
-    };
-    mountedContent = owner ? withInstance(owner, render) : render();
-    block.children = [mountedContent];
-
-    // 3. Trigger lifecycle hooks
-    if (initialized) {
-      if (owner) fireMountedHooks(owner);
-      queueUpdatedHooks(owner);
+    //    injection.
+    const render = () => handle.mount(resolve(reactive) as SinwanNode);
+    if (owner) {
+      withInstance(owner, render);
+    } else {
+      render();
     }
-    initialized = true;
   });
 
-  return block;
+  return handle.block;
 }
 
 function trackPromise(promise: PromiseLike<unknown>): PromiseRecord {

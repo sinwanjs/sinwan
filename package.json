@@ -1,6 +1,6 @@
 {
   "name": "sinwan",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "description": "A fast reactive UI library for JSX, fine-grained reactivity, SSR, and hydration.",
   "author": "Mohammed Ben Cheikh",
   "license": "MIT",

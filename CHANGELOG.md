@@ -2,6 +2,12 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.4.2] — Reactive Template Slots Run Once
+
+### Fixed
+
+- **A reactive template slot ran its getter twice on first render.** A compiled template peeked each reactive child slot to choose between a text binding and a node block, then resolved it again to render. A getter that returned nodes (`<section>{props.content(x)}</section>`) therefore ran twice, and the components in the discarded first result were set up, with their side effects such as requests, without ever being mounted. Text getters also ran twice. Each slot now uses one effect, whose first run decides the mode and renders what it resolved; text slots keep the same fast text binding.
+
 ## [2.4.1] — Component Setup Runs Untracked
 
 ### Fixed
