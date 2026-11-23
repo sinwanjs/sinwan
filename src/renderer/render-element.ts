@@ -28,11 +28,13 @@ import {
   handleComponentError,
   runComponentSetup,
   restoreEffectScope,
+  fireUnmountedHooks,
   type ComponentInstance,
 } from "../component/instance.ts";
 import { applyRef } from "./apply-ref.ts";
 import { getActiveSuspenseBoundary } from "./suspense-boundary.ts";
 import { resolveLatestComponent } from "../hmr/component-registry.ts";
+import { setActiveEffectScope } from "../reactivity/effect.ts";
 
 export { applyRef } from "./apply-ref.ts";
 
@@ -92,6 +94,12 @@ export function renderElementToDOM(
     const expanded = expandRegisteredFactory(element);
     if (expanded) {
       return renderElementToDOM(expanded, parent, anchor, namespace);
+    }
+
+    const preset = presetComponents.get(element);
+    if (preset) {
+      presetComponents.delete(element);
+      return renderComponentToDOM(tag, props, parent, anchor, namespace, preset);
     }
 
     return renderComponentToDOM(tag, props, parent, anchor, namespace);
@@ -171,20 +179,24 @@ function renderIntrinsicToDOM(
   };
 }
 
+/** A component whose setup already ran (Switch probing); mounting reuses it. */
+interface ComponentSetup {
+  component: Function;
+  instance: ComponentInstance;
+  result: unknown;
+}
+
+const presetComponents = new WeakMap<SinwanElement, ComponentSetup>();
+
 /**
- * Render a functional component.
- *
- * Creates a ComponentInstance, sets it as the active instance during
- * setup so lifecycle hooks (onMounted, etc.) register on it, then
- * renders the returned element tree.
+ * Create a component's instance under the current owner and register it as
+ * the owner's child. Returns the component to run: in development, the
+ * latest hot-swapped version.
  */
-function renderComponentToDOM(
+function createChildInstance(
   component: Function,
   props: Record<string, unknown>,
-  parent: Node,
-  anchor: Node | null,
-  namespace: string | null,
-): MountedComponent {
+): { component: Function; instance: ComponentInstance } {
   // DEV only: Fast Refresh — resolve to the latest hot-swapped version of this
   // component. A parent module may still reference the pre-edit function via a
   // stale ESM import binding; this maps it to the freshest code. In production
@@ -215,6 +227,81 @@ function renderComponentToDOM(
     if (hmrHook) hmrHook(instance);
   }
 
+  return { component, instance };
+}
+
+/**
+ * Internal (Switch probing): run the setup of a component element now, as
+ * its own instance under the current owner, so Switch can see whether it
+ * returns a Match. `element` mounts that setup instead of running it again;
+ * `discard` drops it (a Match wrapper). Returns null when setup throws or
+ * returns a promise: render the original element normally then.
+ */
+export function setupComponentElement(source: SinwanElement): {
+  element: SinwanElement;
+  result: unknown;
+  discard: () => void;
+} | null {
+  const { component, instance } = createChildInstance(
+    source.tag as Function,
+    source.props,
+  );
+  const prevInstance = setCurrentInstance(instance);
+  let result: unknown;
+  try {
+    const setup = runComponentSetup(instance, () => component(source.props));
+    restoreEffectScope(setup.prevScope);
+    result = setup.result;
+  } catch {
+    fireUnmountedHooks(instance);
+    return null;
+  } finally {
+    setCurrentInstance(prevInstance);
+  }
+  if (result instanceof Promise) {
+    fireUnmountedHooks(instance);
+    return null;
+  }
+  const element: SinwanElement = {
+    tag: source.tag,
+    props: source.props,
+    children: source.children,
+  };
+  presetComponents.set(element, { component, instance, result });
+  return {
+    element,
+    result,
+    discard: () => {
+      presetComponents.delete(element);
+      fireUnmountedHooks(instance);
+    },
+  };
+}
+
+/**
+ * Render a functional component.
+ *
+ * Creates a ComponentInstance, sets it as the active instance during
+ * setup so lifecycle hooks (onMounted, etc.) register on it, then
+ * renders the returned element tree. With `preset`, setup already ran:
+ * its instance and result are mounted as they are.
+ */
+function renderComponentToDOM(
+  component: Function,
+  props: Record<string, unknown>,
+  parent: Node,
+  anchor: Node | null,
+  namespace: string | null,
+  preset?: ComponentSetup,
+): MountedComponent {
+  let instance: ComponentInstance;
+  if (preset) {
+    component = preset.component;
+    instance = preset.instance;
+  } else {
+    ({ component, instance } = createChildInstance(component, props));
+  }
+
   // Set this instance as current during BOTH setup AND rendering,
   // so nested child components discover it as their parent.
   const prevInstance = setCurrentInstance(instance);
@@ -230,7 +317,10 @@ function renderComponentToDOM(
   try {
     // If this async component already resolved inside the active Suspense
     // boundary, reuse the cached result instead of re-executing it.
-    if (boundary && boundary.asyncComponentResults?.has(component)) {
+    if (preset) {
+      result = preset.result;
+      prevScope = setActiveEffectScope(null);
+    } else if (boundary && boundary.asyncComponentResults?.has(component)) {
       result = boundary.asyncComponentResults.get(component);
     } else {
       // Run setup with `instance` as the active effect scope so user-created

@@ -8,6 +8,7 @@ import { effect } from "../../../reactivity/effect.ts";
 import { resolve } from "../../../reactivity/index.ts";
 import { queueUpdatedHooks } from "../../../component/instance.ts";
 import { domOps } from "../../../renderer/dom-ops.ts";
+import { warnObjectWhenRebuild } from "../../shared/warnObjectWhenRebuild.ts";
 import {
   getMountedDomNodes,
   removeMountedNode,
@@ -58,6 +59,9 @@ export function renderKeyBlock(
     const key = resolve((element.props as { when?: unknown }).when);
     if (initialized && Object.is(currentKey, key)) {
       return;
+    }
+    if (typeof __DEV__ !== "undefined" && __DEV__ && initialized) {
+      warnObjectWhenRebuild("Key", currentKey, key, true, owner);
     }
 
     // When cache=false, fully unmount old content (React-style key behavior)

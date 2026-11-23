@@ -8,6 +8,7 @@ import {
 } from "../../../reactivity/index.ts";
 import { getCurrentInstance } from "../../../component/instance.ts";
 import { domOps } from "../../../renderer/dom-ops.ts";
+import { devWarn } from "../../../dev/warn.ts";
 import { removeMountedNode } from "../../../renderer/unmount.ts";
 import { PORTAL_TYPE } from "../../const.ts";
 import { Portal as PortalFactory } from "../../identity.ts";
@@ -37,7 +38,14 @@ export function resolvePortalTarget(value: unknown): Node | null {
   }
 
   if (typeof target === "string") {
-    return document.querySelector(target);
+    const node = document.querySelector(target);
+    if (node === null && typeof __DEV__ !== "undefined" && __DEV__) {
+      devWarn(
+        "SW204",
+        `<Portal mount="${target}"> matched no element, so its content is not rendered anywhere. Check the selector, or create the target element before the portal mounts.`,
+      );
+    }
+    return node;
   }
 
   if (typeof target === "function") {

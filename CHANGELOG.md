@@ -2,6 +2,23 @@
 
 All notable changes to **Sinwan** are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and Sinwan adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.6.0] — Switch Keeps Its Branch; More Development Warnings
+
+### Fixed
+
+- **`<Switch>` rebuilt the selected branch on every change.** Its effect cleared and rebuilt the content whenever any `when` it read changed, so `<Match when={count.value > 0}>` remounted its content (losing focus and local state) on every count change. Switch now selects the branch tracked and builds it untracked, and skips the rebuild when the same branch is selected with the same `when` value, as `<Show>` does. Reads inside a `Match` render prop no longer re-run the Switch either.
+- **A component used as a `<Switch>` branch was set up twice.** To find Matches returned by wrapper components, Switch called each component child once, without its own instance, then rendered it, which set it up a second time (`<Switch><Match …/><Loading /></Switch>` fetched twice). Switch now probes a component child once, as a real component setup under the right owner. A Match wrapper's instance is discarded and its Match is used; any other component is mounted from that same setup, so setup runs once. Probe results are kept per child, so later Switch runs do not call the component again. A probe whose setup throws or is async falls back to a normal render, so error boundaries and Suspense behave as before. Server rendering, hydration, `resolveSwitchContent` and `findTruthyMatch` are unchanged.
+
+### Added
+
+- **Development warnings** (`DIAGNOSTICS.md`):
+  - **SW201** now also covers the selected `<Match>`, and `<Key>` when it remounts for an equal copy.
+  - **SW203**: `<For>` with `by` remounted rows whose key did not change, because their items are new objects (typically a refetch). Once per `For`, with the count.
+  - **SW204**: a `<Portal mount="…">` selector matched no element.
+  - **SW205**: an `<Activity mode>` other than `"visible"` or `"hidden"`.
+  - **SW206**: `<Virtual itemHeight>` or `containerHeight` is not a positive number.
+  - **SW207**: `<Dynamic component>` resolved to an element instead of a component (a zero-argument function is called as a getter), so nothing renders.
+
 ## [2.5.0] — Development Warnings
 
 ### Added

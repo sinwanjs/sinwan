@@ -1,5 +1,6 @@
 import type { SinwanElement, SinwanNode } from "../../types.ts";
 import { resolve } from "../../reactivity/index.ts";
+import { devWarn } from "../../dev/warn.ts";
 import { normalizeContent } from "./normalizeContent.ts";
 
 /**
@@ -33,5 +34,11 @@ export function createActivityWrapperElement(
 /** Whether Activity should soft-hide after mount (mode === "hidden"). */
 export function isActivityHidden(element: SinwanElement): boolean {
   const mode = resolve((element.props as { mode?: unknown }).mode) ?? "visible";
+  if (typeof __DEV__ !== "undefined" && __DEV__ && mode !== "visible" && mode !== "hidden") {
+    devWarn(
+      "SW205",
+      `<Activity mode="${String(mode)}"> is not "visible" or "hidden", so it is treated as "visible".`,
+    );
+  }
   return mode === "hidden";
 }

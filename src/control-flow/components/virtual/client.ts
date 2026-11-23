@@ -9,6 +9,7 @@ import { resolve, signal } from "../../../reactivity/index.ts";
 import { queueUpdatedHooks } from "../../../component/instance.ts";
 import { readyIndex } from "../../../common/list-accessors.ts";
 import { domOps } from "../../../renderer/dom-ops.ts";
+import { devWarn } from "../../../dev/warn.ts";
 import { renderNodeToDOM } from "../../../renderer/render-children.ts";
 import {
   getMountedDomNodes,
@@ -58,6 +59,19 @@ export function renderVirtualBlock<T>(
   const containerHeight = resolve(props.containerHeight) as number;
   const overscan = (resolve(props.overscan) as number | undefined) ?? 3;
   const minRendered = (resolve(props.minRendered) as number | undefined) ?? 0;
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    for (const [name, value] of [
+      ["itemHeight", itemHeight],
+      ["containerHeight", containerHeight],
+    ] as const) {
+      if (!(typeof value === "number" && Number.isFinite(value) && value > 0)) {
+        devWarn(
+          "SW206",
+          `<Virtual ${name}={${String(value)}}> must be a positive number of pixels (read once, when the list mounts); rows cannot be laid out.`,
+        );
+      }
+    }
+  }
 
   const container = domOps.createElement("div") as HTMLElement;
   container.style.overflow = "auto";

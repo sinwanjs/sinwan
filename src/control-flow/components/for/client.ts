@@ -27,6 +27,7 @@ import { hostOf } from "../../shared/hostOf.ts";
 import { insertNode } from "../../shared/insertNode.ts";
 import { renderBlockContent } from "../../shared/renderBlockContent.ts";
 import { containsPortal, syncPortalOrder } from "./portal-sync.ts";
+import { describeOwner, devWarn } from "../../../dev/warn.ts";
 
 export { isForElement, type ForProps } from "../../identity.ts";
 
@@ -81,6 +82,8 @@ export function renderForBlock<T>(
   // after reconciles. Avoid O(n) containsPortal scans on portal-free lists
   // (js-framework-benchmark). Cleared only when the list is emptied.
   let listHasPortal = false;
+  // SW203 warns once per For.
+  let warnedSameKey = false;
   const notePortals = (rows: MountedNode[]): void => {
     if (listHasPortal) return;
     for (let i = 0; i < rows.length; i++) {
@@ -337,6 +340,7 @@ export function renderForBlock<T>(
       newIndices.set(key, j);
     }
 
+    let sameKeyRemounts = 0;
     for (let i = start; i <= end; i++) {
       const key = keys[i]!;
       let j = newIndices.get(key);
@@ -352,8 +356,21 @@ export function renderForBlock<T>(
           // fresh row is created below; advance duplicate-key chain.
           j = newIndicesNext[j]!;
           newIndices.set(key, j);
+          if (typeof __DEV__ !== "undefined" && __DEV__) sameKeyRemounts++;
         }
       }
+    }
+    if (
+      typeof __DEV__ !== "undefined" &&
+      __DEV__ &&
+      sameKeyRemounts > 0 &&
+      !warnedSameKey
+    ) {
+      warnedSameKey = true;
+      devWarn(
+        "SW203",
+        `<For> in ${describeOwner(owner)} remounted ${sameKeyRemounts} row(s) whose \`by\` key did not change, because their items are new objects; those rows lost focus and local state. Keep item objects stable (update them in place, or reuse the old object when the data is the same), or use <Index> to render rows by position.`,
+      );
     }
 
     const nextMounted: MountedNode[] = new Array(newLen);

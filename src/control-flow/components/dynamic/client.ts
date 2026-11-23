@@ -10,6 +10,7 @@ import { clearChildren } from "../../shared/clearChildren.ts";
 import { fireMountedAndQueueUpdated } from "../../shared/fireMountedAndQueueUpdated.ts";
 import { renderBlockContent } from "../../shared/renderBlockContent.ts";
 import { createDynamicElement } from "./element.ts";
+import { describeOwner, devWarn } from "../../../dev/warn.ts";
 
 export {
   isDynamicElement,
@@ -37,6 +38,12 @@ export function renderDynamicBlock(
 
   return effect(() => {
     const tag = resolve((element.props as { component?: unknown }).component);
+    if (typeof __DEV__ !== "undefined" && __DEV__ && tag !== null && typeof tag === "object") {
+      devWarn(
+        "SW207",
+        `<Dynamic> in ${describeOwner(owner)} got an element instead of a component, so it renders nothing: a zero-argument function on component is read as a getter and called. Pass a component (cc(...), or a function that takes props).`,
+      );
+    }
     if (hasTag && Object.is(currentTag, tag)) {
       return;
     }

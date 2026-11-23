@@ -31,40 +31,133 @@ import {
 import { resolveKeyChildren } from "../key/resolve.ts";
 import { resolveMatchChildren } from "../match/client.ts";
 import { resolveShowChildren } from "../show/resolve.ts";
+import { isValueRenderProp } from "../../shared/isValueRenderProp.ts";
+
+const CONTROL_FLOW_TYPES: ReadonlySet<unknown> = new Set([
+  MATCH_TYPE,
+  SHOW_TYPE,
+  FOR_TYPE,
+  INDEX_TYPE,
+  KEY_TYPE,
+  SWITCH_TYPE,
+  DYNAMIC_TYPE,
+  PORTAL_TYPE,
+  VIRTUAL_TYPE,
+  ERROR_BOUNDARY_TYPE,
+  SUSPENSE_TYPE,
+  ACTIVITY_TYPE,
+  VIEW_TRANSITION_TYPE,
+]);
+
+/** True for a built-in control-flow element (what a Match wrapper returns). */
+export function isControlFlowResult(value: unknown): value is SinwanElement {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "tag" in value &&
+    CONTROL_FLOW_TYPES.has((value as SinwanElement).tag)
+  );
+}
+
+/**
+ * Turns a component child into what Switch should inspect: the control-flow
+ * element it returns (a Match wrapper), or an element to render as a branch.
+ */
+export type ExpandComponent = (element: SinwanElement) => SinwanElement;
+
+/** Default expansion: call the component directly (SSR, hydration, public helpers). */
+function callComponent(element: SinwanElement): SinwanElement {
+  const expanded = (element.tag as (p: Record<string, unknown>) => unknown)(
+    element.props,
+  );
+  return isControlFlowResult(expanded) ? expanded : element;
+}
+
+/** The `<Switch>` fallback, as a branch key that stays equal across runs. */
+const SWITCH_FALLBACK: unique symbol = Symbol("switch-fallback");
+
+/**
+ * The branch a `<Switch>` selected: `key` and `value` tell whether a re-run
+ * picked the same branch; `build` creates its content (call it untracked).
+ */
+export interface SwitchBranch {
+  key: unknown;
+  value: unknown;
+  /** True when the content is a render prop that receives `value`. */
+  usesValue: boolean;
+  build: () => SinwanNode;
+}
+
+function nodeBranch(content: SinwanNode, key: unknown = content): SwitchBranch {
+  return { key, value: undefined, usesValue: false, build: () => content };
+}
+
+function fallbackBranch(fallback: SinwanNode): SwitchBranch {
+  return {
+    key: SWITCH_FALLBACK,
+    value: undefined,
+    usesValue: false,
+    build: () => fallback,
+  };
+}
+
+/**
+ * Select the Switch branch (or fallback) for the current reactive state.
+ * Reads the `when` conditions; builds Match content only through `build`.
+ */
+export function selectSwitchBranch(
+  element: SinwanElement,
+  expand: ExpandComponent = callComponent,
+): SwitchBranch {
+  const props = element.props as {
+    when?: unknown;
+    fallback?: SinwanNode;
+    children?: SinwanNode;
+  };
+  if ("when" in props && props.when !== undefined) {
+    const gate = resolve(props.when);
+    if (!gate) {
+      return fallbackBranch(props.fallback);
+    }
+  }
+  const children = normalizeContent(props.children ?? element.children);
+  return findBranch(children, expand) ?? fallbackBranch(props.fallback);
+}
 
 /**
  * Resolve which Switch branch (or fallback) should render for the current
  * reactive state.
  */
 export function resolveSwitchContent(element: SinwanElement): SinwanNode {
-  const props = element.props as {
-    when?: unknown;
-    fallback?: SinwanNode;
-    children?: SinwanNode;
-  };
+  return selectSwitchBranch(element).build();
+}
 
-  if ("when" in props && props.when !== undefined) {
-    const gate = resolve(props.when);
-    if (!gate) {
-      return props.fallback;
-    }
-  }
+/** Content of the first truthy Match (or other branch) in `nodes`. */
+export function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
+  return findBranch(nodes)?.build();
+}
 
-  const children = normalizeContent(props.children ?? element.children);
-  const match = findTruthyMatch(children);
-  return match !== undefined ? match : props.fallback;
+/** Content found inside nested control flow, as a branch of its own. */
+function findInContent(
+  content: SinwanNode,
+  expand: ExpandComponent,
+): SwitchBranch | undefined {
+  return findBranch(normalizeContent(content), expand);
 }
 
 /**
  * Walk a node list and return the first truthy Match (or nested control-flow
- * content). Used by Switch and nested Match resolution.
+ * content) as a branch. Used by Switch and nested Match resolution.
  */
-export function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
+function findBranch(
+  nodes: SinwanNode[],
+  expand: ExpandComponent = callComponent,
+): SwitchBranch | undefined {
   for (const node of nodes) {
     if (node == null || typeof node === "boolean") continue;
 
     if (Array.isArray(node)) {
-      const match = findTruthyMatch(node);
+      const match = findBranch(node, expand);
       if (match !== undefined) return match;
       continue;
     }
@@ -82,54 +175,38 @@ export function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
       }
 
       if (typeof element.tag === "function") {
-        const tag = element.tag;
-        const expanded = (tag as (p: Record<string, unknown>) => unknown)(
-          element.props,
-        );
-        if (
-          expanded &&
-          typeof expanded === "object" &&
-          "tag" in expanded &&
-          ((expanded as SinwanElement).tag === MATCH_TYPE ||
-            (expanded as SinwanElement).tag === SHOW_TYPE ||
-            (expanded as SinwanElement).tag === FOR_TYPE ||
-            (expanded as SinwanElement).tag === INDEX_TYPE ||
-            (expanded as SinwanElement).tag === KEY_TYPE ||
-            (expanded as SinwanElement).tag === SWITCH_TYPE ||
-            (expanded as SinwanElement).tag === DYNAMIC_TYPE ||
-            (expanded as SinwanElement).tag === PORTAL_TYPE ||
-            (expanded as SinwanElement).tag === VIRTUAL_TYPE ||
-            (expanded as SinwanElement).tag === ERROR_BOUNDARY_TYPE ||
-            (expanded as SinwanElement).tag === SUSPENSE_TYPE ||
-            (expanded as SinwanElement).tag === ACTIVITY_TYPE ||
-            (expanded as SinwanElement).tag === VIEW_TRANSITION_TYPE)
-        ) {
-          element = expanded as SinwanElement;
-        }
+        element = expand(element);
       }
 
       if (isMatchElement(element)) {
         const when = resolve((element.props as { when?: unknown }).when);
         if (when) {
-          return resolveMatchChildren(element, when);
+          const match = element;
+          return {
+            key: node,
+            value: when,
+            usesValue: isValueRenderProp(
+              (match.props as { children?: unknown }).children,
+            ),
+            build: () => resolveMatchChildren(match, when),
+          };
         }
       } else if (isShowElement(element)) {
         const when = resolve((element.props as { when?: unknown }).when);
         if (when) {
           const content = resolveShowChildren(element, when);
-          const match = findTruthyMatch(normalizeContent(content));
+          const match = findInContent(content, expand);
           if (match !== undefined) return match;
         } else if ((element.props as { fallback?: SinwanNode }).fallback) {
-          const match = findTruthyMatch(
-            normalizeContent(
-              (element.props as { fallback?: SinwanNode }).fallback,
-            ),
+          const match = findInContent(
+            (element.props as { fallback?: SinwanNode }).fallback,
+            expand,
           );
           if (match !== undefined) return match;
         }
       } else if (isSwitchElement(element)) {
-        const content = resolveSwitchContent(element);
-        const match = findTruthyMatch(normalizeContent(content));
+        const content = selectSwitchBranch(element, expand).build();
+        const match = findInContent(content, expand);
         if (match !== undefined) return match;
       } else if (isForElement(element)) {
         const props = element.props as {
@@ -140,7 +217,7 @@ export function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
         if (Array.isArray(items) && typeof props.children === "function") {
           for (let i = 0; i < items.length; i++) {
             const child = props.children(items[i], () => i);
-            const match = findTruthyMatch(normalizeContent(child));
+            const match = findInContent(child, expand);
             if (match !== undefined) return match;
           }
         }
@@ -153,14 +230,14 @@ export function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
         if (Array.isArray(items) && typeof props.children === "function") {
           for (let i = 0; i < items.length; i++) {
             const child = props.children(() => items[i], i);
-            const match = findTruthyMatch(normalizeContent(child));
+            const match = findInContent(child, expand);
             if (match !== undefined) return match;
           }
         }
       } else if (isKeyElement(element)) {
         const key = resolve((element.props as { when?: unknown }).when);
         const child = resolveKeyChildren(element, key);
-        const match = findTruthyMatch(normalizeContent(child));
+        const match = findInContent(child, expand);
         if (match !== undefined) return match;
       } else if (isDynamicElement(element)) {
         const tag = resolve(
@@ -169,7 +246,7 @@ export function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
         if (typeof tag === "string" || typeof tag === "function") {
           const dynamicEl = createDynamicElement(element, tag);
           if (dynamicEl) {
-            const match = findTruthyMatch([dynamicEl]);
+            const match = findBranch([dynamicEl], expand);
             if (match !== undefined) return match;
           }
         }
@@ -182,21 +259,21 @@ export function findTruthyMatch(nodes: SinwanNode[]): SinwanNode | undefined {
         const items = resolve(props.each);
         if (!Array.isArray(items) || items.length === 0) {
           if (props.fallback) {
-            const match = findTruthyMatch(normalizeContent(props.fallback));
+            const match = findInContent(props.fallback, expand);
             if (match !== undefined) return match;
           }
         } else if (typeof props.children === "function") {
           for (let i = 0; i < items.length; i++) {
             const child = props.children(items[i], () => i);
-            const match = findTruthyMatch(normalizeContent(child));
+            const match = findInContent(child, expand);
             if (match !== undefined) return match;
           }
         }
       } else {
-        return element;
+        return nodeBranch(element, node);
       }
     } else {
-      return node;
+      return nodeBranch(node);
     }
   }
   return undefined;
